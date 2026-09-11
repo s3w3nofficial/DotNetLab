@@ -205,7 +205,13 @@ internal sealed class NuGetDownloader : ICompilerDependencyResolver
         {
             DefaultRequestHeaders = { { "User-Agent", "DotNetLab" } },
         };
-        httpZipProvider = new HttpZipProvider(httpClient);
+        httpZipProvider = new HttpZipProvider(httpClient)
+        {
+            // nuget.org's CDN stores unquoted blob ETags. Browser HttpClient quotes If-Match,
+            // which yields 412 without CORS headers and looks like a CORS failure.
+            ETagBehavior = ETagBehavior.Ignore,
+            SendXMsVersionHeader = false,
+        };
         redirectedNuGetOrgRepository = new(TryCreateRedirectedNuGetOrgRepositoryAsync);
     }
 
@@ -654,7 +660,7 @@ internal sealed class NuGetDownloader : ICompilerDependencyResolver
                             var reader = await httpZipProvider.GetReaderAsync(url);
                             return (reader, await reader.ReadAsync());
                         }
-                        catch (MiniZipHttpException e)
+                        catch (Exception e) when (e is MiniZipHttpException or HttpRequestException)
                         {
                             // The exception message is long because it contains all headers
                             // but those can be inspected in dev tools anyway, so we include only the first line.
