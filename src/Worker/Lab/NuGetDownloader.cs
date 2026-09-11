@@ -205,13 +205,7 @@ internal sealed class NuGetDownloader : ICompilerDependencyResolver
         {
             DefaultRequestHeaders = { { "User-Agent", "DotNetLab" } },
         };
-        httpZipProvider = new HttpZipProvider(httpClient)
-        {
-            // nuget.org's CDN stores unquoted blob ETags. Browser HttpClient quotes If-Match,
-            // which yields 412 without CORS headers and looks like a CORS failure.
-            ETagBehavior = ETagBehavior.Ignore,
-            SendXMsVersionHeader = false,
-        };
+        httpZipProvider = new HttpZipProvider(httpClient);
         redirectedNuGetOrgRepository = new(TryCreateRedirectedNuGetOrgRepositoryAsync);
     }
 
@@ -1051,12 +1045,46 @@ internal sealed class CorsClientHandler : LoggingHttpClientHandler
 
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
     {
-        if (request.RequestUri?.AbsolutePath.EndsWith(".nupkg", StringComparison.OrdinalIgnoreCase) == true &&
-            !SimpleNuGetUtil.IsNuGetOrgHost(request.RequestUri.Host))
+        if (request.RequestUri is { } uri)
         {
-            request.RequestUri = request.RequestUri.WithCorsProxy();
+            if (uri.AbsolutePath.EndsWith(".nupkg", StringComparison.OrdinalIgnoreCase) &&
+                !SimpleNuGetUtil.IsNuGetOrgHost(uri.Host))
+            {
+                request.RequestUri = uri.WithCorsProxy();
+            }
+
+            // nuget.org's Azure Blob CDN compares If-Match against an unquoted ETag.
+            // HttpClient/MiniZip often re-quote it, which yields 412 without CORS headers.
+            if (SimpleNuGetUtil.IsNuGetOrgHost(uri.Host))
+            {
+                UnquoteIfMatchHeader(request);
+            }
         }
 
         return base.SendAsync(request, cancellationToken);
+    }
+
+    private static void UnquoteIfMatchHeader(HttpRequestMessage request)
+    {
+        if (!request.Headers.NonValidated.TryGetValues("If-Match", out var values))
+        {
+            return;
+        }
+
+        request.Headers.Remove("If-Match");
+        foreach (var value in values)
+        {
+            request.Headers.TryAddWithoutValidation("If-Match", UnquoteETag(value));
+        }
+    }
+
+    private static string UnquoteETag(string etag)
+    {
+        if (etag.Length >= 2 && etag[0] == '"' && etag[^1] == '"')
+        {
+            return etag[1..^1];
+        }
+
+        return etag;
     }
 }
