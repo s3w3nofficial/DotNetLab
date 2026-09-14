@@ -15,10 +15,9 @@ public sealed class LabDocuments
     public Dictionary<string, string> Sources { get; } = new(StringComparer.Ordinal)
     {
         ["Program.cs"] = LabFixtures.DefaultProgram,
-        ["TestComponent.razor"] = LabFixtures.DefaultRazor
     };
 
-    public List<string> SourceFiles { get; } = ["Program.cs", "TestComponent.razor"];
+    public List<string> SourceFiles { get; } = ["Program.cs"];
 
     public static bool IsSpecialSource(string fileName)
         => fileName is LabFixtures.DirectivesFileName or LabFixtures.ConfigurationFileName;
@@ -34,21 +33,57 @@ public sealed class LabDocuments
     public void SetTemplate(string template)
     {
         Template = template;
-        _state.Stale = true;
-        if (template is "Razor" or "CSHTML" && SourceFiles.Contains("TestComponent.razor"))
+
+        foreach (var file in SourceFiles.Where(name => !IsSpecialSource(name)).ToArray())
+        {
+            SourceFiles.Remove(file);
+            Sources.Remove(file);
+        }
+
+        foreach (var (name, contents) in FilesFor(template))
+        {
+            InsertUserFile(name);
+            Sources[name] = contents;
+        }
+
+        if (template is "Razor")
         {
             ActiveSource = "TestComponent.razor";
             _state.ActiveOutput = "gcs";
         }
+        else if (template is "CSHTML")
+        {
+            ActiveSource = "TestPage.cshtml";
+            _state.ActiveOutput = "gcs";
+        }
         else
         {
-            ActiveSource = SourceFiles.FirstOrDefault(IsUserCsharpFile) ?? SourceFiles.FirstOrDefault(file => !IsSpecialSource(file)) ?? SourceFiles[0];
+            ActiveSource = "Program.cs";
             _state.ActiveOutput = "cs";
         }
 
+        _state.Stale = true;
         _state.Tabs.EnsureActiveOutput();
         _state.Notify();
     }
+
+    private static (string Name, string Contents)[] FilesFor(string template)
+        => template switch
+        {
+            "Razor" =>
+            [
+                ("TestComponent.razor", LabFixtures.DefaultRazor),
+                ("_Imports.razor", LabFixtures.DefaultRazorImports),
+            ],
+            "CSHTML" =>
+            [
+                ("TestPage.cshtml", LabFixtures.DefaultCshtml),
+            ],
+            _ =>
+            [
+                ("Program.cs", LabFixtures.DefaultProgram),
+            ],
+        };
 
     public void SetSource(string file, string contents)
     {

@@ -20,10 +20,55 @@ public static class LabFixtures
     public static readonly string[] SpecialSourceOrder = [DirectivesFileName, ConfigurationFileName];
 
     public const string DefaultRazor = """
-        @page "/specimen"
+        <div>@Param</div>
+        @if (Param == 0)
+        {
+            <TestComponent Param="1" />
+        }
 
-        <h1>Specimen report</h1>
-        <FluentProgressBar Value="0.9982" />
+        @code {
+            [Parameter] public int Param { get; set; }
+        }
+
+        """;
+
+    public const string DefaultRazorImports = """
+        @using System.Net.Http
+        @using System.Net.Http.Json
+        @using Microsoft.AspNetCore.Components.Forms
+        @using Microsoft.AspNetCore.Components.Routing
+        @using Microsoft.AspNetCore.Components.Web
+        @using Microsoft.AspNetCore.Components.Web.Virtualization
+        @using Microsoft.JSInterop
+
+        """;
+
+    public const string DefaultCshtml = """
+        @page
+        @using System.ComponentModel.DataAnnotations
+        @model PageModel
+        @addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
+
+        <form method="post">
+            Name:
+            <input asp-for="Customer.Name" />
+            <input type="submit" />
+        </form>
+
+        @functions {
+            public class PageModel
+            {
+                public Customer Customer { get; set; } = new();
+            }
+
+            public class Customer
+            {
+                public int Id { get; set; }
+
+                [Required, StringLength(10)]
+                public string Name { get; set; } = "";
+            }
+        }
 
         """;
 
