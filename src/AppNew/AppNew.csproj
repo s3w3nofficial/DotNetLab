@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.BlazorWebAssembly">
+<Project Sdk="Microsoft.NET.Sdk.Razor">
 
   <PropertyGroup>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
@@ -14,6 +14,24 @@
     <PackageReference Include="Microsoft.AspNetCore.Components.Gateway"/>
     <PackageReference Include="Microsoft.FluentUI.AspNetCore.Components" VersionOverride="5.0.0-rc.5-26219.1" />
     <PackageReference Include="Microsoft.FluentUI.AspNetCore.Components.Icons" VersionOverride="5.0.0-rc.5-26219.1" />
+    <PackageReference Include="PolyType" />
+    <PackageReference Include="protobuf-net" />
+    <PackageReference Include="System.IO.Hashing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Worker\Worker.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AdditionalFiles Include="..\..\eng\BuildTools\snapshots\*" LinkBase="snapshots" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Microsoft.AspNetCore.Components" />
+    <Using Include="Microsoft.Extensions.DependencyInjection" />
+    <Using Include="Microsoft.Extensions.Logging" />
+    <Using Include="Microsoft.FluentUI.AspNetCore.Components.Utilities" />
   </ItemGroup>
 
   <ItemGroup>

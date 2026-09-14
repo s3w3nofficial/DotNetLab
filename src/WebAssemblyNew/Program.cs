@@ -3,29 +3,11 @@ using DotNetLab.Lab;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using System.Runtime.Versioning;
 
-var builder = WebAssemblyHostBuilder.CreateDefault(args);
+var builder = AppBuilder.CreateDotnetLabWebAssemblyHostBuilder(args);
 
-App.RegisterRootComponents(builder.RootComponents.Add);
+await builder.Build().RunAsync();
 
-builder.Services.AddScoped(sp => new HttpClient
-{
-    BaseAddress = new Uri(builder.HostEnvironment.BaseAddress),
-    DefaultRequestHeaders = { { "User-Agent", "DotNetLab" } },
-});
-App.RegisterServices(builder.Services);
-builder.Services.AddScoped<IAppHostEnvironment, WebAssemblyAppHostEnvironment>();
-builder.Services.AddScoped<IUpdateChecker, WebAssemblyUpdateChecker>();
-builder.Services.AddScoped<IScreenInfo, WebAssemblyScreenInfo>();
-builder.Services.AddScoped<IWorkerConfigurer, WebAssemblyWorkerConfigurer>();
-builder.Services.AddScoped<ICompilerOutputPlugin, WebAssemblyCompilerOutputPlugin>();
-builder.Services.AddSingleton<IScopedServiceProviderAccessor, SimpleScopedServiceProviderAccessor>();
-
-var host = builder.Build();
-
-App.Initialize(host.Services);
-
-await host.RunAsync();
-
+/*
 [SupportedOSPlatform("browser")]
 partial class Program;
 
@@ -87,3 +69,4 @@ file sealed class WebAssemblyCompilerOutputPlugin : ICompilerOutputPlugin
         return result.Text;
     }
 }
+*/
