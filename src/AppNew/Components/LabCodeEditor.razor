@@ -9,6 +9,7 @@
                           OnDidChangeModelContent="OnModelChangedAsync"
                           OnDidChangeCursorPosition="OnCursorChangedAsync"
                           OnDidFocusEditorText="OnFocusedAsync"
+                          OnDidBlurEditorText="OnBlurredAsync"
                           OnKeyDown="OnKeyDownAsync" />
     <div id="@VimStatusId" class="lab-vim-status" aria-live="polite"></div>
 </div>
@@ -44,11 +45,13 @@
     protected override void OnInitialized()
     {
         State.Changed += OnWorkspaceChanged;
+        State.SnapshotRequested += FlushAsync;
     }
 
     public void Dispose()
     {
         State.Changed -= OnWorkspaceChanged;
+        State.SnapshotRequested -= FlushAsync;
         _ = DisposeEditorChromeAsync();
     }
 
@@ -300,8 +303,34 @@
         }
     }
 
+    private async Task FlushAsync()
+    {
+        if (ReadOnly || !_ready || _editor is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var next = await _editor.GetValue();
+            if (string.Equals(_lastValue, next, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _lastValue = next;
+            await OnValueChanged.InvokeAsync(next);
+        }
+        catch (JSException)
+        {
+        }
+    }
+
     private Task OnFocusedAsync()
         => OnFocused.HasDelegate ? OnFocused.InvokeAsync() : Task.CompletedTask;
+
+    private Task OnBlurredAsync()
+        => ReadOnly ? Task.CompletedTask : State.PersistUrlAsync(snapshot: true);
 
     private Task OnCursorChangedAsync(CursorPositionChangedEvent args)
     {

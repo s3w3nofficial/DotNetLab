@@ -241,6 +241,12 @@ window.netLabPrefs = {
     }
 };
 
+window.netLabUrl = {
+    hash: function () {
+        return (window.location.hash || "").replace(/^#/, "");
+    }
+};
+
 window.netLabTheme = {
     storageKey: "netlab-theme",
     _media: null,

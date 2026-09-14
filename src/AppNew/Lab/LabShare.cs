@@ -16,10 +16,15 @@ public sealed class LabShare
         _state = state;
     }
 
-    public Task CopyLinkAsync() => WriteClipboardAsync(_navigation.Uri);
+    public async Task CopyLinkAsync()
+    {
+        await _state.PersistUrlAsync(snapshot: true);
+        await WriteClipboardAsync(_navigation.Uri);
+    }
 
     public async Task CreateGistAsync()
     {
+        await _state.SnapshotEditorsAsync();
         await WriteClipboardAsync(LabLinks.GistSnapshot(_state));
         await OpenExternalAsync(LabLinks.GistNew);
     }

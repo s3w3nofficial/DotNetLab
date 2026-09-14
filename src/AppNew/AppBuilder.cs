@@ -13,6 +13,7 @@ public static class AppBuilder
         
         builder.Services.AddFluentUIComponents();
         builder.Services.AddScoped<LabWorkspaceState>();
+        builder.Services.AddScoped<LabUrlSync>();
         builder.Services.AddScoped<LabThemeService>();
         builder.Services.AddScoped<LabPlatform>();
         builder.Services.AddScoped<LabShare>();

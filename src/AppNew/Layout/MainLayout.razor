@@ -1,6 +1,7 @@
 ﻿@inherits LayoutComponentBase
 @inject LabThemeService Theme
 @inject LabWorkspaceState State
+@inject LabUrlSync Urls
 @inject LabPlatform Platform
 @inject IJSRuntime JS
 @implements IDisposable
@@ -51,6 +52,7 @@
         {
         }
 
+        await Urls.LoadFromUriAsync();
         StateHasChanged();
     }
 

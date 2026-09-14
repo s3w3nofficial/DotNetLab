@@ -11,6 +11,7 @@ public sealed class LabWorkspaceState
     private int _compileGeneration;
     private int _compilerGeneration;
     private bool _sdkListLoaded;
+    private bool _suppressUrlPersist;
 
     public LabWorkspaceState(WorkerHost worker)
     {
@@ -28,6 +29,8 @@ public sealed class LabWorkspaceState
     public event Func<Task>? SettingsRequested;
     public event Func<Task>? PaletteRequested;
     public event Func<Task>? PasteUrlRequested;
+    public event Func<Task>? SnapshotRequested;
+    public event Func<Task>? UrlPersistRequested;
 
     public bool Stacked { get; private set; }
     public double Split { get; private set; } = 50;
@@ -53,6 +56,7 @@ public sealed class LabWorkspaceState
 
             _activeOutput = value;
             _ = EnsureOutputLoadedAsync(value);
+            _ = PersistUrlAsync();
         }
     }
     public string Sdk { get; private set; } = "built-in";
@@ -134,6 +138,35 @@ public sealed class LabWorkspaceState
 
     public void Notify() => Changed?.Invoke();
 
+    public void OnSavedStateChanged()
+    {
+        Stale = true;
+        Notify();
+        _ = PersistUrlAsync();
+    }
+
+    public void SetRazorToolchain(string value)
+    {
+        if (string.Equals(RazorToolchain, value, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        RazorToolchain = value;
+        OnSavedStateChanged();
+    }
+
+    public void SetRazorStrategy(string value)
+    {
+        if (string.Equals(RazorStrategy, value, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        RazorStrategy = value;
+        OnSavedStateChanged();
+    }
+
     public IReadOnlyList<OutputTab> SettingsRowsFor(OutputFileKind kind) => Tabs.SettingsRowsFor(kind);
     public bool IsOutputTabVisible(OutputFileKind kind, string type) => Tabs.IsOutputTabVisible(kind, type);
     public bool CanMoveOutputTab(OutputFileKind kind, string type, int delta) => Tabs.CanMoveOutputTab(kind, type, delta);
@@ -166,6 +199,153 @@ public sealed class LabWorkspaceState
         AppTheme = preference;
         ResolvedDark = resolvedDark;
         Notify();
+    }
+
+    public Task SnapshotEditorsAsync() => InvokeHandlersAsync(SnapshotRequested);
+
+    public async Task PersistUrlAsync(bool snapshot = false)
+    {
+        if (snapshot)
+        {
+            await SnapshotEditorsAsync();
+        }
+
+        if (_suppressUrlPersist)
+        {
+            return;
+        }
+
+        await InvokeHandlersAsync(UrlPersistRequested);
+    }
+
+    public SavedState CaptureSavedState()
+    {
+        var userFiles = Documents.SourceFiles
+            .Where(file => file != LabFixtures.ConfigurationFileName)
+            .ToList();
+
+        var inputs = userFiles
+            .Select(file => new InputCode
+            {
+                FileName = file,
+                Text = Documents.Sources.GetValueOrDefault(file) ?? "",
+            })
+            .ToImmutableArray();
+
+        Documents.Sources.TryGetValue(LabFixtures.ConfigurationFileName, out var configuration);
+
+        var activeIndex = userFiles.IndexOf(ActiveSource);
+        if (activeIndex < 0)
+        {
+            activeIndex = 0;
+        }
+
+        return new SavedState
+        {
+            Inputs = inputs,
+            SelectedInputIndex = activeIndex,
+            SelectedOutputType = ActiveOutput,
+            Configuration = configuration,
+            RazorToolchain = RazorToolchain switch
+            {
+                "Source Generator" => global::DotNetLab.RazorToolchain.SourceGenerator,
+                "Internal API" => global::DotNetLab.RazorToolchain.InternalApi,
+                _ => global::DotNetLab.RazorToolchain.SourceGeneratorOrInternalApi,
+            },
+            RazorStrategy = RazorStrategy == "DesignTime"
+                ? global::DotNetLab.RazorStrategy.DesignTime
+                : global::DotNetLab.RazorStrategy.Runtime,
+            ShowSymbols = ShowSymbols switch
+            {
+                "Public Symbols" => global::DotNetLab.SymbolDisplayKinds.Public,
+                "Internal Symbols" => global::DotNetLab.SymbolDisplayKinds.Internal,
+                "All Symbols" => global::DotNetLab.SymbolDisplayKinds.Both,
+                _ => global::DotNetLab.SymbolDisplayKinds.None,
+            },
+            ShowOperations = ShowOperations,
+            ShowBoundNodes = ShowBoundNodes,
+            ShowDeclarationDocument = ShowDeclarationDocument,
+            DecodeCustomAttributeBlobs = DecodeCustomAttributeBlobs,
+            ShowSequencePoints = ShowSequencePoints,
+            FullIl = FullIl,
+            ExcludeSingleFileNameInDiagnostics = ExcludeSingleFileNameInDiagnostics,
+            IncludeHiddenDiagnostics = IncludeHiddenDiagnostics,
+            SdkVersion = ToSpecifier(Sdk),
+            RoslynVersion = ToSpecifier(Roslyn),
+            RoslynConfiguration = ToBuildConfiguration(RoslynConfig),
+            RazorVersion = ToSpecifier(Razor),
+            RazorConfiguration = ToBuildConfiguration(RazorConfig),
+        };
+    }
+
+    public async Task ApplySavedStateAsync(SavedState state)
+    {
+        _suppressUrlPersist = true;
+        try
+        {
+            await ApplySavedStateCoreAsync(state);
+        }
+        finally
+        {
+            _suppressUrlPersist = false;
+        }
+    }
+
+    private async Task ApplySavedStateCoreAsync(SavedState state)
+    {
+        if (state.Inputs.IsDefault)
+        {
+            state = state with { Inputs = [] };
+        }
+
+        Documents.LoadFromSavedState(state);
+
+        if (!string.IsNullOrEmpty(state.SelectedOutputType))
+        {
+            ActiveOutput = state.SelectedOutputType;
+        }
+
+        RazorToolchain = state.RazorToolchain switch
+        {
+            global::DotNetLab.RazorToolchain.SourceGenerator => "Source Generator",
+            global::DotNetLab.RazorToolchain.InternalApi => "Internal API",
+            _ => "Auto",
+        };
+        RazorStrategy = state.RazorStrategy == global::DotNetLab.RazorStrategy.DesignTime
+            ? "DesignTime"
+            : "Runtime";
+        ShowSymbols = state.ShowSymbols switch
+        {
+            global::DotNetLab.SymbolDisplayKinds.Both => "All Symbols",
+            global::DotNetLab.SymbolDisplayKinds.Internal => "Internal Symbols",
+            global::DotNetLab.SymbolDisplayKinds.Public => "Public Symbols",
+            _ => "No Symbols",
+        };
+        ShowOperations = state.ShowOperations;
+        ShowBoundNodes = state.ShowBoundNodes;
+        ShowDeclarationDocument = state.ShowDeclarationDocument;
+        DecodeCustomAttributeBlobs = state.DecodeCustomAttributeBlobs;
+        ShowSequencePoints = state.ShowSequencePoints;
+        FullIl = state.FullIl;
+        ExcludeSingleFileNameInDiagnostics = state.ExcludeSingleFileNameInDiagnostics;
+        IncludeHiddenDiagnostics = state.IncludeHiddenDiagnostics;
+
+        Sdk = DisplaySpecifier(state.SdkVersion);
+        RoslynConfig = state.RoslynConfiguration == BuildConfiguration.Debug ? "Debug" : "Release";
+        RazorConfig = state.RazorConfiguration == BuildConfiguration.Debug ? "Debug" : "Release";
+        Stale = true;
+        BeginNewOutputGeneration();
+        Notify();
+
+        var generation = ++_compilerGeneration;
+        await Task.WhenAll(
+            ApplyCompilerAsync(CompilerKind.Roslyn, DisplaySpecifier(state.RoslynVersion), RoslynConfig, generation),
+            ApplyCompilerAsync(CompilerKind.Razor, DisplaySpecifier(state.RazorVersion), RazorConfig, generation));
+
+        if (AutomaticCompilation)
+        {
+            await CompileAsync();
+        }
     }
 
     public Task ShowSettingsAsync() => SettingsRequested?.Invoke() ?? Task.CompletedTask;
@@ -213,7 +393,11 @@ public sealed class LabWorkspaceState
         }
     }
 
-    public void SetTemplate(string template) => Documents.SetTemplate(template);
+    public void SetTemplate(string template)
+    {
+        Documents.SetTemplate(template);
+        _ = PersistUrlAsync();
+    }
 
     public async Task EnsureSdkVersionsAsync()
     {
@@ -317,6 +501,7 @@ public sealed class LabWorkspaceState
             {
                 SdkLoading = false;
                 Notify();
+                await PersistUrlAsync();
             }
         }
     }
@@ -351,6 +536,7 @@ public sealed class LabWorkspaceState
             if (generation == _compilerGeneration)
             {
                 Notify();
+                await PersistUrlAsync();
             }
         }
     }
@@ -468,12 +654,42 @@ public sealed class LabWorkspaceState
     }
 
     public void SetSource(string file, string contents) => Documents.SetSource(file, contents);
-    public void RenameFile(string oldName, string newName) => Documents.RenameFile(oldName, newName);
-    public void CloseFile(string file) => Documents.CloseFile(file);
-    public void AddFile(string extension) => Documents.AddFile(extension);
-    public void OpenDirectives() => Documents.OpenDirectives();
-    public void OpenConfiguration() => Documents.OpenConfiguration();
-    public void LoadImportedFiles(IReadOnlyDictionary<string, string> files) => Documents.LoadImportedFiles(files);
+
+    public void RenameFile(string oldName, string newName)
+    {
+        Documents.RenameFile(oldName, newName);
+        _ = PersistUrlAsync();
+    }
+
+    public void CloseFile(string file)
+    {
+        Documents.CloseFile(file);
+        _ = PersistUrlAsync();
+    }
+
+    public void AddFile(string extension)
+    {
+        Documents.AddFile(extension);
+        _ = PersistUrlAsync();
+    }
+
+    public void OpenDirectives()
+    {
+        Documents.OpenDirectives();
+        _ = PersistUrlAsync();
+    }
+
+    public void OpenConfiguration()
+    {
+        Documents.OpenConfiguration();
+        _ = PersistUrlAsync();
+    }
+
+    public void LoadImportedFiles(IReadOnlyDictionary<string, string> files)
+    {
+        Documents.LoadImportedFiles(files);
+        _ = PersistUrlAsync();
+    }
 
     public async Task FormatActiveSource()
     {
@@ -503,6 +719,7 @@ public sealed class LabWorkspaceState
             }
 
             Documents.SetSource(fileName, formatted);
+            await PersistUrlAsync();
         }
         catch
         {
@@ -514,6 +731,7 @@ public sealed class LabWorkspaceState
     {
         Documents.SetActiveSource(file);
         _ = EnsureOutputLoadedAsync(ActiveOutput);
+        _ = PersistUrlAsync();
     }
 
     public async Task CompileAsync()
@@ -529,6 +747,7 @@ public sealed class LabWorkspaceState
         await Task.Yield();
         try
         {
+            await PersistUrlAsync(snapshot: true);
             var input = CreateCompilationInput();
             LastInput = input;
             var compiled = await _worker.SendAsync(
@@ -806,5 +1025,18 @@ public sealed class LabWorkspaceState
         return string.IsNullOrEmpty(commit)
             ? $"Package {package}"
             : $"Package {package} · commit {commit}";
+    }
+
+    private static async Task InvokeHandlersAsync(Func<Task>? handlers)
+    {
+        if (handlers is null)
+        {
+            return;
+        }
+
+        foreach (var handler in handlers.GetInvocationList())
+        {
+            await ((Func<Task>)handler)();
+        }
     }
 }

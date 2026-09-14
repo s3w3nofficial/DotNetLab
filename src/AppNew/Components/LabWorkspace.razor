@@ -159,16 +159,16 @@
                                               TValue="string"
                                               Items="LabWorkspaceState.SymbolDisplayKinds"
                                               @bind-Value="State.ShowSymbols"
-                                              @bind-Value:after="State.Notify"
+                                              @bind-Value:after="State.OnSavedStateChanged"
                                               AriaLabel="Symbols" />
-                                <FluentCheckbox Label="Operations" @bind-Value="State.ShowOperations" @bind-Value:after="State.Notify" />
-                                <FluentCheckbox Label="Bound nodes" @bind-Value="State.ShowBoundNodes" @bind-Value:after="State.Notify" />
+                                <FluentCheckbox Label="Operations" @bind-Value="State.ShowOperations" @bind-Value:after="State.OnSavedStateChanged" />
+                                <FluentCheckbox Label="Bound nodes" @bind-Value="State.ShowBoundNodes" @bind-Value:after="State.OnSavedStateChanged" />
                             </div>
                         }
                         else if (context == "gcs")
                         {
                             <div class="lab-toolbar">
-                                <FluentCheckbox Label="Declaration document" @bind-Value="State.ShowDeclarationDocument" @bind-Value:after="State.Notify" />
+                                <FluentCheckbox Label="Declaration document" @bind-Value="State.ShowDeclarationDocument" @bind-Value:after="State.OnSavedStateChanged" />
                             </div>
                         }
                         else if (context == "html")
@@ -180,16 +180,16 @@
                         else if (context == "il")
                         {
                             <div class="lab-toolbar">
-                                <FluentCheckbox Label="Decode custom attribute blobs" @bind-Value="State.DecodeCustomAttributeBlobs" @bind-Value:after="State.Notify" />
-                                <FluentCheckbox Label="Sequence points" @bind-Value="State.ShowSequencePoints" @bind-Value:after="State.Notify" />
-                                <FluentCheckbox Label="Full IL" @bind-Value="State.FullIl" @bind-Value:after="State.Notify" />
+                                <FluentCheckbox Label="Decode custom attribute blobs" @bind-Value="State.DecodeCustomAttributeBlobs" @bind-Value:after="State.OnSavedStateChanged" />
+                                <FluentCheckbox Label="Sequence points" @bind-Value="State.ShowSequencePoints" @bind-Value:after="State.OnSavedStateChanged" />
+                                <FluentCheckbox Label="Full IL" @bind-Value="State.FullIl" @bind-Value:after="State.OnSavedStateChanged" />
                             </div>
                         }
                         else if (context == "errors")
                         {
                             <div class="lab-toolbar">
-                                <FluentCheckbox Label="Exclude single file name" @bind-Value="State.ExcludeSingleFileNameInDiagnostics" @bind-Value:after="State.Notify" />
-                                <FluentCheckbox Label="Include hidden diagnostics" @bind-Value="State.IncludeHiddenDiagnostics" @bind-Value:after="State.Notify" />
+                                <FluentCheckbox Label="Exclude single file name" @bind-Value="State.ExcludeSingleFileNameInDiagnostics" @bind-Value:after="State.OnSavedStateChanged" />
+                                <FluentCheckbox Label="Include hidden diagnostics" @bind-Value="State.IncludeHiddenDiagnostics" @bind-Value:after="State.OnSavedStateChanged" />
                             </div>
                         }
                     </Toolbar>

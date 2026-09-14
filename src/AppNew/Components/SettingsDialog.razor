@@ -62,10 +62,10 @@
                         <FluentSwitch @bind-Value="State.AutomaticCompilation" @bind-Value:after="State.Notify" AriaLabel="Automatic compilation" />
                     </SettingRow>
                     <SettingRow Title="Razor Toolchain">
-                        <FluentSelect TOption="string" TValue="string" Items="LabWorkspaceState.RazorToolchains" @bind-Value="State.RazorToolchain" @bind-Value:after="State.Notify" />
+                        <FluentSelect TOption="string" TValue="string" Items="LabWorkspaceState.RazorToolchains" @bind-Value="State.RazorToolchain" @bind-Value:after="State.OnSavedStateChanged" />
                     </SettingRow>
                     <SettingRow Title="Razor Strategy">
-                        <FluentSelect TOption="string" TValue="string" Items="LabWorkspaceState.RazorStrategies" @bind-Value="State.RazorStrategy" @bind-Value:after="State.Notify" />
+                        <FluentSelect TOption="string" TValue="string" Items="LabWorkspaceState.RazorStrategies" @bind-Value="State.RazorStrategy" @bind-Value:after="State.OnSavedStateChanged" />
                     </SettingRow>
                 </div>
             </details>

@@ -1,10 +1,11 @@
 using ProtoBuf;
 using System.Buffers.Text;
+using System.Diagnostics.CodeAnalysis;
 using System.IO.Compression;
 
 namespace DotNetLab.Lab;
 
-internal static class Compressor
+public static class Compressor
 {
     public static string Compress(SavedState input)
     {

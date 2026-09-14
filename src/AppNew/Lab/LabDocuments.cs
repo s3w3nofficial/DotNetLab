@@ -14,7 +14,7 @@ public sealed class LabDocuments
 
     public Dictionary<string, string> Sources { get; } = new(StringComparer.Ordinal)
     {
-        ["Program.cs"] = LabFixtures.DefaultProgram,
+        [InitialCode.CSharp.SuggestedFileName] = InitialCode.CSharp.TextTemplate,
     };
 
     public List<string> SourceFiles { get; } = ["Program.cs"];
@@ -72,16 +72,16 @@ public sealed class LabDocuments
         {
             "Razor" =>
             [
-                ("TestComponent.razor", LabFixtures.DefaultRazor),
-                ("_Imports.razor", LabFixtures.DefaultRazorImports),
+                (InitialCode.Razor.SuggestedFileName, InitialCode.Razor.TextTemplate),
+                (InitialCode.RazorImports.SuggestedFileName, InitialCode.RazorImports.TextTemplate),
             ],
             "CSHTML" =>
             [
-                ("TestPage.cshtml", LabFixtures.DefaultCshtml),
+                (InitialCode.Cshtml.SuggestedFileName, InitialCode.Cshtml.TextTemplate),
             ],
             _ =>
             [
-                ("Program.cs", LabFixtures.DefaultProgram),
+                (InitialCode.CSharp.SuggestedFileName, InitialCode.CSharp.TextTemplate),
             ],
         };
 
@@ -189,9 +189,9 @@ public sealed class LabDocuments
         _state.Notify();
     }
 
-    public void OpenDirectives() => OpenSpecialSource(LabFixtures.DirectivesFileName, LabFixtures.DefaultDirectives);
+    public void OpenDirectives() => OpenSpecialSource(InitialCode.Directives.SuggestedFileName, InitialCode.Directives.TextTemplate);
 
-    public void OpenConfiguration() => OpenSpecialSource(LabFixtures.ConfigurationFileName, LabFixtures.DefaultConfiguration);
+    public void OpenConfiguration() => OpenSpecialSource(InitialCode.Configuration.SuggestedFileName, InitialCode.Configuration.TextTemplate);
 
     private static bool IsUserCsharpFile(string fileName)
         => fileName.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) && !IsSpecialSource(fileName);
@@ -297,6 +297,86 @@ public sealed class LabDocuments
         }
 
         ActiveSource = file;
+        _state.Tabs.EnsureActiveOutput();
+        _state.Notify();
+    }
+
+    public void LoadFromSavedState(SavedState state)
+    {
+        var userFiles = new List<(string Name, string Contents)>();
+        var specialFiles = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        foreach (var input in state.Inputs)
+        {
+            var name = string.IsNullOrWhiteSpace(input.FileName)
+                ? InitialCode.CSharp.SuggestedFileName
+                : Path.GetFileName(input.FileName);
+            if (string.IsNullOrWhiteSpace(name) ||
+                name is "." or ".." ||
+                name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+            {
+                continue;
+            }
+
+            var text = input.Text ?? "";
+            if (IsSpecialSource(name))
+            {
+                specialFiles[name] = text;
+            }
+            else
+            {
+                userFiles.Add((name, text));
+            }
+        }
+
+        if (state.Configuration is { } configuration)
+        {
+            specialFiles[LabFixtures.ConfigurationFileName] = configuration;
+        }
+
+        SourceFiles.Clear();
+        Sources.Clear();
+
+        if (userFiles.Count == 0)
+        {
+            userFiles.Add((InitialCode.CSharp.SuggestedFileName, InitialCode.CSharp.TextTemplate));
+        }
+
+        foreach (var (name, contents) in userFiles)
+        {
+            if (!SourceFiles.Contains(name))
+            {
+                InsertUserFile(name);
+            }
+
+            Sources[name] = contents;
+        }
+
+        foreach (var fileName in LabFixtures.SpecialSourceOrder)
+        {
+            if (specialFiles.TryGetValue(fileName, out var contents))
+            {
+                InsertSpecialFile(fileName);
+                Sources[fileName] = contents;
+            }
+        }
+
+        var selectable = SourceFiles.Where(name => name != LabFixtures.ConfigurationFileName).ToList();
+        if (selectable.Count == 0)
+        {
+            selectable = SourceFiles.ToList();
+        }
+
+        ActiveSource = state.SelectedInputIndex >= 0 && state.SelectedInputIndex < selectable.Count
+            ? selectable[state.SelectedInputIndex]
+            : selectable[0];
+
+        Template = selectable.Any(file => file.EndsWith(".razor", StringComparison.OrdinalIgnoreCase))
+            ? "Razor"
+            : selectable.Any(file => file.EndsWith(".cshtml", StringComparison.OrdinalIgnoreCase))
+                ? "CSHTML"
+                : "C#";
+
         _state.Tabs.EnsureActiveOutput();
         _state.Notify();
     }

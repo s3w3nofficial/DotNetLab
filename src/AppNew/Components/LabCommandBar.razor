@@ -94,12 +94,12 @@
                 <FluentDivider />
                 @foreach (var item in LabCatalog.RazorToolchains)
                 {
-                    <FluentMenuItem Label="@($"Toolchain: {item}")" OnClick="@(() => { State.RazorToolchain = item; State.Notify(); })" />
+                    <FluentMenuItem Label="@($"Toolchain: {item}")" OnClick="@(() => State.SetRazorToolchain(item))" />
                 }
                 <FluentDivider />
                 @foreach (var item in LabCatalog.RazorStrategies)
                 {
-                    <FluentMenuItem Label="@($"Strategy: {item}")" OnClick="@(() => { State.RazorStrategy = item; State.Notify(); })" />
+                    <FluentMenuItem Label="@($"Strategy: {item}")" OnClick="@(() => State.SetRazorStrategy(item))" />
                 }
             </FluentMenuList>
         </FluentMenu>

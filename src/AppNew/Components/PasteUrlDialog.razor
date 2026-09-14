@@ -1,44 +1,35 @@
-@inject LabWorkspaceState State
-@inject NavigationManager Navigation
-@inject IJSRuntime JS
-@inject HttpClient Http
-@using System.Text.Json
+@inject LabUrlSync Urls
 
-<FluentDialog @ref="_dialog" Class="lab-paste-dialog" Modal="false" OnStateChange="OnDialogStateChange">
+<FluentDialog @ref="_dialog" Class="lab-settings-dialog" Modal="true" OnStateChange="OnDialogStateChange">
     <FluentDialogBody>
         <TitleTemplate>Load from URL</TitleTemplate>
+        <TitleActionTemplate>
+            <FluentButton Appearance="ButtonAppearance.Outline"
+                          Size="ButtonSize.Small"
+                          IconOnly="true"
+                          Title="Close"
+                          IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                          OnClick="HideAsync" />
+        </TitleActionTemplate>
         <ActionTemplate>
             <FluentButton Appearance="ButtonAppearance.Outline" OnClick="HideAsync">Cancel</FluentButton>
-            <FluentButton Appearance="ButtonAppearance.Primary" Disabled="@_loading" OnClick="LoadAsync">
-                @(_loading ? "Loading…" : "Load")
-            </FluentButton>
+            <FluentButton Appearance="ButtonAppearance.Primary" Disabled="@string.IsNullOrWhiteSpace(_text)" OnClick="LoadAsync">Load</FluentButton>
         </ActionTemplate>
         <ChildContent>
-            <p class="lab-setting-hint">Paste a .NET Lab link or a GitHub gist URL.</p>
-            <label class="lab-settings-field">
-                <FluentIcon Value="@(new Icons.Regular.Size20.Link())" Width="16px" />
-                <input class="lab-settings-input"
-                       type="url"
-                       autocomplete="off"
-                       spellcheck="false"
-                       placeholder="https://…"
-                       value="@_url"
-                       @oninput="OnUrlInput" />
-            </label>
-            @if (!string.IsNullOrEmpty(_error))
-            {
-                <p class="lab-paste-error">@_error</p>
-            }
+            <p class="lab-setting-hint">Paste a .NET Lab link.</p>
+            <FluentTextArea @bind-Value="_text"
+                            Rows="3"
+                            AriaLabel="URL"
+                            Placeholder="https://…#…"
+                            Style="width:100%" />
         </ChildContent>
     </FluentDialogBody>
 </FluentDialog>
 
 @code {
     private FluentDialog? _dialog;
+    private string _text = "";
     private bool _hiding;
-    private bool _loading;
-    private string _url = "";
-    private string _error = "";
 
     public async Task ShowAsync()
     {
@@ -47,8 +38,7 @@
             return;
         }
 
-        _url = "";
-        _error = "";
+        _text = "";
         try
         {
             await _dialog.ShowAsync();
@@ -76,114 +66,16 @@
         finally
         {
             _hiding = false;
-            _loading = false;
         }
     }
 
     private Task OnDialogStateChange(DialogEventArgs args)
         => args.State == DialogState.Closed ? HideAsync() : Task.CompletedTask;
 
-    private void OnUrlInput(ChangeEventArgs args)
-    {
-        _url = args.Value?.ToString() ?? "";
-        _error = "";
-    }
-
     private async Task LoadAsync()
     {
-        var url = _url.Trim();
-        if (url.Length == 0)
-        {
-            try
-            {
-                url = (await JS.InvokeAsync<string>("navigator.clipboard.readText")).Trim();
-                _url = url;
-            }
-            catch (JSException)
-            {
-            }
-        }
-
-        if (url.Length == 0)
-        {
-            _error = "Paste a .NET Lab or GitHub gist URL.";
-            return;
-        }
-
-        _loading = true;
-        _error = "";
-        try
-        {
-            if (LabLinks.TryParseGistId(url, out var gistId))
-            {
-                await LoadGistAsync(gistId);
-                await HideAsync();
-                return;
-            }
-
-            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri))
-            {
-                _error = "That does not look like a valid URL.";
-                return;
-            }
-
-            var current = Navigation.ToAbsoluteUri(Navigation.Uri);
-            if (string.Equals(uri.Host, current.Host, StringComparison.OrdinalIgnoreCase))
-            {
-                Navigation.NavigateTo(uri.PathAndQuery + uri.Fragment, forceLoad: false);
-                await HideAsync();
-                return;
-            }
-
-            _error = "Use a .NET Lab link or a GitHub gist URL.";
-        }
-        catch (HttpRequestException)
-        {
-            _error = "Could not load that gist.";
-        }
-        catch (JSException)
-        {
-            _error = "Could not load that link.";
-        }
-        finally
-        {
-            _loading = false;
-        }
-    }
-
-    private async Task LoadGistAsync(string gistId)
-    {
-        using var request = new HttpRequestMessage(HttpMethod.Get, $"{LabLinks.GitHubApi}/gists/{gistId}");
-        request.Headers.TryAddWithoutValidation("Accept", "application/vnd.github+json");
-        using var response = await Http.SendAsync(request);
-        response.EnsureSuccessStatusCode();
-        await using var stream = await response.Content.ReadAsStreamAsync();
-        using var document = await JsonDocument.ParseAsync(stream);
-        if (!document.RootElement.TryGetProperty("files", out var files) || files.ValueKind != JsonValueKind.Object)
-        {
-            throw new HttpRequestException("Gist has no files.");
-        }
-
-        var imported = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var file in files.EnumerateObject())
-        {
-            var name = file.Value.TryGetProperty("filename", out var filename)
-                ? filename.GetString()
-                : file.Name;
-            var content = file.Value.TryGetProperty("content", out var contents)
-                ? contents.GetString()
-                : "";
-            if (!string.IsNullOrWhiteSpace(name))
-            {
-                imported[name] = content ?? "";
-            }
-        }
-
-        if (imported.Count == 0)
-        {
-            throw new HttpRequestException("Gist has no files.");
-        }
-
-        State.LoadImportedFiles(imported);
+        var text = _text;
+        await HideAsync();
+        await Urls.ApplySlugOrUrlAsync(text);
     }
 }

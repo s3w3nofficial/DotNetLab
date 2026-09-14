@@ -1,6 +1,7 @@
 @inject LabWorkspaceState State
 @inject LabThemeService Theme
 @inject LabShare Share
+@implements IDisposable
 
 <div class="lab-brand-bar">
     <span class="lab-brand-mark" aria-hidden="true">
@@ -91,6 +92,12 @@
 @code {
     private const string BrandForeground = "#f7f1fc";
 
+    protected override void OnInitialized() => State.Changed += OnStateChanged;
+
+    private void OnStateChanged() => InvokeAsync(StateHasChanged);
+
     private Task ToggleThemeAsync()
         => Theme.SetPreferenceAsync(State.ResolvedDark ? "light" : "dark");
+
+    public void Dispose() => State.Changed -= OnStateChanged;
 }
