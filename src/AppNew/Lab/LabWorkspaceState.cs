@@ -1,12 +1,14 @@
 using System.Collections.Immutable;
-using System.Text;
-using System.Text.Json;
 
 namespace DotNetLab.Lab;
 
 public sealed class LabWorkspaceState
 {
     private readonly WorkerHost _worker;
+    private readonly Dictionary<string, string> _outputCache = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _outputLoading = new(StringComparer.Ordinal);
+    private string _activeOutput = "cs";
+    private int _compileGeneration;
 
     public LabWorkspaceState(WorkerHost worker)
     {
@@ -37,7 +39,20 @@ public sealed class LabWorkspaceState
         set => Documents.ActiveSource = value;
     }
 
-    public string ActiveOutput { get; set; } = "cs";
+    public string ActiveOutput
+    {
+        get => _activeOutput;
+        set
+        {
+            if (string.Equals(_activeOutput, value, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _activeOutput = value;
+            _ = EnsureOutputLoadedAsync(value);
+        }
+    }
     public string Sdk { get; private set; } = LabCatalog.SdkVersions[0].Value;
     public string Roslyn { get; private set; } = "built-in";
     public string RoslynConfig { get; set; } = "Release";
@@ -219,7 +234,11 @@ public sealed class LabWorkspaceState
     public void OpenConfiguration() => Documents.OpenConfiguration();
     public void LoadImportedFiles(IReadOnlyDictionary<string, string> files) => Documents.LoadImportedFiles(files);
     public void FormatActiveSource() => Documents.FormatActiveSource();
-    public void SetActiveSource(string file) => Documents.SetActiveSource(file);
+    public void SetActiveSource(string file)
+    {
+        Documents.SetActiveSource(file);
+        _ = EnsureOutputLoadedAsync(ActiveOutput);
+    }
 
     public async Task CompileAsync()
     {
@@ -240,16 +259,27 @@ public sealed class LabWorkspaceState
                     Id = _worker.NextMessageId(),
                 });
             Stale = false;
+            BeginNewOutputGeneration();
         }
         catch (Exception ex)
         {
             Compiled = CompiledAssembly.Fail(ex.ToString());
+            BeginNewOutputGeneration();
         }
         finally
         {
             Running = false;
-            Notify();
         }
+
+        _ = EnsureOutputLoadedAsync(ActiveOutput);
+        Notify();
+    }
+
+    private void BeginNewOutputGeneration()
+    {
+        _compileGeneration++;
+        _outputCache.Clear();
+        _outputLoading.Clear();
     }
 
     public CompilationInput CreateCompilationInput()
@@ -317,51 +347,124 @@ public sealed class LabWorkspaceState
             return "Compiling…";
         }
 
-        if (Compiled is { } compiled)
+        if (Compiled is not { } compiled)
         {
-            if (compiled.GetGlobalOutput("fail") is { Text: { } failText })
-            {
-                return failText;
-            }
-
-            if (tab is LabCatalog.ErrorsOutputType &&
-                compiled.GetGlobalOutput(CompiledAssembly.DiagnosticsOutputType) is { } errors)
-            {
-                return errors.Text ?? "";
-            }
+            return "(press Compile to load this)";
         }
 
-        return tab switch
+        if (compiled.GetGlobalOutput("fail") is { Text: { } failText })
         {
-            "run" => "Hello, .NET Lab!\nProcess exited with code 0",
-            "il" => LabFixtures.IlOutput,
-            "seq" => LabFixtures.SeqOutput,
-            "cs" => LabFixtures.DecompiledCSharp,
-            "gcs" => LabFixtures.GeneratedRazorCSharp,
-            "tree" => LabFixtures.TreeOutput,
-            "syntax" => LabFixtures.RazorSyntaxOutput,
-            "ir" => LabFixtures.RazorIrOutput,
-            "html" => ActiveSource.EndsWith(".cshtml", StringComparison.OrdinalIgnoreCase)
-                ? "Rendering Razor Pages (.cshtml) to HTML is currently not supported. Try Razor Components (.razor) instead."
-                : LabFixtures.RazorHtmlOutput,
-            LabCatalog.RazorErrorsOutputType => "No Razor diagnostics.",
-            "asm" => "JIT disassembler is not available on this platform (it's only available in a native app).",
-            "xml" => LabFixtures.DocsOutput,
-            "errors" => GetErrorsOutput(),
-            _ => $"{OutputLabel(tab)} output\n"
-        };
+            return failText;
+        }
+
+        if (_outputCache.TryGetValue(OutputCacheKey(tab), out var cached))
+        {
+            return cached;
+        }
+
+        var output = FindOutput(tab);
+        if (output is null)
+        {
+            return $"(no {OutputLabel(tab)} output for this file)";
+        }
+
+        if (output.Text is { } eager)
+        {
+            return eager;
+        }
+
+        _ = EnsureOutputLoadedAsync(tab);
+        return "Loading…";
     }
 
-    public string GetErrorsOutput()
+    public async Task EnsureOutputLoadedAsync(string tab)
     {
-        var location = ExcludeSingleFileNameInDiagnostics
-            ? "(4,28)"
-            : "Program.cs(4,28)";
+        if (Compiled is null || LastInput is null || Running)
+        {
+            return;
+        }
 
-        return $"""
-            // {location}: error CS1002: ; expected
-            // Console.WriteLine("Hello, .NET Lab!")
-            Diagnostic(ErrorCode.ERR_SemicolonExpected, "").WithLocation(4, 28)
-            """;
+        var key = OutputCacheKey(tab);
+        if (_outputCache.ContainsKey(key) || !_outputLoading.Add(key))
+        {
+            return;
+        }
+
+        var generation = _compileGeneration;
+        try
+        {
+            var output = FindOutput(tab);
+            if (output is null)
+            {
+                _outputCache[key] = $"(no {OutputLabel(tab)} output for this file)";
+                return;
+            }
+
+            if (output.Text is { } eager)
+            {
+                _outputCache[key] = eager;
+                return;
+            }
+
+            var file = OutputFileName(tab);
+            CompiledFileLazyResult result;
+            try
+            {
+                result = await output.LoadAsync(new()
+                {
+                    OutputFactory = () => LoadOutputFromWorkerAsync(file, tab),
+                });
+            }
+            catch (Exception ex)
+            {
+                result = new() { Text = ex.ToString() };
+            }
+
+            if (generation != _compileGeneration)
+            {
+                return;
+            }
+
+            _outputCache[key] = result.Text;
+        }
+        finally
+        {
+            _outputLoading.Remove(key);
+            Notify();
+        }
     }
+
+    private async ValueTask<CompiledFileLazyResult> LoadOutputFromWorkerAsync(string? file, string tab)
+    {
+        return await _worker.Executor.HandleAsync(
+            new WorkerInputMessage.GetOutput(LastInput!, file, tab)
+            {
+                Id = _worker.NextMessageId(),
+            });
+    }
+
+    private CompiledFileOutput? FindOutput(string tab)
+    {
+        if (Compiled is not { } compiled)
+        {
+            return null;
+        }
+
+        if (compiled.Files.TryGetValue(ActiveSource, out var file) &&
+            file.GetOutput(tab) is { } perFile)
+        {
+            return perFile;
+        }
+
+        return compiled.GetGlobalOutput(tab);
+    }
+
+    private string? OutputFileName(string tab)
+        => FindOutput(tab) is not null &&
+           Compiled?.Files.TryGetValue(ActiveSource, out var file) == true &&
+           file.GetOutput(tab) is not null
+            ? ActiveSource
+            : null;
+
+    private string OutputCacheKey(string tab) => $"{ActiveSource}\0{tab}";
 }
