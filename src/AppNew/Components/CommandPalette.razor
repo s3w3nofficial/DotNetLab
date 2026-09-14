@@ -258,11 +258,7 @@
     private IEnumerable<CommandItem> Commands()
     {
         yield return new("Compile", "compile run build", Platform.SaveChord, () => State.CompileAsync());
-        yield return new("Format document", "format indent", "", () =>
-        {
-            State.FormatActiveSource();
-            return Task.CompletedTask;
-        });
+        yield return new("Format document", "format indent", "", () => State.FormatActiveSource());
         yield return new("Copy link", "copy share url link", "", Share.CopyLinkAsync);
         yield return new("Create gist", "gist github share", "", Share.CreateGistAsync);
         yield return new("Load from URL", "paste gist url load", "", () => State.ShowPasteUrlAsync());

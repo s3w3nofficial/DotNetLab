@@ -233,7 +233,42 @@ public sealed class LabWorkspaceState
     public void OpenDirectives() => Documents.OpenDirectives();
     public void OpenConfiguration() => Documents.OpenConfiguration();
     public void LoadImportedFiles(IReadOnlyDictionary<string, string> files) => Documents.LoadImportedFiles(files);
-    public void FormatActiveSource() => Documents.FormatActiveSource();
+
+    public async Task FormatActiveSource()
+    {
+        var fileName = ActiveSource;
+        if (!Documents.Sources.TryGetValue(fileName, out var currentCode))
+        {
+            return;
+        }
+
+        if (!fileName.IsCSharpFileName(out var isScript) &&
+            fileName != LabFixtures.ConfigurationFileName)
+        {
+            return;
+        }
+
+        try
+        {
+            var formatted = await _worker.Executor.HandleAsync(
+                new WorkerInputMessage.FormatCode(currentCode, isScript)
+                {
+                    Id = _worker.NextMessageId(),
+                });
+
+            if (formatted == currentCode)
+            {
+                return;
+            }
+
+            Documents.SetSource(fileName, formatted);
+        }
+        catch
+        {
+            // Same as Lab: formatting is best-effort and should not interrupt editing.
+        }
+    }
+
     public void SetActiveSource(string file)
     {
         Documents.SetActiveSource(file);

@@ -288,17 +288,7 @@ public sealed class LabDocuments
         _state.Stale = true;
         _state.Notify();
     }
-    public void FormatActiveSource()
-    {
-        if (!Sources.TryGetValue(ActiveSource, out var contents))
-        {
-            return;
-        }
 
-        Sources[ActiveSource] = contents.Replace("\t", "    ").TrimEnd() + "\n";
-        _state.Stale = true;
-        _state.Notify();
-    }
     public void SetActiveSource(string file)
     {
         if (string.Equals(ActiveSource, file, StringComparison.Ordinal))
