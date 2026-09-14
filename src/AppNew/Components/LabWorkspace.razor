@@ -1,0 +1,424 @@
+@inject LabWorkspaceState State
+@inject IJSRuntime JS
+@implements IDisposable
+
+<main @ref="_workspace"
+      class="lab-workspace @(State.Stacked ? "stacked" : null)"
+      style="@($"--pane-split: {State.Split.ToString(System.Globalization.CultureInfo.InvariantCulture)}%")">
+    @foreach (var paneId in new[] { "source", "output" })
+    {
+        var isPrimary = paneId == "source";
+        <section class="lab-pane @(isPrimary ? "primary" : "secondary")">
+            @if (paneId == "source")
+            {
+                <EditorGroups PaneId="source"
+                              Items="State.SourceFiles"
+                              Active="@State.ActiveSource"
+                              ActiveChanged="OnSourceSelected"
+                              ItemClosed="State.CloseFile"
+                              ItemRenamed="OnSourceRenamed"
+                              PinnedOrder="LabWorkspaceState.SpecialSourceOrder"
+                              Icon="@(new Icons.Regular.Size20.Code())">
+                    <Actions>
+                        <FluentButton Id="lab-source-format"
+                                      Appearance="ButtonAppearance.Subtle"
+                                      Size="ButtonSize.Small"
+                                      IconOnly="true"
+                                      Title="Format document"
+                                      AriaLabel="Format document"
+                                      IconStart="@(new Icons.Regular.Size20.TextEditStyle())"
+                                      OnClick="State.FormatActiveSource" />
+                        <FluentTooltip Anchor="lab-source-format"
+                                       Class="lab-command-tooltip"
+                                       Positioning="Positioning.Below"
+                                       UseTooltipService="false">
+                            Format document
+                        </FluentTooltip>
+                        <FluentMenu>
+                            <FluentMenuButton Appearance="ButtonAppearance.Subtle"
+                                              Size="ButtonSize.Small"
+                                              IconOnly="true"
+                                              Title="Add file"
+                                              IconStart="@(new Icons.Regular.Size20.Add())" />
+                            <FluentMenuList>
+                                <FluentMenuItem IconStart="@(new Icons.Regular.Size20.Braces())"
+                                                Label=".cs file"
+                                                OnClick="@(() => State.AddFile(".cs"))" />
+                                <FluentMenuItem IconStart="@(new Icons.Regular.Size20.Code())"
+                                                Label=".razor file"
+                                                OnClick="@(() => State.AddFile(".razor"))" />
+                                <FluentMenuItem IconStart="@(new Icons.Regular.Size20.Globe())"
+                                                Label=".cshtml file"
+                                                OnClick="@(() => State.AddFile(".cshtml"))" />
+                                <FluentDivider />
+                                <FluentMenuItem IconStart="@(new Icons.Regular.Size20.NumberSymbol())"
+                                                Label="Directives"
+                                                OnClick="State.OpenDirectives" />
+                                <FluentMenuItem IconStart="@(new Icons.Regular.Size20.DocumentSettings())"
+                                                Label="Configuration"
+                                                OnClick="State.OpenConfiguration" />
+                            </FluentMenuList>
+                        </FluentMenu>
+                    </Actions>
+                    <ItemLabel>
+                        @if (context == LabWorkspaceState.DirectivesFileName)
+                        {
+                            <FluentIcon Value="@(new Icons.Regular.Size20.NumberSymbol())" Width="16px" />
+                            <span>Directives</span>
+                        }
+                        else if (context == LabWorkspaceState.ConfigurationFileName)
+                        {
+                            <FluentIcon Value="@(new Icons.Regular.Size20.DocumentSettings())" Width="16px" />
+                            <span>Configuration</span>
+                        }
+                        else
+                        {
+                            @context
+                        }
+                    </ItemLabel>
+                    <ItemContent>
+                        <LabCodeEditor @key="@($"source-{context}")"
+                                       Value="@State.Sources.GetValueOrDefault(context, "")"
+                                       Language="@State.LanguageFor(context)"
+                                       WordWrap="State.WordWrap"
+                                       OnValueChanged="@(value => State.SetSource(context, value))"
+                                       OnCursorChanged="OnCursorChanged"
+                                       OnFocused="@(() => OnSourceSelected(context))" />
+                    </ItemContent>
+                </EditorGroups>
+                <StatusBar Left="@(new[] { $"Ln {State.CursorLine}, Col {State.CursorColumn}", "Spaces: 4", "UTF-8", State.Template })"
+                           Right="@(State.Stale ? "Modified · Ctrl+S to compile" : "Ready · Ctrl+S to compile")"
+                           Ready="@(!State.Stale && !State.Running)" />
+            }
+            else
+            {
+                <EditorGroups @ref="_outputGroups"
+                              PaneId="output"
+                              Items="State.CurrentOutputTabIds"
+                              Active="@State.ActiveOutput"
+                              ActiveChanged="OnOutputSelected"
+                              ItemClosed="OnOutputClosed"
+                              LockedItems="_lockedOutputTabs"
+                              LayoutRevision="State.OutputLayoutRevision"
+                              TabsChanged="OnOutputTabsChanged">
+                    <Actions>
+                        @{
+                            var stripIds = OutputStripIds();
+                            var addableTabs = State.AddableOutputTabsFor(stripIds);
+                        }
+                        <FluentMenu>
+                            <FluentMenuButton Appearance="ButtonAppearance.Subtle"
+                                              Size="ButtonSize.Small"
+                                              IconOnly="true"
+                                              Title="Output tabs"
+                                              IconStart="@(new Icons.Regular.Size20.Add())" />
+                            <FluentMenuList>
+                                @if (addableTabs.Count == 0)
+                                {
+                                    <FluentMenuItem Label="All tabs open" Disabled="true" />
+                                }
+                                else
+                                {
+                                    @foreach (var tab in addableTabs)
+                                    {
+                                        <FluentMenuItem Label="@($"Add {tab.Label}")"
+                                                        OnClick="@(() => AddOutputTab(tab.Type))" />
+                                    }
+                                }
+                                <FluentDivider />
+                                <FluentMenuItem Label="Restore tab order"
+                                                Disabled="@(!State.OutputTabOrderDiffers(stripIds))"
+                                                OnClick="RestoreOutputTabOrder" />
+                                <FluentMenuItem Label="Restore closed tabs"
+                                                Disabled="@(!State.HasClosedOutputTabs(stripIds))"
+                                                OnClick="RestoreClosedOutputTabs" />
+                                <FluentDivider />
+                                <FluentMenuItem Label="@($"Save for {LabWorkspaceState.OutputKindLabel(LabWorkspaceState.OutputKindFor(State.ActiveSource))}")"
+                                                OnClick="SaveOutputTabsAsync" />
+                            </FluentMenuList>
+                        </FluentMenu>
+                    </Actions>
+                    <ItemLabel>
+                        @if (context == "errors")
+                        {
+                            <span title="@State.OutputTabTitle(context)" style="display:inline-flex;align-items:center;gap:6px;">
+                                Error List
+                                <FluentBadge Appearance="BadgeAppearance.Filled" Color="BadgeColor.Danger" Size="BadgeSize.Tiny" Content="1" />
+                            </span>
+                        }
+                        else
+                        {
+                            <span title="@State.OutputTabTitle(context)">@State.OutputLabel(context)</span>
+                        }
+                    </ItemLabel>
+                    <Toolbar>
+                        @if (context == "tree")
+                        {
+                            <div class="lab-toolbar">
+                                <FluentSelect TOption="string"
+                                              TValue="string"
+                                              Items="LabWorkspaceState.SymbolDisplayKinds"
+                                              @bind-Value="State.ShowSymbols"
+                                              @bind-Value:after="State.Notify"
+                                              AriaLabel="Symbols" />
+                                <FluentCheckbox Label="Operations" @bind-Value="State.ShowOperations" @bind-Value:after="State.Notify" />
+                                <FluentCheckbox Label="Bound nodes" @bind-Value="State.ShowBoundNodes" @bind-Value:after="State.Notify" />
+                            </div>
+                        }
+                        else if (context == "gcs")
+                        {
+                            <div class="lab-toolbar">
+                                <FluentCheckbox Label="Declaration document" @bind-Value="State.ShowDeclarationDocument" @bind-Value:after="State.Notify" />
+                            </div>
+                        }
+                        else if (context == "html")
+                        {
+                            <div class="lab-toolbar">
+                                <FluentCheckbox Label="Rendered" @bind-Value="State.ShowRenderedHtml" @bind-Value:after="State.Notify" />
+                            </div>
+                        }
+                        else if (context == "il")
+                        {
+                            <div class="lab-toolbar">
+                                <FluentCheckbox Label="Decode custom attribute blobs" @bind-Value="State.DecodeCustomAttributeBlobs" @bind-Value:after="State.Notify" />
+                                <FluentCheckbox Label="Sequence points" @bind-Value="State.ShowSequencePoints" @bind-Value:after="State.Notify" />
+                                <FluentCheckbox Label="Full IL" @bind-Value="State.FullIl" @bind-Value:after="State.Notify" />
+                            </div>
+                        }
+                        else if (context == "errors")
+                        {
+                            <div class="lab-toolbar">
+                                <FluentCheckbox Label="Exclude single file name" @bind-Value="State.ExcludeSingleFileNameInDiagnostics" @bind-Value:after="State.Notify" />
+                                <FluentCheckbox Label="Include hidden diagnostics" @bind-Value="State.IncludeHiddenDiagnostics" @bind-Value:after="State.Notify" />
+                            </div>
+                        }
+                    </Toolbar>
+                    <ItemContent>
+                        @if (context == "html" && State.ShowRenderedHtml && !State.ActiveSource.EndsWith(".cshtml", StringComparison.OrdinalIgnoreCase))
+                        {
+                            <iframe @key="@("html-preview")"
+                                    class="lab-html-preview"
+                                    title="Rendered HTML"
+                                    srcdoc="@State.GetOutput("html")"></iframe>
+                        }
+                        else
+                        {
+                            <LabCodeEditor @key="@($"output-{context}")"
+                                           Value="@State.GetOutput(context)"
+                                           Language="@State.OutputLanguage(context)"
+                                           ReadOnly="true"
+                                           WordWrap="State.WordWrap" />
+                        }
+                    </ItemContent>
+                </EditorGroups>
+                <StatusBar Left="@(new[] { LabWorkspaceState.DisplayName(State.ActiveSource) })"
+                           Right="@($".NET {State.ResolvedSdk.Value} · Roslyn {State.Roslyn}")"
+                           Ready="@(!State.Running)" />
+            }
+        </section>
+
+        @if (isPrimary)
+        {
+            <div @ref="_splitter"
+                 class="lab-splitter"
+                 role="separator"
+                 tabindex="0"
+                 aria-label="Resize source and output panes"
+                 aria-orientation="@(State.Stacked ? "horizontal" : "vertical")"
+                 @onpointerdown="OnSplitterPointerDown"
+                 @onpointerdown:preventDefault
+                 @onpointermove="OnSplitterPointerMove"
+                 @onpointerup="OnSplitterPointerUp"
+                 @onpointercancel="OnSplitterPointerUp"
+                 @onlostpointercapture="OnSplitterPointerUp"
+                 @onkeydown="OnSplitterKeyDown"></div>
+        }
+    }
+</main>
+
+@code {
+    private static readonly string[] _lockedOutputTabs = [LabWorkspaceState.ErrorsOutputType];
+
+    private EditorGroups? _outputGroups;
+    private ElementReference _workspace;
+    private ElementReference _splitter;
+    private bool _resizing;
+    private long _pointerId;
+
+    protected override void OnInitialized() => State.Changed += OnChanged;
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    private void OnSourceSelected(string file)
+    {
+        if (string.Equals(State.ActiveSource, file, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        CaptureOutputStrip();
+        State.SetActiveSource(file);
+    }
+
+    private void OnOutputClosed(string _)
+    {
+        CaptureOutputStrip();
+        State.EnsureActiveOutput();
+        State.Notify();
+    }
+
+    private IReadOnlyList<string> OutputStripIds()
+        => _outputGroups?.CurrentTabIds() is { Count: > 0 } ids
+            ? ids
+            : State.CurrentOutputTabIds;
+
+    private void CaptureOutputStrip()
+        => State.CaptureOpenOutputTabs(OutputStripIds());
+
+    private void OnOutputTabsChanged(IReadOnlyList<string> ids)
+        => State.CaptureOpenOutputTabs(ids);
+
+    private void AddOutputTab(string type)
+    {
+        CaptureOutputStrip();
+        State.AddOutputTab(type);
+    }
+
+    private void RestoreOutputTabOrder()
+    {
+        CaptureOutputStrip();
+        State.RestoreOutputTabOrder();
+    }
+
+    private void RestoreClosedOutputTabs()
+    {
+        CaptureOutputStrip();
+        State.RestoreClosedOutputTabs();
+    }
+
+    private async Task SaveOutputTabsAsync()
+    {
+        CaptureOutputStrip();
+        State.SaveOpenOutputTabsAsSettings();
+        try
+        {
+            await JS.InvokeVoidAsync("netLabPrefs.persistOutputTabs", State.SerializeOutputTabs());
+        }
+        catch (JSException)
+        {
+        }
+    }
+
+    private void OnSourceRenamed(TabRename rename)
+        => State.RenameFile(rename.From, rename.To);
+
+    private void OnOutputSelected(string tab)
+    {
+        State.ActiveOutput = tab;
+        State.Notify();
+    }
+
+    private void OnCursorChanged(CursorPositionChangedEvent args)
+    {
+        var line = args.Position.LineNumber;
+        var column = args.Position.Column;
+        if (State.CursorLine == line && State.CursorColumn == column)
+        {
+            return;
+        }
+
+        State.CursorLine = line;
+        State.CursorColumn = column;
+    }
+
+    private async Task OnSplitterPointerDown(PointerEventArgs args)
+    {
+        if (args.Button != 0)
+        {
+            return;
+        }
+
+        _resizing = true;
+        _pointerId = args.PointerId;
+        try
+        {
+            await JS.InvokeVoidAsync("netLabLayout.capturePointer", _splitter, args.PointerId);
+        }
+        catch (JSException)
+        {
+        }
+
+        await ResizeAsync(args.ClientX, args.ClientY, notify: false);
+    }
+
+    private async Task OnSplitterPointerMove(PointerEventArgs args)
+    {
+        if (!_resizing || (args.Buttons & 1) == 0)
+        {
+            return;
+        }
+
+        await ResizeAsync(args.ClientX, args.ClientY, notify: false);
+    }
+
+    private async Task OnSplitterPointerUp(PointerEventArgs args)
+    {
+        if (!_resizing)
+        {
+            return;
+        }
+
+        _resizing = false;
+        try
+        {
+            await JS.InvokeVoidAsync("netLabLayout.releasePointer", _splitter, _pointerId);
+            await JS.InvokeVoidAsync("netLabLayout.endSplit", _workspace);
+        }
+        catch (JSException)
+        {
+        }
+
+        State.Notify();
+    }
+
+    private void OnSplitterKeyDown(KeyboardEventArgs args)
+    {
+        var delta = args.Key is "ArrowLeft" or "ArrowUp" ? -2 : args.Key is "ArrowRight" or "ArrowDown" ? 2 : 0;
+        if (delta != 0)
+        {
+            State.SetSplit(State.Split + delta);
+        }
+    }
+
+    private async Task ResizeAsync(double clientX, double clientY, bool notify)
+    {
+        ElementRect rect;
+        try
+        {
+            rect = await JS.InvokeAsync<ElementRect>("netLabLayout.getRect", _workspace);
+        }
+        catch (JSException)
+        {
+            return;
+        }
+
+        if (rect.Width <= 0 || rect.Height <= 0)
+        {
+            return;
+        }
+
+        var next = State.Stacked
+            ? (clientY - rect.Top) / rect.Height * 100
+            : (clientX - rect.Left) / rect.Width * 100;
+        State.SetSplit(next, notify);
+        try
+        {
+            await JS.InvokeVoidAsync("netLabLayout.setSplit", _workspace, State.Split);
+        }
+        catch (JSException)
+        {
+        }
+    }
+
+    public void Dispose() => State.Changed -= OnChanged;
+}

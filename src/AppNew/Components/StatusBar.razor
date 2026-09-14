@@ -1,0 +1,17 @@
+<div class="lab-statusbar">
+    @foreach (var (item, index) in Left.Select((value, i) => (value, i)))
+    {
+        <span class="@(index == 0 ? "primary" : null)">@item</span>
+    }
+    <span class="lab-spacer"></span>
+    <span class="lab-status-pill">
+        <span class="lab-dot @(Ready ? null : "stale")"></span>
+        @Right
+    </span>
+</div>
+
+@code {
+    [Parameter] public IReadOnlyList<string> Left { get; set; } = [];
+    [Parameter] public string Right { get; set; } = "";
+    [Parameter] public bool Ready { get; set; } = true;
+}

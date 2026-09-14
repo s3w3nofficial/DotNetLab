@@ -1,0 +1,299 @@
+@inject IJSRuntime JS
+@implements IDisposable
+
+<div class="lab-editor">
+    <StandaloneCodeEditor @ref="_editor"
+                          Id="@_editorId"
+                          ConstructionOptions="ConstructionOptions"
+                          OnDidInit="OnInitAsync"
+                          OnDidChangeModelContent="OnModelChangedAsync"
+                          OnDidChangeCursorPosition="OnCursorChangedAsync"
+                          OnDidFocusEditorText="OnFocusedAsync"
+                          OnKeyDown="OnKeyDownAsync" />
+    <div id="@VimStatusId" class="lab-vim-status" aria-live="polite"></div>
+</div>
+
+@code {
+    private readonly string _editorId = $"lab-editor-{Guid.NewGuid():N}";
+    private StandaloneCodeEditor? _editor;
+    private string _lastValue = "";
+    private string _lastLanguage = "";
+    private bool _lastReadOnly;
+    private bool _lastWordWrap;
+    private int _lastCursorLine;
+    private int _lastCursorColumn;
+    private bool _ready;
+    private bool _suppressChange;
+    private string? _appliedMonacoTheme;
+    private bool? _appliedKeyboardDisabled;
+    private bool? _appliedVim;
+
+    private string VimStatusId => $"{_editorId}-vim";
+
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public string Language { get; set; } = "csharp";
+    [Parameter] public bool ReadOnly { get; set; }
+    [Parameter] public bool WordWrap { get; set; }
+    [Parameter] public EventCallback<string> OnValueChanged { get; set; }
+    [Parameter] public EventCallback<CursorPositionChangedEvent> OnCursorChanged { get; set; }
+    [Parameter] public EventCallback OnFocused { get; set; }
+
+    [Inject] private LabWorkspaceState State { get; set; } = default!;
+
+    protected override void OnInitialized()
+    {
+        State.Changed += OnWorkspaceChanged;
+    }
+
+    public void Dispose()
+    {
+        State.Changed -= OnWorkspaceChanged;
+        _ = DisposeEditorChromeAsync();
+    }
+
+    private async Task DisposeEditorChromeAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("netLabVim.dispose", _editorId);
+        }
+        catch (JSException)
+        {
+        }
+
+        try
+        {
+            await JS.InvokeVoidAsync("netLabKeyboard.dispose", _editorId);
+        }
+        catch (JSException)
+        {
+        }
+    }
+
+    protected override bool ShouldRender()
+        => !_ready
+           || !string.Equals(_lastValue, Value, StringComparison.Ordinal)
+           || !string.Equals(_lastLanguage, Language, StringComparison.Ordinal)
+           || _lastReadOnly != ReadOnly
+           || _lastWordWrap != WordWrap;
+
+    private StandaloneEditorConstructionOptions ConstructionOptions(StandaloneCodeEditor _)
+    {
+        _lastValue = Value;
+        _lastLanguage = Language;
+        _lastReadOnly = ReadOnly;
+        _lastWordWrap = WordWrap;
+        return new StandaloneEditorConstructionOptions
+        {
+            AutomaticLayout = true,
+            Language = Language,
+            Value = Value,
+            Theme = State.MonacoTheme,
+            ReadOnly = ReadOnly,
+            DomReadOnly = ReadOnly,
+            FontSize = 13,
+            LineHeight = 20,
+            FontFamily = "'JetBrains Mono', Consolas, monospace",
+            FontLigatures = true,
+            Minimap = new EditorMinimapOptions { Enabled = false },
+            ScrollBeyondLastLine = false,
+            SmoothScrolling = true,
+            TabSize = 4,
+            WordWrap = WordWrap ? "on" : "off",
+            GlyphMargin = false,
+            Contextmenu = true,
+            RenderLineHighlight = ReadOnly ? "none" : "line",
+            Scrollbar = new EditorScrollbarOptions
+            {
+                VerticalScrollbarSize = 10,
+                HorizontalScrollbarSize = 10
+            }
+        };
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!_ready || _editor is null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (!string.Equals(_lastValue, Value, StringComparison.Ordinal))
+            {
+                _suppressChange = true;
+                await _editor.SetValue(Value);
+                _lastValue = Value;
+                _suppressChange = false;
+            }
+
+            if (!string.Equals(_lastLanguage, Language, StringComparison.Ordinal))
+            {
+                var model = await _editor.GetModel();
+                if (model is not null)
+                {
+                    await global::BlazorMonaco.Editor.Global.SetModelLanguage(JS, model, Language);
+                }
+
+                _lastLanguage = Language;
+            }
+
+            if (_lastReadOnly != ReadOnly || _lastWordWrap != WordWrap)
+            {
+                await _editor.UpdateOptions(new EditorUpdateOptions
+                {
+                    ReadOnly = ReadOnly,
+                    WordWrap = WordWrap ? "on" : "off"
+                });
+                _lastReadOnly = ReadOnly;
+                _lastWordWrap = WordWrap;
+            }
+        }
+        catch (JSException)
+        {
+            _ready = false;
+        }
+    }
+
+    private async Task OnInitAsync()
+    {
+        _lastValue = Value;
+        _lastLanguage = Language;
+        _lastReadOnly = ReadOnly;
+        _lastWordWrap = WordWrap;
+        _ready = true;
+        await ApplyMonacoThemeAsync();
+        await ApplyVirtualKeyboardAsync();
+        await ApplyVimAsync();
+    }
+
+    private void OnWorkspaceChanged()
+    {
+        if (!_ready)
+        {
+            return;
+        }
+
+        if (!string.Equals(_appliedMonacoTheme, State.MonacoTheme, StringComparison.Ordinal))
+        {
+            _ = ApplyMonacoThemeAsync();
+        }
+
+        _ = ApplyVirtualKeyboardAsync();
+        _ = ApplyVimAsync();
+    }
+
+    private async Task ApplyVirtualKeyboardAsync()
+    {
+        var disabled = ReadOnly || State.DisableInputVirtualKeyboard;
+        if (_appliedKeyboardDisabled == disabled)
+        {
+            return;
+        }
+
+        if (_appliedKeyboardDisabled is null && !disabled)
+        {
+            _appliedKeyboardDisabled = false;
+            return;
+        }
+
+        try
+        {
+            await JS.InvokeVoidAsync("netLabKeyboard.setDisabled", _editorId, disabled);
+            _appliedKeyboardDisabled = disabled;
+        }
+        catch (JSException)
+        {
+        }
+    }
+
+    private async Task ApplyVimAsync()
+    {
+        var enabled = !ReadOnly && State.UseVim;
+        if (_appliedVim == enabled)
+        {
+            return;
+        }
+
+        if (_appliedVim is null && !enabled)
+        {
+            _appliedVim = false;
+            return;
+        }
+
+        try
+        {
+            if (enabled)
+            {
+                await JS.InvokeVoidAsync("netLabVim.enable", _editorId, VimStatusId);
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("netLabVim.dispose", _editorId);
+            }
+
+            _appliedVim = enabled;
+        }
+        catch (JSException)
+        {
+        }
+    }
+
+    private async Task ApplyMonacoThemeAsync()
+    {
+        try
+        {
+            _appliedMonacoTheme = State.MonacoTheme;
+            await JS.InvokeVoidAsync("netLabMonaco.applyTheme", State.ResolvedDark);
+        }
+        catch (JSException)
+        {
+        }
+    }
+
+    private async Task OnModelChangedAsync(ModelContentChangedEvent _)
+    {
+        if (_suppressChange || !_ready || _editor is null || ReadOnly)
+        {
+            return;
+        }
+
+        try
+        {
+            var next = await _editor.GetValue();
+            _lastValue = next;
+            await OnValueChanged.InvokeAsync(next);
+        }
+        catch (JSException)
+        {
+        }
+    }
+
+    private Task OnFocusedAsync()
+        => OnFocused.HasDelegate ? OnFocused.InvokeAsync() : Task.CompletedTask;
+
+    private Task OnCursorChangedAsync(CursorPositionChangedEvent args)
+    {
+        var line = args.Position.LineNumber;
+        var column = args.Position.Column;
+        if (line == _lastCursorLine && column == _lastCursorColumn)
+        {
+            return Task.CompletedTask;
+        }
+
+        _lastCursorLine = line;
+        _lastCursorColumn = column;
+        return OnCursorChanged.InvokeAsync(args);
+    }
+
+    private async Task OnKeyDownAsync(KeyboardEvent keyboardEvent)
+    {
+        if (keyboardEvent.CtrlKey && string.Equals(keyboardEvent.KeyCode.ToString(), "KeyS", StringComparison.OrdinalIgnoreCase)
+            || keyboardEvent.MetaKey && string.Equals(keyboardEvent.Code, "KeyS", StringComparison.OrdinalIgnoreCase)
+            || keyboardEvent.CtrlKey && string.Equals(keyboardEvent.Code, "KeyS", StringComparison.OrdinalIgnoreCase))
+        {
+            await State.CompileAsync();
+        }
+    }
+}

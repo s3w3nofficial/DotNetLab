@@ -1,0 +1,137 @@
+@inject LabWorkspaceState State
+@inject LabPlatform Platform
+
+<div class="lab-command-bar">
+    <FluentButton Appearance="ButtonAppearance.Subtle"
+                  Size="ButtonSize.Small"
+                  Class="lab-compile"
+                  Color="@Success"
+                  IconStart="@(State.Running ? new Icons.Regular.Size20.ArrowSync() : new Icons.Filled.Size20.Play())"
+                  Loading="@State.Running"
+                  Disabled="@State.Running"
+                  OnClick="State.CompileAsync">
+        @(State.Running ? "Compiling" : "Compile")
+    </FluentButton>
+
+    <span class="lab-vsep" aria-hidden="true"></span>
+
+    <div aria-label="Compiler selection" style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
+        <FluentMenu>
+            <FluentMenuButton Appearance="ButtonAppearance.Subtle"
+                              Size="ButtonSize.Small"
+                              IconStart="@(new Icons.Regular.Size20.Toolbox())">
+                SDK: @State.Sdk
+            </FluentMenuButton>
+            <FluentMenuList>
+                @foreach (var sdk in LabCatalog.SdkVersions)
+                {
+                    <FluentMenuItem Role="MenuItemRole.Radio"
+                                    Checked="@(State.Sdk == sdk.Value)"
+                                    Label="@sdk.Label"
+                                    OnClick="@(() => State.ApplySdk(sdk.Value))" />
+                }
+                <FluentDivider />
+                <FluentMenuItem Label="More SDK versions…" OnClick="State.ShowSettingsAsync" />
+            </FluentMenuList>
+        </FluentMenu>
+
+        <FluentMenu>
+            <FluentMenuButton Appearance="ButtonAppearance.Subtle"
+                              Size="ButtonSize.Small"
+                              IconStart="@(new Icons.Regular.Size20.CodeText())">
+                Roslyn: @State.Roslyn
+            </FluentMenuButton>
+            <FluentMenuList>
+                @foreach (var item in LabCatalog.CompilerRefs)
+                {
+                    <FluentMenuItem Role="MenuItemRole.Radio"
+                                    Checked="@(State.Roslyn == item)"
+                                    Label="@item"
+                                    OnClick="@(() => State.SetRoslyn(item))" />
+                }
+                <FluentDivider />
+                <FluentMenuItem Label="Version, PR, branch or build…" OnClick="State.ShowSettingsAsync" />
+            </FluentMenuList>
+        </FluentMenu>
+
+        <FluentMenu>
+            <FluentMenuButton Appearance="ButtonAppearance.Subtle"
+                              Size="ButtonSize.Small"
+                              IconStart="@(new Icons.Regular.Size20.CodeBlock())">
+                Razor: @State.Razor
+            </FluentMenuButton>
+            <FluentMenuList>
+                @foreach (var item in LabCatalog.CompilerRefs)
+                {
+                    <FluentMenuItem Role="MenuItemRole.Radio"
+                                    Checked="@(State.Razor == item)"
+                                    Label="@item"
+                                    OnClick="@(() => State.SetRazor(item))" />
+                }
+                <FluentDivider />
+                @foreach (var item in LabCatalog.RazorToolchains)
+                {
+                    <FluentMenuItem Label="@($"Toolchain: {item}")" OnClick="@(() => { State.RazorToolchain = item; State.Notify(); })" />
+                }
+                <FluentDivider />
+                @foreach (var item in LabCatalog.RazorStrategies)
+                {
+                    <FluentMenuItem Label="@($"Strategy: {item}")" OnClick="@(() => { State.RazorStrategy = item; State.Notify(); })" />
+                }
+            </FluentMenuList>
+        </FluentMenu>
+    </div>
+
+    <span class="lab-spacer"></span>
+    <span class="lab-vsep" aria-hidden="true"></span>
+
+    <div aria-label="Workspace commands" style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
+        <FluentButton Id="lab-cmd-palette"
+                      Appearance="ButtonAppearance.Subtle"
+                      Size="ButtonSize.Small"
+                      IconOnly="true"
+                      Title="@Platform.PaletteLabel"
+                      AriaLabel="@Platform.PaletteLabel"
+                      IconStart="@(new Icons.Regular.Size20.KeyCommand())"
+                      OnClick="State.ShowPaletteAsync" />
+        <FluentTooltip Anchor="lab-cmd-palette"
+                       Class="lab-command-tooltip"
+                       Positioning="Positioning.Below"
+                       UseTooltipService="false">
+            @Platform.PaletteLabel
+        </FluentTooltip>
+        <FluentButton Id="lab-cmd-keyboard"
+                      Appearance="ButtonAppearance.Subtle"
+                      Size="ButtonSize.Small"
+                      IconOnly="true"
+                      Class="@(State.DisableInputVirtualKeyboard ? "lab-toolbar-toggle-on" : null)"
+                      Title="@(State.DisableInputVirtualKeyboard ? "Show on-screen keyboard" : "Hide on-screen keyboard")"
+                      AriaLabel="@(State.DisableInputVirtualKeyboard ? "Show on-screen keyboard" : "Hide on-screen keyboard")"
+                      IconStart="@(State.DisableInputVirtualKeyboard ? new Icons.Regular.Size20.KeyboardOff() : new Icons.Regular.Size20.Keyboard())"
+                      OnClick="State.ToggleInputVirtualKeyboard" />
+        <FluentTooltip Anchor="lab-cmd-keyboard"
+                       Class="lab-command-tooltip"
+                       Positioning="Positioning.Below"
+                       UseTooltipService="false">
+            @(State.DisableInputVirtualKeyboard ? "Show on-screen keyboard" : "Hide on-screen keyboard")
+        </FluentTooltip>
+        <FluentButton Id="lab-cmd-layout"
+                      Appearance="ButtonAppearance.Subtle"
+                      Size="ButtonSize.Small"
+                      IconOnly="true"
+                      Title="@(State.Stacked ? "Show panes side by side" : "Stack panes vertically")"
+                      AriaLabel="@(State.Stacked ? "Show panes side by side" : "Stack panes vertically")"
+                      IconStart="@(State.Stacked ? new Icons.Regular.Size20.LayoutColumnTwo() : new Icons.Regular.Size20.LayoutRowTwo())"
+                      OnClick="State.ToggleStacked" />
+        <FluentTooltip Anchor="lab-cmd-layout"
+                       Class="lab-command-tooltip"
+                       Positioning="Positioning.Below"
+                       UseTooltipService="false">
+            @(State.Stacked ? "Show panes side by side" : "Stack panes vertically")
+        </FluentTooltip>
+    </div>
+</div>
+
+@code {
+    private const string Success = "#6ecf97";
+}

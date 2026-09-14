@@ -1,0 +1,455 @@
+@inject LabWorkspaceState State
+@inject LabThemeService Theme
+@inject IJSRuntime JS
+@implements IDisposable
+
+<FluentDialog @ref="_dialog" Class="lab-settings-dialog" Modal="false" OnStateChange="OnDialogStateChange">
+    <FluentDialogBody>
+        <TitleTemplate>Settings</TitleTemplate>
+        <TitleActionTemplate>
+            <FluentButton Appearance="ButtonAppearance.Outline"
+                          Size="ButtonSize.Small"
+                          IconOnly="true"
+                          Title="Close"
+                          IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                          OnClick="HideAsync" />
+        </TitleActionTemplate>
+        <ActionTemplate>
+            <FluentButton Appearance="ButtonAppearance.Primary" OnClick="HideAsync">Done</FluentButton>
+        </ActionTemplate>
+        <ChildContent>
+        <div class="lab-settings-stack">
+        <div class="lab-settings-top">
+            <div class="lab-setting-toggles">
+                <label class="lab-setting-chip">
+                    <span>Alt+Z in the editors</span>
+                    <FluentSwitch @bind-Value="State.WordWrap" @bind-Value:after="State.Notify" AriaLabel="Word wrap" />
+                </label>
+                <label class="lab-setting-chip">
+                    <span>VIM keybindings in the editors</span>
+                    <FluentSwitch @bind-Value="State.UseVim" @bind-Value:after="State.Notify" AriaLabel="Use VIM" />
+                </label>
+            </div>
+
+            <details class="lab-settings-fold">
+                <summary>Advanced</summary>
+                <div class="lab-settings-fold-body">
+                    <SettingRow Title="Language Services" Hint="Completions and live diagnostics">
+                        <FluentSwitch @bind-Value="State.LanguageServices" @bind-Value:after="State.Notify" AriaLabel="Language services" />
+                    </SettingRow>
+                    <SettingRow Title="Debug Logs" Hint="Debug logs in the browser console">
+                        <FluentSwitch @bind-Value="State.DebugLogs" @bind-Value:after="State.Notify" AriaLabel="Debug logs" />
+                    </SettingRow>
+                    <SettingRow Title="Trace Logs" Hint="Trace logs in the browser console">
+                        <FluentSwitch @bind-Value="State.TraceLogs" @bind-Value:after="State.Notify" AriaLabel="Trace logs" />
+                    </SettingRow>
+                    <SettingRow Title="Memory Usage View" Hint="Header memory widget and GC trace download (browser only)">
+                        <FluentSwitch @bind-Value="State.MemoryUsageView" @bind-Value:after="State.Notify" AriaLabel="Memory usage view" />
+                    </SettingRow>
+                    <SettingRow Title="Background worker" Hint="Compile in a background worker thread (requires restart)">
+                        <FluentSwitch @bind-Value="State.BackgroundWorker" @bind-Value:after="State.Notify" AriaLabel="Background worker" />
+                    </SettingRow>
+                    @if (State.BackgroundWorker)
+                    {
+                        <SettingRow Title="Worker stuck?" Hint="Restart the compilation worker">
+                            <FluentButton Size="ButtonSize.Small" IconStart="@(new Icons.Regular.Size20.ArrowSync())">Restart the worker</FluentButton>
+                        </SettingRow>
+                    }
+                    <SettingRow Title="Enable Caching" Hint="Server cache for faster sharing">
+                        <FluentSwitch @bind-Value="State.EnableCaching" @bind-Value:after="State.Notify" AriaLabel="Enable caching" />
+                    </SettingRow>
+                    <SettingRow Title="Automatic Compilation" Hint="Compile on start">
+                        <FluentSwitch @bind-Value="State.AutomaticCompilation" @bind-Value:after="State.Notify" AriaLabel="Automatic compilation" />
+                    </SettingRow>
+                    <SettingRow Title="Razor Toolchain">
+                        <FluentSelect TOption="string" TValue="string" Items="LabWorkspaceState.RazorToolchains" @bind-Value="State.RazorToolchain" @bind-Value:after="State.Notify" />
+                    </SettingRow>
+                    <SettingRow Title="Razor Strategy">
+                        <FluentSelect TOption="string" TValue="string" Items="LabWorkspaceState.RazorStrategies" @bind-Value="State.RazorStrategy" @bind-Value:after="State.Notify" />
+                    </SettingRow>
+                </div>
+            </details>
+
+            <details class="lab-settings-fold lab-settings-output-tabs">
+                <summary>Output tabs</summary>
+                <div class="lab-settings-fold-body">
+                    <div class="lab-settings-output-head">
+                        <p class="lab-setting-hint">Show, hide, and reorder tabs for each file format. Error List stays on.</p>
+                        <button type="button" class="lab-settings-reset" @onclick="ResetOutputTabsAsync">Reset to default</button>
+                    </div>
+                    <div class="lab-seg lab-seg-wide" role="radiogroup" aria-label="Output tab file format">
+                        @foreach (var kind in _outputKinds)
+                        {
+                            <button type="button"
+                                    class="lab-seg-item @(_outputKind == kind.Value ? "active" : null)"
+                                    @onclick="@(() => _outputKind = kind.Value)">
+                                @kind.Label
+                            </button>
+                        }
+                    </div>
+                    <div class="lab-output-tab-list">
+                        @foreach (var tab in State.SettingsRowsFor(_outputKind))
+                        {
+                            var visible = State.IsOutputTabVisible(_outputKind, tab.Type);
+                            var locked = LabWorkspaceState.IsOutputTabLocked(tab.Type);
+                            <div @key="@($"{tab.Type}:{visible}")" class="lab-output-tab-row @(visible ? null : "is-hidden")">
+                                <div>
+                                    <div class="lab-setting-title">@tab.Label</div>
+                                    <p class="lab-setting-hint">@tab.Type</p>
+                                </div>
+                                <div class="lab-output-tab-actions">
+                                    <FluentButton Appearance="ButtonAppearance.Subtle"
+                                                  Size="ButtonSize.Small"
+                                                  IconOnly="true"
+                                                  Title="Move up"
+                                                  AriaLabel="@($"Move {tab.Label} up")"
+                                                  Disabled="@(!State.CanMoveOutputTab(_outputKind, tab.Type, -1))"
+                                                  IconStart="@(new Icons.Regular.Size16.ChevronUp())"
+                                                  OnClick="@(() => MoveOutputTabAsync(tab.Type, -1))" />
+                                    <FluentButton Appearance="ButtonAppearance.Subtle"
+                                                  Size="ButtonSize.Small"
+                                                  IconOnly="true"
+                                                  Title="Move down"
+                                                  AriaLabel="@($"Move {tab.Label} down")"
+                                                  Disabled="@(!State.CanMoveOutputTab(_outputKind, tab.Type, 1))"
+                                                  IconStart="@(new Icons.Regular.Size16.ChevronDown())"
+                                                  OnClick="@(() => MoveOutputTabAsync(tab.Type, 1))" />
+                                    <FluentSwitch Value="@visible"
+                                                  ValueChanged="@(value => SetOutputTabVisibleAsync(tab.Type, value))"
+                                                  Disabled="@locked"
+                                                  AriaLabel="@($"Show {tab.Label}")" />
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </details>
+        </div>
+
+        <div class="lab-settings-compiler">
+            <h2 class="lab-setting-section">Compiler SDK &amp; packages</h2>
+            <p class="lab-setting-hint lab-settings-field-label">.NET SDK version</p>
+            <div class="lab-sdk-search" @onfocusin="OpenSdkSearch" @onfocusout="CloseSdkSearchAsync">
+                <label class="lab-settings-field">
+                    <input class="lab-settings-input"
+                           type="text"
+                           role="combobox"
+                           aria-label=".NET SDK version"
+                           aria-autocomplete="list"
+                           aria-expanded="@(_sdkMenuOpen ? "true" : "false")"
+                           aria-controls="lab-sdk-listbox"
+                           autocomplete="off"
+                           spellcheck="false"
+                           placeholder="Filter SDK versions"
+                           value="@_sdkQuery"
+                           @oninput="OnSdkInput"
+                           @onfocus="OpenSdkSearch" />
+                    <span class="lab-sdk-chevron @(_sdkMenuOpen ? "is-open" : null)" aria-hidden="true">
+                        <FluentIcon Value="@(new Icons.Regular.Size16.ChevronDown())" Width="16px" />
+                    </span>
+                </label>
+                @if (_sdkMenuOpen)
+                {
+                    <ul id="lab-sdk-listbox" class="lab-sdk-results" role="listbox" aria-label=".NET SDK versions">
+                        @if (_sdkMatches.Count == 0)
+                        {
+                            <li class="lab-sdk-empty">No matching SDK versions</li>
+                        }
+                        else
+                        {
+                            @foreach (var sdk in _sdkMatches)
+                            {
+                                <li>
+                                    <button type="button"
+                                            role="option"
+                                            class="lab-sdk-result @(State.Sdk == sdk.Value ? "is-selected" : null)"
+                                            aria-selected="@(State.Sdk == sdk.Value)"
+                                            @onmousedown:preventDefault
+                                            @onclick="@(() => SelectSdk(sdk))">
+                                        <span class="lab-sdk-result-version">@sdk.Value</span>
+                                        @if (!string.IsNullOrEmpty(sdk.Released))
+                                        {
+                                            <span class="lab-sdk-result-date">@sdk.Released</span>
+                                        }
+                                    </button>
+                                </li>
+                            }
+                        }
+                    </ul>
+                }
+            </div>
+            <p class="lab-sdk-summary">
+                Uses
+                <span class="lab-sdk-summary-versions">Roslyn @State.ResolvedSdk.Roslyn</span>
+                <span aria-hidden="true"> · </span>
+                <span class="lab-sdk-summary-versions">Razor @State.ResolvedSdk.Razor</span>
+            </p>
+
+            <details class="lab-settings-fold">
+                <summary>Override compilers</summary>
+                <div class="lab-settings-fold-body">
+                    <div class="lab-compiler-grid">
+                        <CompilerSection Name="Roslyn"
+                                         Value="@State.Roslyn"
+                                         ValueChanged="State.SetRoslyn"
+                                         Config="@State.RoslynConfig"
+                                         ConfigChanged="OnRoslynConfigChanged"
+                                         Resolved="@($"Package {State.ResolvedSdk.Roslyn} · commit a1c9f2e")" />
+                        <CompilerSection Name="Razor"
+                                         Value="@State.Razor"
+                                         ValueChanged="State.SetRazor"
+                                         Config="@State.RazorConfig"
+                                         ConfigChanged="OnRazorConfigChanged"
+                                         Resolved="@($"Package {State.ResolvedSdk.Razor} · commit 7be0d41")" />
+                    </div>
+                </div>
+            </details>
+        </div>
+
+        <div class="lab-settings-about">
+            <div>
+                <p class="lab-settings-kicker">App theme</p>
+                <div class="lab-seg lab-seg-wide" role="radiogroup" aria-label="App theme">
+                    @foreach (var theme in _themes)
+                    {
+                        <button type="button"
+                                class="lab-seg-item @(State.AppTheme == theme.Value ? "active" : null)"
+                                @onclick="@(() => OnThemeChangedAsync(theme.Value))">
+                            @theme.Label
+                        </button>
+                    }
+                </div>
+            </div>
+
+            <p class="lab-settings-identity">
+                <span class="lab-sdk-summary-versions">3f19ab2</span>
+                <span aria-hidden="true"> · </span>
+                <span>2026.9.11</span>
+                <span aria-hidden="true"> · </span>
+                <a href="@LabLinks.Repository" target="_blank" rel="noopener noreferrer">GitHub</a>
+                @if (State.UpdateState == "idle")
+                {
+                    <span aria-hidden="true"> · </span>
+                    <button type="button" @onclick="State.CheckUpdatesAsync">Check for updates</button>
+                }
+                else if (State.UpdateState == "checking")
+                {
+                    <span aria-hidden="true"> · </span>
+                    <span>Checking…</span>
+                }
+            </p>
+
+            @if (State.UpdateState == "available")
+            {
+                <div class="lab-update">
+                    <span>Update available</span>
+                    <FluentButton Size="ButtonSize.Small" Appearance="ButtonAppearance.Primary">Reload</FluentButton>
+                    <a href="@LabLinks.Releases" target="_blank" rel="noopener noreferrer">Release notes</a>
+                </div>
+            }
+
+            <a class="lab-native-apps" href="@LabLinks.NativeApps" target="_blank" rel="noopener noreferrer">
+                <span>
+                    <span class="lab-setting-title">Native apps</span>
+                    <p class="lab-setting-hint">Faster .NET Lab running on full .NET.</p>
+                </span>
+                <span class="lab-native-apps-chevron" aria-hidden="true">›</span>
+            </a>
+        </div>
+        </div>
+        </ChildContent>
+    </FluentDialogBody>
+</FluentDialog>
+
+@code {
+    private static readonly (string Value, string Label)[] _themes =
+    [
+        ("system", "System"),
+        ("light", "Light"),
+        ("dark", "Dark")
+    ];
+
+    private static readonly (OutputFileKind Value, string Label)[] _outputKinds =
+    [
+        (OutputFileKind.Cs, "C#"),
+        (OutputFileKind.Razor, "Razor"),
+        (OutputFileKind.Cshtml, "CSHTML")
+    ];
+
+    private FluentDialog? _dialog;
+    private bool _hiding;
+    private bool _sdkMenuOpen;
+    private bool _sdkKeepOpen;
+    private string _sdkQuery = "";
+    private IReadOnlyList<SdkOption> _sdkMatches = LabWorkspaceState.SdkVersions;
+    private OutputFileKind _outputKind = OutputFileKind.Cs;
+
+    protected override void OnInitialized() => State.Changed += OnStateChanged;
+
+    private void OnStateChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => State.Changed -= OnStateChanged;
+
+    protected override void OnParametersSet()
+    {
+        if (!_sdkMenuOpen)
+        {
+            _sdkQuery = State.ResolvedSdk.Value;
+        }
+    }
+
+    public async Task ShowAsync()
+    {
+        if (_dialog is null)
+        {
+            return;
+        }
+
+        _outputKind = LabWorkspaceState.OutputKindFor(State.ActiveSource);
+        try
+        {
+            await _dialog.ShowAsync();
+        }
+        catch (JSException)
+        {
+        }
+    }
+
+    public async Task HideAsync()
+    {
+        if (_dialog is null || _hiding)
+        {
+            return;
+        }
+
+        _hiding = true;
+        try
+        {
+            await _dialog.HideAsync();
+        }
+        catch (JSException)
+        {
+        }
+        finally
+        {
+            _hiding = false;
+        }
+    }
+
+    private Task OnDialogStateChange(DialogEventArgs args)
+    {
+        return args.State == DialogState.Closed ? HideAsync() : Task.CompletedTask;
+    }
+
+    private void OpenSdkSearch()
+    {
+        _sdkKeepOpen = true;
+        _sdkMenuOpen = true;
+        FilterSdkMatches(_sdkQuery);
+    }
+
+    private async Task CloseSdkSearchAsync()
+    {
+        _sdkKeepOpen = false;
+        await Task.Delay(200);
+        if (_sdkKeepOpen)
+        {
+            return;
+        }
+
+        _sdkMenuOpen = false;
+        _sdkQuery = State.ResolvedSdk.Value;
+    }
+
+    private void OnSdkInput(ChangeEventArgs args)
+    {
+        OnSdkQueryChanged(args.Value?.ToString() ?? "");
+    }
+
+    private void OnSdkQueryChanged(string value)
+    {
+        _sdkQuery = value ?? "";
+        _sdkKeepOpen = true;
+        _sdkMenuOpen = true;
+        FilterSdkMatches(_sdkQuery);
+    }
+
+    private void SelectSdk(SdkOption sdk)
+    {
+        _sdkKeepOpen = false;
+        State.ApplySdk(sdk.Value);
+        _sdkQuery = sdk.Value;
+        _sdkMenuOpen = false;
+    }
+
+    private void FilterSdkMatches(string query)
+    {
+        var text = query?.Trim() ?? "";
+        if (IsUnfilteredSdkQuery(text))
+        {
+            _sdkMatches = LabWorkspaceState.SdkVersions;
+            return;
+        }
+
+        _sdkMatches = LabWorkspaceState.SdkVersions
+            .Where(sdk =>
+                sdk.Value.Contains(text, StringComparison.OrdinalIgnoreCase) ||
+                (text.Length >= 4 && sdk.Released.Contains(text, StringComparison.OrdinalIgnoreCase)))
+            .ToArray();
+    }
+
+    private bool IsUnfilteredSdkQuery(string text)
+    {
+        if (text.Length == 0)
+        {
+            return true;
+        }
+
+        var sdk = State.ResolvedSdk;
+        return string.Equals(text, sdk.Value, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(text, sdk.Label, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void OnRoslynConfigChanged(string value)
+    {
+        State.RoslynConfig = value;
+        State.Notify();
+    }
+
+    private void OnRazorConfigChanged(string value)
+    {
+        State.RazorConfig = value;
+        State.Notify();
+    }
+
+    private Task OnThemeChangedAsync(string theme) => Theme.SetPreferenceAsync(theme);
+
+    private async Task SetOutputTabVisibleAsync(string type, bool visible)
+    {
+        State.SetOutputTabVisible(_outputKind, type, visible);
+        await PersistOutputTabsAsync();
+    }
+
+    private async Task MoveOutputTabAsync(string type, int delta)
+    {
+        State.MoveOutputTab(_outputKind, type, delta);
+        await PersistOutputTabsAsync();
+    }
+
+    private async Task ResetOutputTabsAsync()
+    {
+        State.ResetOutputTabs(_outputKind);
+        await PersistOutputTabsAsync();
+    }
+
+    private async Task PersistOutputTabsAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("netLabPrefs.persistOutputTabs", State.SerializeOutputTabs());
+        }
+        catch (JSException)
+        {
+        }
+    }
+}
