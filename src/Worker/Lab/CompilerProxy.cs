@@ -183,11 +183,25 @@ internal sealed class CompilerProxy(
 
     private async Task<LoadedAssembly> LoadAssemblyAsync(string name)
     {
+        if (options.Value.LoadAssembliesFromDisk)
+        {
+            return new()
+            {
+                Name = name,
+                Data = default,
+                Format = AssemblyDataFormat.Dll,
+            };
+        }
+
+        var downloaded = await assemblyDownloader.DownloadAsync(name);
         return new()
         {
             Name = name,
-            Data = options.Value.LoadAssembliesFromDisk ? default : await assemblyDownloader.DownloadAsync(name),
-            Format = options.Value.AssembliesAreAlwaysInDllFormat ? AssemblyDataFormat.Dll : AssemblyDataFormat.Webcil,
+            Data = downloaded.Data,
+            // Tests serve real DLLs from mocked .wasm URLs.
+            Format = options.Value.AssembliesAreAlwaysInDllFormat
+                ? AssemblyDataFormat.Dll
+                : downloaded.Format,
         };
     }
 

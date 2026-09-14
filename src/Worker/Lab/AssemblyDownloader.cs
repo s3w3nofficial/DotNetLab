@@ -1,4 +1,5 @@
 using System.Collections.Frozen;
+using System.Net;
 using System.Runtime.InteropServices;
 
 namespace DotNetLab.Lab;
@@ -25,23 +26,50 @@ internal sealed class AssemblyDownloader
             return FrozenDictionary<string, string>.Empty;
         }
 
-        return config.Resources.Assembly.ToFrozenDictionary(static a => a.VirtualPath, static a => a.Name);
+        // VirtualPath is "Foo.wasm" (WebCIL) or "Foo.dll" (WasmEnableWebcil=false).
+        // Name is the fingerprinted file actually served from _framework/.
+        return config.Resources.Assembly
+            .Where(static a => !string.IsNullOrEmpty(a.VirtualPath) && !string.IsNullOrEmpty(a.Name))
+            .ToFrozenDictionary(
+                static a => Path.GetFileNameWithoutExtension(a.VirtualPath),
+                static a => a.Name,
+                StringComparer.OrdinalIgnoreCase);
     }
 
-    public async Task<ImmutableArray<byte>> DownloadAsync(string assemblyFileNameWithoutExtension)
+    public async Task<DownloadedAssembly> DownloadAsync(string assemblyFileNameWithoutExtension)
     {
         var fingerprintedFileNames = this.fingerprintedFileNames.Value;
 
-        var fileName = $"{assemblyFileNameWithoutExtension}.wasm";
-        if (fingerprintedFileNames.TryGetValue(fileName, out var fingerprintedFileName))
+        if (fingerprintedFileNames.TryGetValue(assemblyFileNameWithoutExtension, out var fingerprintedFileName))
         {
-            fileName = fingerprintedFileName;
+            return await DownloadFileAsync(fingerprintedFileName);
         }
 
-        var bytes = await client.GetByteArrayAsync($"_framework/{fileName}");
-        return ImmutableCollectionsMarshal.AsImmutableArray(bytes);
+        try
+        {
+            return await DownloadFileAsync($"{assemblyFileNameWithoutExtension}.wasm");
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+        {
+            return await DownloadFileAsync($"{assemblyFileNameWithoutExtension}.dll");
+        }
     }
+
+    private async Task<DownloadedAssembly> DownloadFileAsync(string fileName)
+    {
+        var bytes = await client.GetByteArrayAsync($"_framework/{fileName}");
+        return new DownloadedAssembly(
+            ImmutableCollectionsMarshal.AsImmutableArray(bytes),
+            FormatFromFileName(fileName));
+    }
+
+    private static AssemblyDataFormat FormatFromFileName(string fileName)
+        => fileName.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)
+            ? AssemblyDataFormat.Dll
+            : AssemblyDataFormat.Webcil;
 }
+
+internal readonly record struct DownloadedAssembly(ImmutableArray<byte> Data, AssemblyDataFormat Format);
 
 public sealed class DotNetBootConfig
 {

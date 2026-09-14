@@ -32,22 +32,22 @@
                       Appearance="ButtonAppearance.Subtle"
                       Size="ButtonSize.Small"
                       IconStart="@(new Icons.Regular.Size20.Toolbox())"
-                      IconEnd="@(new Icons.Regular.Size16.ChevronDown())"
-                      @key="@($"sdk-{State.Sdk}")"
-                      Label="@($"SDK: {State.Sdk}")" />
-        <FluentMenu Trigger="lab-sdk">
+                      IconEnd="@(new Icons.Regular.Size16.ChevronDown())">
+            SDK: @State.Sdk
+        </FluentButton>
+        <FluentMenu @ref="_sdkMenu" Trigger="lab-sdk">
             <FluentMenuList>
                 <FluentMenuItem Role="MenuItemRole.Radio"
                                 Checked="@(State.Sdk == "built-in")"
                                 Label="built-in"
-                                OnClick="@(() => State.ApplySdk("built-in"))" />
+                                CheckedChanged="@(on => SelectIfChecked(on, () => State.ApplySdk("built-in"), _sdkMenu))" />
                 <FluentDivider />
                 @foreach (var sdk in State.AvailableSdks)
                 {
                     <FluentMenuItem Role="MenuItemRole.Radio"
                                     Checked="@(State.Sdk == sdk.Value)"
                                     Label="@sdk.Label"
-                                    OnClick="@(() => State.ApplySdk(sdk.Value))" />
+                                    CheckedChanged="@(on => SelectIfChecked(on, () => State.ApplySdk(sdk.Value), _sdkMenu))" />
                 }
                 <FluentDivider />
                 <FluentMenuItem Label="More SDK versions…" OnClick="State.ShowSettingsAsync" />
@@ -58,17 +58,17 @@
                       Appearance="ButtonAppearance.Subtle"
                       Size="ButtonSize.Small"
                       IconStart="@(new Icons.Regular.Size20.CodeText())"
-                      IconEnd="@(new Icons.Regular.Size16.ChevronDown())"
-                      @key="@($"roslyn-{State.Roslyn}")"
-                      Label="@($"Roslyn: {State.Roslyn}")" />
-        <FluentMenu Trigger="lab-roslyn">
+                      IconEnd="@(new Icons.Regular.Size16.ChevronDown())">
+            Roslyn: @State.Roslyn
+        </FluentButton>
+        <FluentMenu @ref="_roslynMenu" Trigger="lab-roslyn">
             <FluentMenuList>
                 @foreach (var item in LabCatalog.CompilerRefs)
                 {
                     <FluentMenuItem Role="MenuItemRole.Radio"
                                     Checked="@(State.Roslyn == item)"
                                     Label="@item"
-                                    OnClick="@(() => State.SetRoslyn(item))" />
+                                    CheckedChanged="@(on => SelectIfChecked(on, () => State.SetRoslyn(item), _roslynMenu))" />
                 }
                 <FluentDivider />
                 <FluentMenuItem Label="Version, PR, branch or build…" OnClick="State.ShowSettingsAsync" />
@@ -79,17 +79,17 @@
                       Appearance="ButtonAppearance.Subtle"
                       Size="ButtonSize.Small"
                       IconStart="@(new Icons.Regular.Size20.CodeBlock())"
-                      IconEnd="@(new Icons.Regular.Size16.ChevronDown())"
-                      @key="@($"razor-{State.Razor}")"
-                      Label="@($"Razor: {State.Razor}")" />
-        <FluentMenu Trigger="lab-razor">
+                      IconEnd="@(new Icons.Regular.Size16.ChevronDown())">
+            Razor: @State.Razor
+        </FluentButton>
+        <FluentMenu @ref="_razorMenu" Trigger="lab-razor">
             <FluentMenuList>
                 @foreach (var item in LabCatalog.CompilerRefs)
                 {
                     <FluentMenuItem Role="MenuItemRole.Radio"
                                     Checked="@(State.Razor == item)"
                                     Label="@item"
-                                    OnClick="@(() => State.SetRazor(item))" />
+                                    CheckedChanged="@(on => SelectIfChecked(on, () => State.SetRazor(item), _razorMenu))" />
                 }
                 <FluentDivider />
                 @foreach (var item in LabCatalog.RazorToolchains)
@@ -157,12 +157,32 @@
 
 @code {
     private const string Success = "#6ecf97";
+    private FluentMenu? _sdkMenu;
+    private FluentMenu? _roslynMenu;
+    private FluentMenu? _razorMenu;
 
     protected override void OnInitialized() => State.Changed += OnStateChanged;
 
     protected override Task OnInitializedAsync() => State.EnsureSdkVersionsAsync();
 
     private void OnStateChanged() => InvokeAsync(StateHasChanged);
+
+    // Fluent UI 5 radio items emit CheckedChanged, not OnClick. Close first so the
+    // popover is not left anchored to a trigger that re-renders during compiler load.
+    private static async Task SelectIfChecked(bool? on, Func<Task> apply, FluentMenu? menu)
+    {
+        if (on != true)
+        {
+            return;
+        }
+
+        if (menu is not null)
+        {
+            await menu.CloseMenuAsync();
+        }
+
+        await apply();
+    }
 
     public void Dispose() => State.Changed -= OnStateChanged;
 }
