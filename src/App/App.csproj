@@ -9,8 +9,8 @@
     <PackageReference Include="BlazorMonaco" />
     <PackageReference Include="Microsoft.AspNetCore.Components.Web" />
     <PackageReference Include="Microsoft.Extensions.Logging" />
-    <PackageReference Include="Microsoft.FluentUI.AspNetCore.Components" />
-    <PackageReference Include="Microsoft.FluentUI.AspNetCore.Components.Icons" />
+    <PackageReference Include="Microsoft.FluentUI.AspNetCore.Components" VersionOverride="4.14.4" />
+    <PackageReference Include="Microsoft.FluentUI.AspNetCore.Components.Icons" VersionOverride="4.14.4" />
     <PackageReference Include="PolyType" />
     <PackageReference Include="protobuf-net" />
     <PackageReference Include="System.IO.Hashing" />

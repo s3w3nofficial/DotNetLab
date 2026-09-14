@@ -278,6 +278,7 @@ window.netLabTheme = {
     applyDocument: function (isDark) {
         const theme = isDark ? "dark" : "light";
         document.documentElement.setAttribute("data-theme", theme);
+        document.documentElement.setAttribute("theme", theme);
         document.documentElement.style.colorScheme = theme;
     },
     listenSystem: function (dotNet) {

@@ -1,4 +1,3 @@
-using Microsoft.FluentUI.AspNetCore.Components;
 using Microsoft.JSInterop;
 
 namespace DotNetLab.Lab;
@@ -6,15 +5,13 @@ namespace DotNetLab.Lab;
 public sealed class LabThemeService : IAsyncDisposable
 {
     private readonly IJSRuntime _js;
-    private readonly IThemeService _fluent;
     private readonly LabWorkspaceState _state;
     private DotNetObjectReference<LabThemeService>? _self;
     private bool _listening;
 
-    public LabThemeService(IJSRuntime js, IThemeService fluent, LabWorkspaceState state)
+    public LabThemeService(IJSRuntime js, LabWorkspaceState state)
     {
         _js = js;
-        _fluent = fluent;
         _state = state;
     }
 
@@ -81,8 +78,6 @@ public sealed class LabThemeService : IAsyncDisposable
             {
                 await _js.InvokeVoidAsync("netLabTheme.persist", preference);
             }
-
-            await _fluent.SetThemeAsync(LabTheme.CreateSettings(dark ? ThemeMode.Dark : ThemeMode.Light));
         }
         catch (JSException)
         {

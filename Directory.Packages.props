@@ -33,8 +33,12 @@
     <PackageVersion Include="Microsoft.CodeAnalysis.VisualBasic.Features" Version="$(RoslynVersion)" />
     <PackageVersion Include="Microsoft.DotNet.Arcade.Sdk" Version="9.0.0-beta.24372.7" />
     <PackageVersion Include="Microsoft.Extensions.Logging" Version="$(NetCoreVersion)" />
+    <!--
     <PackageVersion Include="Microsoft.FluentUI.AspNetCore.Components" Version="$(FluentUIVersion)" />
     <PackageVersion Include="Microsoft.FluentUI.AspNetCore.Components.Icons" Version="$(FluentUIVersion)" />
+    -->
+    <PackageVersion Include="Microsoft.FluentUI.AspNetCore.Components" Version="5.0.0-rc.5-26219.1" />
+    <PackageVersion Include="Microsoft.FluentUI.AspNetCore.Components.Icons" Version="5.0.0-rc.5-26219.1" />
     <PackageVersion Include="Microsoft.Net.Compilers.Razor.Toolset" Version="$(RazorVersion)" />
     <PackageVersion Include="Microsoft.Net.Compilers.Toolset" Version="$(RoslynVersion)" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.0" />
