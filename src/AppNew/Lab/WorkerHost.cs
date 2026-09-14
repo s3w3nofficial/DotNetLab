@@ -7,6 +7,10 @@ namespace DotNetLab.Lab;
 /// </summary>
 public sealed class WorkerHost(IServiceProvider services)
 {
+    private int _messageId;
+
     public WorkerInputMessage.IExecutor Executor
         => services.GetRequiredService<WorkerInputMessage.IExecutor>();
+
+    public int NextMessageId() => Interlocked.Increment(ref _messageId);
 }

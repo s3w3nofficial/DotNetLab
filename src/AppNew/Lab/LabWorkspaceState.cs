@@ -1,3 +1,4 @@
+using System.Collections.Immutable;
 using System.Text;
 using System.Text.Json;
 
@@ -5,14 +6,19 @@ namespace DotNetLab.Lab;
 
 public sealed class LabWorkspaceState
 {
-    public LabWorkspaceState()
+    private readonly WorkerHost _worker;
+
+    public LabWorkspaceState(WorkerHost worker)
     {
+        _worker = worker;
         Documents = new LabDocuments(this);
         Tabs = new OutputTabLayout(this);
     }
 
     public LabDocuments Documents { get; }
     public OutputTabLayout Tabs { get; }
+    public CompiledAssembly? Compiled { get; private set; }
+    public CompilationInput? LastInput { get; private set; }
 
     public event Action? Changed;
     public event Func<Task>? SettingsRequested;
@@ -224,10 +230,72 @@ public sealed class LabWorkspaceState
 
         Running = true;
         Notify();
-        await Task.Delay(900);
-        Running = false;
-        Stale = false;
-        Notify();
+        try
+        {
+            var input = CreateCompilationInput();
+            LastInput = input;
+            Compiled = await _worker.Executor.HandleAsync(
+                new WorkerInputMessage.Compile(input, LanguageServicesEnabled: false)
+                {
+                    Id = _worker.NextMessageId(),
+                });
+            Stale = false;
+        }
+        catch (Exception ex)
+        {
+            Compiled = CompiledAssembly.Fail(ex.ToString());
+        }
+        finally
+        {
+            Running = false;
+            Notify();
+        }
+    }
+
+    public CompilationInput CreateCompilationInput()
+    {
+        var inputs = Documents.SourceFiles
+            .Where(file => file != LabFixtures.ConfigurationFileName)
+            .Select(file => new InputCode
+            {
+                FileName = file,
+                Text = Documents.Sources.GetValueOrDefault(file) ?? "",
+            })
+            .ToImmutableArray();
+
+        Documents.Sources.TryGetValue(LabFixtures.ConfigurationFileName, out var configuration);
+
+        return new CompilationInput(inputs)
+        {
+            Configuration = configuration,
+            RazorToolchain = this.RazorToolchain switch
+            {
+                "Source Generator" => global::DotNetLab.RazorToolchain.SourceGenerator,
+                "Internal API" => global::DotNetLab.RazorToolchain.InternalApi,
+                _ => global::DotNetLab.RazorToolchain.SourceGeneratorOrInternalApi,
+            },
+            RazorStrategy = this.RazorStrategy == "DesignTime"
+                ? global::DotNetLab.RazorStrategy.DesignTime
+                : global::DotNetLab.RazorStrategy.Runtime,
+            Preferences = new CompilationPreferences
+            {
+                ShowSymbolKinds = ShowSymbols switch
+                {
+                    "Public Symbols" => global::DotNetLab.SymbolDisplayKinds.Public,
+                    "Internal Symbols" => global::DotNetLab.SymbolDisplayKinds.Internal,
+                    "All Symbols" => global::DotNetLab.SymbolDisplayKinds.Both,
+                    _ => global::DotNetLab.SymbolDisplayKinds.None,
+                },
+                ShowOperations = ShowOperations,
+                ShowBoundNodes = ShowBoundNodes,
+                ShowDeclarationDocument = ShowDeclarationDocument,
+                DecodeCustomAttributeBlobs = DecodeCustomAttributeBlobs,
+                ShowSequencePoints = ShowSequencePoints,
+                FullIl = FullIl,
+                ExcludeSingleFileNameInDiagnostics = ExcludeSingleFileNameInDiagnostics,
+                IncludeHiddenDiagnostics = IncludeHiddenDiagnostics,
+            },
+        };
     }
 
     public async Task CheckUpdatesAsync()
@@ -247,6 +315,20 @@ public sealed class LabWorkspaceState
         if (Running)
         {
             return "Compiling…";
+        }
+
+        if (Compiled is { } compiled)
+        {
+            if (compiled.GetGlobalOutput("fail") is { Text: { } failText })
+            {
+                return failText;
+            }
+
+            if (tab is LabCatalog.ErrorsOutputType &&
+                compiled.GetGlobalOutput(CompiledAssembly.DiagnosticsOutputType) is { } errors)
+            {
+                return errors.Text ?? "";
+            }
         }
 
         return tab switch
