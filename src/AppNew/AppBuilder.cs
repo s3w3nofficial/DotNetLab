@@ -17,6 +17,13 @@ public static class AppBuilder
         builder.Services.AddScoped<LabPlatform>();
         builder.Services.AddScoped<LabShare>();
 
+        // Compiler stack lives in its own container (NuGet/SDK downloads, Roslyn load).
+        // Do not register that IServiceProvider into Blazor DI — it would replace the UI host.
+        builder.Services.AddSingleton(new WorkerHost(
+            WorkerServices.Create(
+                baseUrl: builder.HostEnvironment.BaseAddress,
+                logLevel: LogLevel.Information)));
+
         builder.RootComponents.Add<App>("#app");
         builder.RootComponents.Add<HeadOutlet>("head::after");
 

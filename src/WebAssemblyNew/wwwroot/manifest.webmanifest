@@ -9,7 +9,7 @@
   "prefer_related_applications": false,
   "icons": [
     {
-      "src": "_content/DotNetLab.App/favicon.png",
+      "src": "_content/DotNetLab.AppNew/favicon.png",
       "type": "image/png",
       "sizes": "512x512"
     }

@@ -49,6 +49,10 @@
     <Content Include="@(NpmOutput)" />
   </ItemGroup>
 
+  <ItemGroup>
+    <_ContentIncludedByDefault Remove="wwwroot\_framework\dotnet.d.ts" />
+  </ItemGroup>
+
   <Target Name="NpmBuild" BeforeTargets="PreBuildEvent" Inputs="@(NpmInput)" Outputs="@(NpmOutput)">
     <Exec Command="npm install" WorkingDirectory="Npm" />
     <Exec Command="npm run build" WorkingDirectory="Npm" />
