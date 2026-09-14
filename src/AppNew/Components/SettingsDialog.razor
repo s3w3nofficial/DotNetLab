@@ -180,10 +180,18 @@
             </div>
             <p class="lab-sdk-summary">
                 Uses
-                <span class="lab-sdk-summary-versions">Roslyn @State.ResolvedSdk.Roslyn</span>
+                <span class="lab-sdk-summary-versions">Roslyn @State.Roslyn</span>
                 <span aria-hidden="true"> · </span>
-                <span class="lab-sdk-summary-versions">Razor @State.ResolvedSdk.Razor</span>
+                <span class="lab-sdk-summary-versions">Razor @State.Razor</span>
             </p>
+            @if (State.SdkLoading)
+            {
+                <p class="lab-setting-hint">Loading SDK…</p>
+            }
+            else if (!string.IsNullOrEmpty(State.SdkError))
+            {
+                <p class="lab-setting-hint">@State.SdkError</p>
+            }
 
             <details class="lab-settings-fold">
                 <summary>Override compilers</summary>
@@ -193,14 +201,14 @@
                                          Value="@State.Roslyn"
                                          ValueChanged="State.SetRoslyn"
                                          Config="@State.RoslynConfig"
-                                         ConfigChanged="OnRoslynConfigChanged"
-                                         Resolved="@($"Package {State.ResolvedSdk.Roslyn} · commit a1c9f2e")" />
+                                         ConfigChanged="State.SetRoslynConfig"
+                                         Resolved="@State.RoslynResolved" />
                         <CompilerSection Name="Razor"
                                          Value="@State.Razor"
                                          ValueChanged="State.SetRazor"
                                          Config="@State.RazorConfig"
-                                         ConfigChanged="OnRazorConfigChanged"
-                                         Resolved="@($"Package {State.ResolvedSdk.Razor} · commit 7be0d41")" />
+                                         ConfigChanged="State.SetRazorConfig"
+                                         Resolved="@State.RazorResolved" />
                     </div>
                 </div>
             </details>
@@ -281,7 +289,7 @@
     private bool _sdkMenuOpen;
     private bool _sdkKeepOpen;
     private string _sdkQuery = "";
-    private IReadOnlyList<SdkOption> _sdkMatches = LabWorkspaceState.SdkVersions;
+    private IReadOnlyList<SdkOption> _sdkMatches = LabCatalog.SdkVersions;
     private OutputFileKind _outputKind = OutputFileKind.Cs;
 
     protected override void OnInitialized() => State.Changed += OnStateChanged;
@@ -306,6 +314,8 @@
         }
 
         _outputKind = LabWorkspaceState.OutputKindFor(State.ActiveSource);
+        await State.EnsureSdkVersionsAsync();
+        FilterSdkMatches(_sdkQuery);
         try
         {
             await _dialog.ShowAsync();
@@ -374,12 +384,12 @@
         FilterSdkMatches(_sdkQuery);
     }
 
-    private void SelectSdk(SdkOption sdk)
+    private async Task SelectSdk(SdkOption sdk)
     {
         _sdkKeepOpen = false;
-        State.ApplySdk(sdk.Value);
         _sdkQuery = sdk.Value;
         _sdkMenuOpen = false;
+        await State.ApplySdk(sdk.Value);
     }
 
     private void FilterSdkMatches(string query)
@@ -387,11 +397,11 @@
         var text = query?.Trim() ?? "";
         if (IsUnfilteredSdkQuery(text))
         {
-            _sdkMatches = LabWorkspaceState.SdkVersions;
+            _sdkMatches = State.AvailableSdks;
             return;
         }
 
-        _sdkMatches = LabWorkspaceState.SdkVersions
+        _sdkMatches = State.AvailableSdks
             .Where(sdk =>
                 sdk.Value.Contains(text, StringComparison.OrdinalIgnoreCase) ||
                 (text.Length >= 4 && sdk.Released.Contains(text, StringComparison.OrdinalIgnoreCase)))
@@ -408,18 +418,6 @@
         var sdk = State.ResolvedSdk;
         return string.Equals(text, sdk.Value, StringComparison.OrdinalIgnoreCase)
             || string.Equals(text, sdk.Label, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private void OnRoslynConfigChanged(string value)
-    {
-        State.RoslynConfig = value;
-        State.Notify();
-    }
-
-    private void OnRazorConfigChanged(string value)
-    {
-        State.RazorConfig = value;
-        State.Notify();
     }
 
     private Task OnThemeChangedAsync(string theme) => Theme.SetPreferenceAsync(theme);

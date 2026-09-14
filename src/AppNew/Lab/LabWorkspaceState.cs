@@ -9,6 +9,8 @@ public sealed class LabWorkspaceState
     private readonly HashSet<string> _outputLoading = new(StringComparer.Ordinal);
     private string _activeOutput = "cs";
     private int _compileGeneration;
+    private int _compilerGeneration;
+    private bool _sdkListLoaded;
 
     public LabWorkspaceState(WorkerHost worker)
     {
@@ -53,11 +55,22 @@ public sealed class LabWorkspaceState
             _ = EnsureOutputLoadedAsync(value);
         }
     }
-    public string Sdk { get; private set; } = LabCatalog.SdkVersions[0].Value;
+    public string Sdk { get; private set; } = "built-in";
     public string Roslyn { get; private set; } = "built-in";
     public string RoslynConfig { get; set; } = "Release";
     public string Razor { get; private set; } = "built-in";
     public string RazorConfig { get; set; } = "Release";
+    public bool CompilerLoading => SdkLoading || RoslynLoading || RazorLoading;
+    public bool Busy => Running || CompilerLoading;
+    public bool SdkLoading { get; private set; }
+    public bool RoslynLoading { get; private set; }
+    public bool RazorLoading { get; private set; }
+    public string? SdkError { get; private set; }
+    public string? RoslynError { get; private set; }
+    public string? RazorError { get; private set; }
+    public PackageDependencyInfo? RoslynInfo { get; private set; }
+    public PackageDependencyInfo? RazorInfo { get; private set; }
+    public IReadOnlyList<SdkOption> AvailableSdks { get; private set; } = LabCatalog.SdkVersions;
     public string RazorToolchain { get; set; } = "Auto";
     public string RazorStrategy { get; set; } = "Runtime";
     public bool WordWrap { get; set; }
@@ -89,7 +102,13 @@ public sealed class LabWorkspaceState
 
     public Dictionary<string, string> Sources => Documents.Sources;
     public List<string> SourceFiles => Documents.SourceFiles;
-    public SdkOption ResolvedSdk => LabCatalog.SdkVersions.FirstOrDefault(item => item.Value == Sdk) ?? LabCatalog.SdkVersions[0];
+    public SdkOption ResolvedSdk =>
+        AvailableSdks.FirstOrDefault(item => item.Value == Sdk)
+        ?? LabCatalog.SdkVersions.FirstOrDefault(item => item.Value == Sdk)
+        ?? new SdkOption(Sdk, Sdk, Roslyn, Razor);
+
+    public string RoslynResolved => FormatDependency(RoslynInfo, RoslynError, RoslynLoading);
+    public string RazorResolved => FormatDependency(RazorInfo, RazorError, RazorLoading);
     public int OutputLayoutRevision => Tabs.Revision;
 
     public IReadOnlyList<string> CurrentOutputTabIds => Tabs.CurrentOutputTabIds;
@@ -196,28 +215,250 @@ public sealed class LabWorkspaceState
 
     public void SetTemplate(string template) => Documents.SetTemplate(template);
 
-    public void ApplySdk(string value)
+    public async Task EnsureSdkVersionsAsync()
     {
-        var found = LabCatalog.SdkVersions.FirstOrDefault(item => item.Value == value) ?? LabCatalog.SdkVersions[0];
-        Sdk = found.Value;
-        Roslyn = found.Roslyn;
-        Razor = found.Razor;
-        Stale = true;
-        Notify();
+        if (_sdkListLoaded)
+        {
+            return;
+        }
+
+        try
+        {
+            var versions = await _worker.SendAsync(
+                new WorkerInputMessage.GetSdkVersions
+                {
+                    Id = _worker.NextMessageId(),
+                });
+
+            if (versions is not { Count: > 0 })
+            {
+                return;
+            }
+
+            AvailableSdks = versions
+                .Select(static version => new SdkOption(
+                    version.Version,
+                    string.IsNullOrEmpty(version.ReleaseDate)
+                        ? version.Version
+                        : $"{version.Version} — {version.ReleaseDate}",
+                    "",
+                    ""))
+                .ToArray();
+            _sdkListLoaded = true;
+            Notify();
+        }
+        catch
+        {
+            // Keep the built-in catalog if the SDK list cannot be downloaded.
+        }
     }
 
-    public void SetRoslyn(string value)
+    public async Task ApplySdk(string value)
     {
-        Roslyn = value;
+        var generation = ++_compilerGeneration;
+        Sdk = DisplaySpecifier(value);
+        SdkError = null;
+        SdkLoading = true;
         Stale = true;
         Notify();
+
+        try
+        {
+            if (ToSpecifier(Sdk) is null)
+            {
+                await Task.WhenAll(
+                    ApplyCompilerAsync(CompilerKind.Roslyn, "built-in", RoslynConfig, generation),
+                    ApplyCompilerAsync(CompilerKind.Razor, "built-in", RazorConfig, generation));
+                return;
+            }
+
+            SdkInfo info;
+            try
+            {
+                info = await _worker.SendAsync(
+                    new WorkerInputMessage.GetSdkInfo(Sdk)
+                    {
+                        Id = _worker.NextMessageId(),
+                    });
+            }
+            catch (Exception ex)
+            {
+                if (generation != _compilerGeneration)
+                {
+                    return;
+                }
+
+                SdkError = ex.Message;
+                var found = ResolvedSdk;
+                if (string.IsNullOrEmpty(found.Roslyn) && string.IsNullOrEmpty(found.Razor))
+                {
+                    return;
+                }
+
+                await Task.WhenAll(
+                    ApplyCompilerAsync(CompilerKind.Roslyn, string.IsNullOrEmpty(found.Roslyn) ? Roslyn : found.Roslyn, RoslynConfig, generation),
+                    ApplyCompilerAsync(CompilerKind.Razor, string.IsNullOrEmpty(found.Razor) ? Razor : found.Razor, RazorConfig, generation));
+                return;
+            }
+
+            if (generation != _compilerGeneration)
+            {
+                return;
+            }
+
+            Sdk = DisplaySpecifier(info.SdkVersion);
+            await Task.WhenAll(
+                ApplyCompilerAsync(CompilerKind.Roslyn, info.RoslynVersion ?? "built-in", RoslynConfig, generation),
+                ApplyCompilerAsync(CompilerKind.Razor, info.RazorVersion ?? "built-in", RazorConfig, generation));
+        }
+        finally
+        {
+            if (generation == _compilerGeneration)
+            {
+                SdkLoading = false;
+                Notify();
+            }
+        }
     }
 
-    public void SetRazor(string value)
+    public Task SetRoslyn(string value) => SetCompilerAsync(CompilerKind.Roslyn, value, RoslynConfig);
+
+    public Task SetRazor(string value) => SetCompilerAsync(CompilerKind.Razor, value, RazorConfig);
+
+    public Task SetRoslynConfig(string value) => SetCompilerAsync(CompilerKind.Roslyn, Roslyn, value);
+
+    public Task SetRazorConfig(string value) => SetCompilerAsync(CompilerKind.Razor, Razor, value);
+
+    private async Task SetCompilerAsync(CompilerKind kind, string version, string config)
     {
-        Razor = value;
+        var generation = ++_compilerGeneration;
+        if (kind == CompilerKind.Roslyn)
+        {
+            RoslynLoading = true;
+        }
+        else
+        {
+            RazorLoading = true;
+        }
+
+        Notify();
+        try
+        {
+            await ApplyCompilerAsync(kind, version, config, generation);
+        }
+        finally
+        {
+            if (generation == _compilerGeneration)
+            {
+                Notify();
+            }
+        }
+    }
+
+    private async Task ApplyCompilerAsync(CompilerKind kind, string version, string config, int generation)
+    {
+        var display = DisplaySpecifier(version);
+        if (kind == CompilerKind.Roslyn)
+        {
+            Roslyn = display;
+            RoslynConfig = config;
+            RoslynError = null;
+            RoslynLoading = true;
+        }
+        else
+        {
+            Razor = display;
+            RazorConfig = config;
+            RazorError = null;
+            RazorLoading = true;
+        }
+
         Stale = true;
         Notify();
+
+        try
+        {
+            var changed = await _worker.SendAsync(
+                new WorkerInputMessage.UseCompilerVersion(
+                    kind,
+                    ToSpecifier(version),
+                    ToBuildConfiguration(config))
+                {
+                    Id = _worker.NextMessageId(),
+                });
+
+            if (generation != _compilerGeneration)
+            {
+                return;
+            }
+
+            PackageDependencyInfo? info = null;
+            try
+            {
+                info = await _worker.SendAsync(
+                    new WorkerInputMessage.GetCompilerDependencyInfo(kind)
+                    {
+                        Id = _worker.NextMessageId(),
+                    });
+            }
+            catch
+            {
+                // Resolved package info is optional.
+            }
+
+            if (generation != _compilerGeneration)
+            {
+                return;
+            }
+
+            if (kind == CompilerKind.Roslyn)
+            {
+                RoslynInfo = info;
+            }
+            else
+            {
+                RazorInfo = info;
+            }
+
+            if (changed)
+            {
+                Stale = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            if (generation != _compilerGeneration)
+            {
+                return;
+            }
+
+            if (kind == CompilerKind.Roslyn)
+            {
+                RoslynError = ex.Message;
+                RoslynInfo = null;
+            }
+            else
+            {
+                RazorError = ex.Message;
+                RazorInfo = null;
+            }
+        }
+        finally
+        {
+            if (generation == _compilerGeneration)
+            {
+                if (kind == CompilerKind.Roslyn)
+                {
+                    RoslynLoading = false;
+                }
+                else
+                {
+                    RazorLoading = false;
+                }
+
+                Notify();
+            }
+        }
     }
 
     public void MarkStale()
@@ -250,7 +491,7 @@ public sealed class LabWorkspaceState
 
         try
         {
-            var formatted = await _worker.Executor.HandleAsync(
+            var formatted = await _worker.SendAsync(
                 new WorkerInputMessage.FormatCode(currentCode, isScript)
                 {
                     Id = _worker.NextMessageId(),
@@ -277,24 +518,33 @@ public sealed class LabWorkspaceState
 
     public async Task CompileAsync()
     {
-        if (Running)
+        if (Running || CompilerLoading)
         {
             return;
         }
 
         Running = true;
         Notify();
+        // Cached same-input compiles can finish synchronously; yield so Busy UI can paint.
+        await Task.Yield();
         try
         {
             var input = CreateCompilationInput();
             LastInput = input;
-            Compiled = await _worker.Executor.HandleAsync(
+            var compiled = await _worker.SendAsync(
                 new WorkerInputMessage.Compile(input, LanguageServicesEnabled: false)
                 {
                     Id = _worker.NextMessageId(),
                 });
+            var sameAssembly = ReferenceEquals(Compiled, compiled);
+            Compiled = compiled;
             Stale = false;
-            BeginNewOutputGeneration();
+            // The worker reuses LastResult for identical input. Keep the output cache so
+            // the editor is not forced through Compiling/Loading for an unchanged assembly.
+            if (!sameAssembly)
+            {
+                BeginNewOutputGeneration();
+            }
         }
         catch (Exception ex)
         {
@@ -304,10 +554,10 @@ public sealed class LabWorkspaceState
         finally
         {
             Running = false;
+            Notify();
         }
 
         _ = EnsureOutputLoadedAsync(ActiveOutput);
-        Notify();
     }
 
     private void BeginNewOutputGeneration()
@@ -377,8 +627,22 @@ public sealed class LabWorkspaceState
 
     public string GetOutput(string tab)
     {
+        var key = OutputCacheKey(tab);
+        if (_outputCache.TryGetValue(key, out var cached))
+        {
+            return cached;
+        }
+
         if (Running)
         {
+            // Keep the previous output in Monaco. Replacing it with "Compiling…" races
+            // with a cached recompile and can leave that placeholder stuck until a tab switch.
+            var runningOutput = FindOutput(tab);
+            if (runningOutput?.Text is { } runningText)
+            {
+                return runningText;
+            }
+
             return "Compiling…";
         }
 
@@ -392,11 +656,6 @@ public sealed class LabWorkspaceState
             return failText;
         }
 
-        if (_outputCache.TryGetValue(OutputCacheKey(tab), out var cached))
-        {
-            return cached;
-        }
-
         var output = FindOutput(tab);
         if (output is null)
         {
@@ -405,6 +664,7 @@ public sealed class LabWorkspaceState
 
         if (output.Text is { } eager)
         {
+            _outputCache[key] = eager;
             return eager;
         }
 
@@ -428,6 +688,14 @@ public sealed class LabWorkspaceState
         var generation = _compileGeneration;
         try
         {
+            // LoadAsync is often already completed for a cached assembly. Yield so Notify
+            // does not run in the middle of a Blazor render (GetOutput is called from one).
+            await Task.Yield();
+            if (generation != _compileGeneration || Running || Compiled is null)
+            {
+                return;
+            }
+
             var output = FindOutput(tab);
             if (output is null)
             {
@@ -471,7 +739,7 @@ public sealed class LabWorkspaceState
 
     private async ValueTask<CompiledFileLazyResult> LoadOutputFromWorkerAsync(string? file, string tab)
     {
-        return await _worker.Executor.HandleAsync(
+        return await _worker.SendAsync(
             new WorkerInputMessage.GetOutput(LastInput!, file, tab)
             {
                 Id = _worker.NextMessageId(),
@@ -502,4 +770,41 @@ public sealed class LabWorkspaceState
             : null;
 
     private string OutputCacheKey(string tab) => $"{ActiveSource}\0{tab}";
+
+    private static string? ToSpecifier(string? value)
+        => string.IsNullOrWhiteSpace(value) ||
+           string.Equals(value.Trim(), "built-in", StringComparison.OrdinalIgnoreCase)
+            ? null
+            : value.Trim();
+
+    private static string DisplaySpecifier(string? value) => ToSpecifier(value) ?? "built-in";
+
+    private static BuildConfiguration ToBuildConfiguration(string value)
+        => string.Equals(value, "Debug", StringComparison.OrdinalIgnoreCase)
+            ? BuildConfiguration.Debug
+            : BuildConfiguration.Release;
+
+    private static string FormatDependency(PackageDependencyInfo? info, string? error, bool loading)
+    {
+        if (loading)
+        {
+            return "Loading…";
+        }
+
+        if (!string.IsNullOrEmpty(error))
+        {
+            return error;
+        }
+
+        if (info is null)
+        {
+            return "";
+        }
+
+        var package = string.IsNullOrEmpty(info.Version) ? "built-in" : info.Version;
+        var commit = info.Commit.ShortHash;
+        return string.IsNullOrEmpty(commit)
+            ? $"Package {package}"
+            : $"Package {package} · commit {commit}";
+    }
 }

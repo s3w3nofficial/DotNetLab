@@ -1,29 +1,48 @@
 @inject LabWorkspaceState State
 @inject LabPlatform Platform
+@implements IDisposable
 
 <div class="lab-command-bar">
-    <FluentButton Appearance="ButtonAppearance.Subtle"
-                  Size="ButtonSize.Small"
-                  Class="lab-compile"
-                  Color="@Success"
-                  IconStart="@(State.Running ? new Icons.Regular.Size20.ArrowSync() : new Icons.Filled.Size20.Play())"
-                  Loading="@State.Running"
-                  Disabled="@State.Running"
-                  OnClick="State.CompileAsync">
-        @(State.Running ? "Compiling" : "Compile")
-    </FluentButton>
+    @if (State.Busy)
+    {
+        <FluentButton Appearance="ButtonAppearance.Subtle"
+                      Size="ButtonSize.Small"
+                      Class="lab-compile"
+                      Color="@Success"
+                      IconStart="@(new Icons.Regular.Size20.ArrowSync())"
+                      Loading="true"
+                      Disabled="true"
+                      Label="@(State.CompilerLoading ? "Loading compiler" : "Compiling")" />
+    }
+    else
+    {
+        <FluentButton Appearance="ButtonAppearance.Subtle"
+                      Size="ButtonSize.Small"
+                      Class="lab-compile"
+                      Color="@Success"
+                      IconStart="@(new Icons.Filled.Size20.Play())"
+                      Label="Compile"
+                      OnClick="State.CompileAsync" />
+    }
 
     <span class="lab-vsep" aria-hidden="true"></span>
 
     <div aria-label="Compiler selection" style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
-        <FluentMenu>
-            <FluentMenuButton Appearance="ButtonAppearance.Subtle"
-                              Size="ButtonSize.Small"
-                              IconStart="@(new Icons.Regular.Size20.Toolbox())">
-                SDK: @State.Sdk
-            </FluentMenuButton>
+        <FluentButton Id="lab-sdk"
+                      Appearance="ButtonAppearance.Subtle"
+                      Size="ButtonSize.Small"
+                      IconStart="@(new Icons.Regular.Size20.Toolbox())"
+                      IconEnd="@(new Icons.Regular.Size16.ChevronDown())"
+                      @key="@($"sdk-{State.Sdk}")"
+                      Label="@($"SDK: {State.Sdk}")" />
+        <FluentMenu Trigger="lab-sdk">
             <FluentMenuList>
-                @foreach (var sdk in LabCatalog.SdkVersions)
+                <FluentMenuItem Role="MenuItemRole.Radio"
+                                Checked="@(State.Sdk == "built-in")"
+                                Label="built-in"
+                                OnClick="@(() => State.ApplySdk("built-in"))" />
+                <FluentDivider />
+                @foreach (var sdk in State.AvailableSdks)
                 {
                     <FluentMenuItem Role="MenuItemRole.Radio"
                                     Checked="@(State.Sdk == sdk.Value)"
@@ -35,12 +54,14 @@
             </FluentMenuList>
         </FluentMenu>
 
-        <FluentMenu>
-            <FluentMenuButton Appearance="ButtonAppearance.Subtle"
-                              Size="ButtonSize.Small"
-                              IconStart="@(new Icons.Regular.Size20.CodeText())">
-                Roslyn: @State.Roslyn
-            </FluentMenuButton>
+        <FluentButton Id="lab-roslyn"
+                      Appearance="ButtonAppearance.Subtle"
+                      Size="ButtonSize.Small"
+                      IconStart="@(new Icons.Regular.Size20.CodeText())"
+                      IconEnd="@(new Icons.Regular.Size16.ChevronDown())"
+                      @key="@($"roslyn-{State.Roslyn}")"
+                      Label="@($"Roslyn: {State.Roslyn}")" />
+        <FluentMenu Trigger="lab-roslyn">
             <FluentMenuList>
                 @foreach (var item in LabCatalog.CompilerRefs)
                 {
@@ -54,12 +75,14 @@
             </FluentMenuList>
         </FluentMenu>
 
-        <FluentMenu>
-            <FluentMenuButton Appearance="ButtonAppearance.Subtle"
-                              Size="ButtonSize.Small"
-                              IconStart="@(new Icons.Regular.Size20.CodeBlock())">
-                Razor: @State.Razor
-            </FluentMenuButton>
+        <FluentButton Id="lab-razor"
+                      Appearance="ButtonAppearance.Subtle"
+                      Size="ButtonSize.Small"
+                      IconStart="@(new Icons.Regular.Size20.CodeBlock())"
+                      IconEnd="@(new Icons.Regular.Size16.ChevronDown())"
+                      @key="@($"razor-{State.Razor}")"
+                      Label="@($"Razor: {State.Razor}")" />
+        <FluentMenu Trigger="lab-razor">
             <FluentMenuList>
                 @foreach (var item in LabCatalog.CompilerRefs)
                 {
@@ -134,4 +157,12 @@
 
 @code {
     private const string Success = "#6ecf97";
+
+    protected override void OnInitialized() => State.Changed += OnStateChanged;
+
+    protected override Task OnInitializedAsync() => State.EnsureSdkVersionsAsync();
+
+    private void OnStateChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => State.Changed -= OnStateChanged;
 }

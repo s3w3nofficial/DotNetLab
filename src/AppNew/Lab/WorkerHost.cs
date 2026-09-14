@@ -7,10 +7,24 @@ namespace DotNetLab.Lab;
 /// </summary>
 public sealed class WorkerHost(IServiceProvider services)
 {
+    private readonly SemaphoreSlim _gate = new(1, 1);
     private int _messageId;
 
     public WorkerInputMessage.IExecutor Executor
         => services.GetRequiredService<WorkerInputMessage.IExecutor>();
 
     public int NextMessageId() => Interlocked.Increment(ref _messageId);
+
+    public async Task<T> SendAsync<T>(IWorkerInputMessage<T> message)
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            return await message.HandleAsync(Executor);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
 }

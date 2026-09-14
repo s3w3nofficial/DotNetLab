@@ -24,6 +24,7 @@
     private int _lastCursorColumn;
     private bool _ready;
     private bool _suppressChange;
+    private Task _applyQueue = Task.CompletedTask;
     private string? _appliedMonacoTheme;
     private bool? _appliedKeyboardDisabled;
     private bool? _appliedVim;
@@ -111,8 +112,27 @@
         };
     }
 
-    protected override async Task OnParametersSetAsync()
+    protected override Task OnParametersSetAsync()
     {
+        if (!_ready || _editor is null)
+        {
+            return Task.CompletedTask;
+        }
+
+        _applyQueue = ApplyParametersAsync(_applyQueue);
+        return _applyQueue;
+    }
+
+    private async Task ApplyParametersAsync(Task previous)
+    {
+        try
+        {
+            await previous;
+        }
+        catch (JSException)
+        {
+        }
+
         if (!_ready || _editor is null)
         {
             return;
@@ -120,12 +140,21 @@
 
         try
         {
-            if (!string.Equals(_lastValue, Value, StringComparison.Ordinal))
+            // SetValue is async. A cached recompile can push Compiling… then the real text
+            // before the first SetValue finishes, which left Monaco stuck until a tab switch.
+            while (!string.Equals(_lastValue, Value, StringComparison.Ordinal))
             {
+                var toSet = Value;
                 _suppressChange = true;
-                await _editor.SetValue(Value);
-                _lastValue = Value;
-                _suppressChange = false;
+                try
+                {
+                    await _editor.SetValue(toSet);
+                    _lastValue = toSet;
+                }
+                finally
+                {
+                    _suppressChange = false;
+                }
             }
 
             if (!string.Equals(_lastLanguage, Language, StringComparison.Ordinal))
@@ -153,6 +182,7 @@
         catch (JSException)
         {
             _ready = false;
+            _suppressChange = false;
         }
     }
 

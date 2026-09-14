@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <DebugType>embedded</DebugType>
     <WasmEmitTypeScriptDefinitions>true</WasmEmitTypeScriptDefinitions>
     
     <!-- Static Web Assets Fallback Enabled -->
