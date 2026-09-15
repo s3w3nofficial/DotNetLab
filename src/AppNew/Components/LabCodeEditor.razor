@@ -34,6 +34,7 @@
 
     [Parameter] public string Value { get; set; } = "";
     [Parameter] public string Language { get; set; } = "csharp";
+    [Parameter] public string? ModelUri { get; set; }
     [Parameter] public bool ReadOnly { get; set; }
     [Parameter] public bool WordWrap { get; set; }
     [Parameter] public EventCallback<string> OnValueChanged { get; set; }
@@ -196,9 +197,53 @@
         _lastReadOnly = ReadOnly;
         _lastWordWrap = WordWrap;
         _ready = true;
+        await AttachNamedModelAsync();
         await ApplyMonacoThemeAsync();
         await ApplyVirtualKeyboardAsync();
         await ApplyVimAsync();
+        await State.EnableSemanticHighlightingAsync();
+        await State.InitializeLanguageServicesAsync();
+    }
+
+    private async Task AttachNamedModelAsync()
+    {
+        if (_editor is null || string.IsNullOrEmpty(ModelUri))
+        {
+            return;
+        }
+
+        try
+        {
+            var existing = await global::BlazorMonaco.Editor.Global.GetModel(JS, ModelUri);
+            TextModel model;
+            if (existing is null)
+            {
+                model = await global::BlazorMonaco.Editor.Global.CreateModel(JS, Value, Language, ModelUri);
+            }
+            else
+            {
+                model = existing;
+                var text = await model.GetValue(EndOfLinePreference.TextDefined, preserveBOM: true);
+                if (!string.Equals(text, Value, StringComparison.Ordinal))
+                {
+                    _suppressChange = true;
+                    try
+                    {
+                        await model.SetValue(Value);
+                    }
+                    finally
+                    {
+                        _suppressChange = false;
+                    }
+                }
+            }
+
+            await _editor.SetModel(model);
+            _lastValue = Value;
+        }
+        catch (JSException)
+        {
+        }
     }
 
     private void OnWorkspaceChanged()
@@ -285,7 +330,7 @@
         }
     }
 
-    private async Task OnModelChangedAsync(ModelContentChangedEvent _)
+    private async Task OnModelChangedAsync(ModelContentChangedEvent args)
     {
         if (_suppressChange || !_ready || _editor is null || ReadOnly)
         {
@@ -297,6 +342,10 @@
             var next = await _editor.GetValue();
             _lastValue = next;
             await OnValueChanged.InvokeAsync(next);
+            if (!string.IsNullOrEmpty(ModelUri))
+            {
+                await State.OnSourceModelContentChangedAsync(ModelUri, args);
+            }
         }
         catch (JSException)
         {

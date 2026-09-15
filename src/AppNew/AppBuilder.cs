@@ -17,6 +17,8 @@ public static class AppBuilder
         builder.Services.AddScoped<LabThemeService>();
         builder.Services.AddScoped<LabPlatform>();
         builder.Services.AddScoped<LabShare>();
+        builder.Services.AddScoped<BlazorMonacoInterop>();
+        builder.Services.AddScoped<LabLanguageServices>();
 
         // Compiler stack lives in its own container (NuGet/SDK downloads, Roslyn load).
         // Do not register that IServiceProvider into Blazor DI — it would replace the UI host.

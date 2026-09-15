@@ -3,10 +3,12 @@ namespace DotNetLab.Lab;
 public sealed class LabDocuments
 {
     private readonly LabWorkspaceState _state;
+    private readonly Dictionary<string, string> _modelUris = new(StringComparer.Ordinal);
 
     public LabDocuments(LabWorkspaceState state)
     {
         _state = state;
+        EnsureUri(InitialCode.CSharp.SuggestedFileName);
     }
 
     public string Template { get; private set; } = "C#";
@@ -18,6 +20,43 @@ public sealed class LabDocuments
     };
 
     public List<string> SourceFiles { get; } = ["Program.cs"];
+
+    public string UriFor(string fileName)
+    {
+        if (!_modelUris.TryGetValue(fileName, out var uri))
+        {
+            uri = CompiledAssembly.GetInputModelUri(fileName);
+            _modelUris[fileName] = uri;
+        }
+
+        return uri;
+    }
+
+    public IReadOnlyList<string> ModelUris => _modelUris.Values.ToArray();
+
+    public string? RemoveUri(string fileName)
+    {
+        _modelUris.Remove(fileName, out var uri);
+        return uri;
+    }
+
+    public IReadOnlyList<string> ResetUris()
+    {
+        var uris = _modelUris.Values.ToArray();
+        _modelUris.Clear();
+        return uris;
+    }
+
+    public ImmutableArray<ModelInfo> CreateModelInfos()
+        => SourceFiles
+            .Select(file => new ModelInfo(UriFor(file), file)
+            {
+                NewContent = Sources.GetValueOrDefault(file) ?? "",
+                IsConfiguration = file == LabFixtures.ConfigurationFileName,
+            })
+            .ToImmutableArray();
+
+    private void EnsureUri(string fileName) => UriFor(fileName);
 
     public static bool IsSpecialSource(string fileName)
         => fileName is LabFixtures.DirectivesFileName or LabFixtures.ConfigurationFileName;
@@ -38,12 +77,14 @@ public sealed class LabDocuments
         {
             SourceFiles.Remove(file);
             Sources.Remove(file);
+            RemoveUri(file);
         }
 
         foreach (var (name, contents) in FilesFor(template))
         {
             InsertUserFile(name);
             Sources[name] = contents;
+            EnsureUri(name);
         }
 
         if (template is "Razor")
@@ -111,6 +152,9 @@ public sealed class LabDocuments
             Sources[normalized] = contents;
         }
 
+        RemoveUri(oldName);
+        EnsureUri(normalized);
+
         if (string.Equals(ActiveSource, oldName, StringComparison.Ordinal))
         {
             ActiveSource = normalized;
@@ -149,6 +193,7 @@ public sealed class LabDocuments
         }
 
         Sources.Remove(file);
+        RemoveUri(file);
         if (ActiveSource == file)
         {
             ActiveSource = SourceFiles.FirstOrDefault(name => !IsSpecialSource(name)) ?? SourceFiles[0];
@@ -183,6 +228,7 @@ public sealed class LabDocuments
 
         InsertUserFile(name);
         Sources[name] = contents;
+        EnsureUri(name);
         ActiveSource = name;
         _state.Tabs.EnsureActiveOutput();
         _state.Stale = true;
@@ -202,6 +248,7 @@ public sealed class LabDocuments
         {
             InsertSpecialFile(fileName);
             Sources[fileName] = contents;
+            EnsureUri(fileName);
             _state.Stale = true;
         }
 
@@ -264,6 +311,7 @@ public sealed class LabDocuments
         {
             SourceFiles.Remove(file);
             Sources.Remove(file);
+            RemoveUri(file);
         }
 
         foreach (var (name, contents) in incoming)
@@ -276,11 +324,13 @@ public sealed class LabDocuments
                 }
 
                 Sources[name] = contents;
+                EnsureUri(name);
                 continue;
             }
 
             InsertUserFile(name);
             Sources[name] = contents;
+            EnsureUri(name);
         }
 
         ActiveSource = SourceFiles.FirstOrDefault(name => !IsSpecialSource(name)) ?? SourceFiles[0];
@@ -336,6 +386,7 @@ public sealed class LabDocuments
 
         SourceFiles.Clear();
         Sources.Clear();
+        ResetUris();
 
         if (userFiles.Count == 0)
         {

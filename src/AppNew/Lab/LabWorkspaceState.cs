@@ -1,10 +1,13 @@
 using System.Collections.Immutable;
+using BlazorMonaco.Editor;
+using Microsoft.JSInterop;
 
 namespace DotNetLab.Lab;
 
 public sealed class LabWorkspaceState
 {
     private readonly WorkerHost _worker;
+    private readonly LabLanguageServices _language;
     private readonly Dictionary<string, string> _outputCache = new(StringComparer.Ordinal);
     private readonly HashSet<string> _outputLoading = new(StringComparer.Ordinal);
     private string _activeOutput = "cs";
@@ -12,10 +15,12 @@ public sealed class LabWorkspaceState
     private int _compilerGeneration;
     private bool _sdkListLoaded;
     private bool _suppressUrlPersist;
+    private Task? _languageInit;
 
-    public LabWorkspaceState(WorkerHost worker)
+    public LabWorkspaceState(WorkerHost worker, LabLanguageServices language)
     {
         _worker = worker;
+        _language = language;
         Documents = new LabDocuments(this);
         Tabs = new OutputTabLayout(this);
     }
@@ -106,6 +111,7 @@ public sealed class LabWorkspaceState
 
     public Dictionary<string, string> Sources => Documents.Sources;
     public List<string> SourceFiles => Documents.SourceFiles;
+    public string UriFor(string fileName) => Documents.UriFor(fileName);
     public SdkOption ResolvedSdk =>
         AvailableSdks.FirstOrDefault(item => item.Value == Sdk)
         ?? LabCatalog.SdkVersions.FirstOrDefault(item => item.Value == Sdk)
@@ -137,6 +143,38 @@ public sealed class LabWorkspaceState
     public static bool IsRazorLike(string fileName) => LabCatalog.IsRazorLike(fileName);
 
     public void Notify() => Changed?.Invoke();
+
+    public Task InitializeLanguageServicesAsync()
+        => _languageInit ??= SetLanguageServicesAsync(LanguageServices);
+
+    public async Task SetLanguageServicesAsync(bool enabled)
+    {
+        LanguageServices = enabled;
+        try
+        {
+            await _language.EnableAsync(enabled);
+            if (enabled)
+            {
+                await SyncLanguageWorkspaceAsync(refresh: true);
+            }
+            else
+            {
+                await _language.ApplyCompileDiagnosticsAsync(
+                    Compiled,
+                    Documents.SourceFiles.Select(file => (file, Documents.UriFor(file))));
+            }
+        }
+        catch (JSException)
+        {
+        }
+
+        Notify();
+    }
+
+    public Task OnSourceModelContentChangedAsync(string modelUri, ModelContentChangedEvent args)
+        => _language.OnDidChangeModelContentAsync(modelUri, args);
+
+    public Task EnableSemanticHighlightingAsync() => _language.EnableSemanticHighlightingAsync();
 
     public void OnSavedStateChanged()
     {
@@ -298,7 +336,9 @@ public sealed class LabWorkspaceState
             state = state with { Inputs = [] };
         }
 
+        var before = Documents.ModelUris;
         Documents.LoadFromSavedState(state);
+        _ = AfterDocumentsChangedAsync(before);
 
         if (!string.IsNullOrEmpty(state.SelectedOutputType))
         {
@@ -395,7 +435,9 @@ public sealed class LabWorkspaceState
 
     public void SetTemplate(string template)
     {
+        var before = Documents.ModelUris;
         Documents.SetTemplate(template);
+        _ = AfterDocumentsChangedAsync(before);
         _ = PersistUrlAsync();
     }
 
@@ -657,37 +699,46 @@ public sealed class LabWorkspaceState
 
     public void RenameFile(string oldName, string newName)
     {
+        var before = Documents.ModelUris;
         Documents.RenameFile(oldName, newName);
+        _ = AfterDocumentsChangedAsync(before);
         _ = PersistUrlAsync();
     }
 
     public void CloseFile(string file)
     {
+        var before = Documents.ModelUris;
         Documents.CloseFile(file);
+        _ = AfterDocumentsChangedAsync(before);
         _ = PersistUrlAsync();
     }
 
     public void AddFile(string extension)
     {
         Documents.AddFile(extension);
+        _ = SyncLanguageWorkspaceAsync();
         _ = PersistUrlAsync();
     }
 
     public void OpenDirectives()
     {
         Documents.OpenDirectives();
+        _ = SyncLanguageWorkspaceAsync();
         _ = PersistUrlAsync();
     }
 
     public void OpenConfiguration()
     {
         Documents.OpenConfiguration();
+        _ = SyncLanguageWorkspaceAsync();
         _ = PersistUrlAsync();
     }
 
     public void LoadImportedFiles(IReadOnlyDictionary<string, string> files)
     {
+        var before = Documents.ModelUris;
         Documents.LoadImportedFiles(files);
+        _ = AfterDocumentsChangedAsync(before);
         _ = PersistUrlAsync();
     }
 
@@ -719,6 +770,7 @@ public sealed class LabWorkspaceState
             }
 
             Documents.SetSource(fileName, formatted);
+            await SyncLanguageWorkspaceAsync();
             await PersistUrlAsync();
         }
         catch
@@ -730,6 +782,7 @@ public sealed class LabWorkspaceState
     public void SetActiveSource(string file)
     {
         Documents.SetActiveSource(file);
+        _ = SyncLanguageWorkspaceAsync();
         _ = EnsureOutputLoadedAsync(ActiveOutput);
         _ = PersistUrlAsync();
     }
@@ -751,7 +804,7 @@ public sealed class LabWorkspaceState
             var input = CreateCompilationInput();
             LastInput = input;
             var compiled = await _worker.SendAsync(
-                new WorkerInputMessage.Compile(input, LanguageServicesEnabled: false)
+                new WorkerInputMessage.Compile(input, LanguageServicesEnabled: LanguageServices)
                 {
                     Id = _worker.NextMessageId(),
                 });
@@ -777,6 +830,7 @@ public sealed class LabWorkspaceState
         }
 
         _ = EnsureOutputLoadedAsync(ActiveOutput);
+        _ = RefreshLanguageServicesAfterCompileAsync();
     }
 
     private void BeginNewOutputGeneration()
@@ -989,6 +1043,50 @@ public sealed class LabWorkspaceState
             : null;
 
     private string OutputCacheKey(string tab) => $"{ActiveSource}\0{tab}";
+
+    private async Task AfterDocumentsChangedAsync(IReadOnlyList<string> before)
+    {
+        var removed = before.Except(Documents.ModelUris).ToArray();
+        await SyncLanguageWorkspaceAsync(refresh: true, removed);
+    }
+
+    private async Task SyncLanguageWorkspaceAsync(bool refresh = false, IReadOnlyList<string>? disposeUris = null)
+    {
+        if (disposeUris is { Count: > 0 })
+        {
+            foreach (var uri in disposeUris)
+            {
+                await _language.DisposeModelAsync(uri);
+            }
+        }
+
+        try
+        {
+            await _language.OnDidChangeWorkspaceAsync(
+                Documents.CreateModelInfos(),
+                Documents.UriFor(ActiveSource),
+                refresh);
+        }
+        catch (JSException)
+        {
+        }
+    }
+
+    private async Task RefreshLanguageServicesAfterCompileAsync()
+    {
+        var uri = Documents.UriFor(ActiveSource);
+        if (!_language.Enabled || !await _language.UpdateDiagnosticsAfterCompilationAsync(uri))
+        {
+            await _language.ApplyCompileDiagnosticsAsync(
+                Compiled,
+                Documents.SourceFiles.Select(file => (file, Documents.UriFor(file))));
+        }
+
+        if (_language.Enabled)
+        {
+            await SyncLanguageWorkspaceAsync(refresh: true);
+        }
+    }
 
     private static string? ToSpecifier(string? value)
         => string.IsNullOrWhiteSpace(value) ||

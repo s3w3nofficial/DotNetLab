@@ -80,6 +80,7 @@
                         <LabCodeEditor @key="@($"source-{context}")"
                                        Value="@State.Sources.GetValueOrDefault(context, "")"
                                        Language="@State.LanguageFor(context)"
+                                       ModelUri="@State.UriFor(context)"
                                        WordWrap="State.WordWrap"
                                        OnValueChanged="@(value => State.SetSource(context, value))"
                                        OnCursorChanged="OnCursorChanged"

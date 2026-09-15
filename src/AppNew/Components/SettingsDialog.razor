@@ -35,7 +35,7 @@
                 <summary>Advanced</summary>
                 <div class="lab-settings-fold-body">
                     <SettingRow Title="Language Services" Hint="Completions and live diagnostics">
-                        <FluentSwitch @bind-Value="State.LanguageServices" @bind-Value:after="State.Notify" AriaLabel="Language services" />
+                        <FluentSwitch Value="State.LanguageServices" ValueChanged="State.SetLanguageServicesAsync" AriaLabel="Language services" />
                     </SettingRow>
                     <SettingRow Title="Debug Logs" Hint="Debug logs in the browser console">
                         <FluentSwitch @bind-Value="State.DebugLogs" @bind-Value:after="State.Notify" AriaLabel="Debug logs" />
