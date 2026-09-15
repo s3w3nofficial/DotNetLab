@@ -1,4 +1,4 @@
-@inject IJSRuntime JS
+@inject WorkerHost Worker
 @implements IDisposable
 
 <div class="lab-memory-usage" title="@_tooltip">
@@ -33,15 +33,17 @@
     private void Refresh()
     {
         var appInfo = MemoryUsage.Capture();
-        _text = FormatSize(appInfo.TotalMemory);
-        _tooltip = $"App: {appInfo.Info} (click to refresh)\nWorker: N/A";
+        var workerInfo = Worker.LastPingResult?.MemoryUsage;
+        var total = appInfo.TotalMemory + (workerInfo?.TotalMemory ?? 0);
+        _text = FormatSize(total);
+        _tooltip = $"App: {appInfo.Info} (click to refresh)\nWorker: {(workerInfo?.Info ?? "N/A")}";
     }
 
     private async Task DownloadProfileAsync()
     {
         try
         {
-            await JS.InvokeVoidAsync("netLabMemory.collectAndDownloadGcDump");
+            await Worker.CollectAndDownloadGcDumpAsync();
         }
         catch (JSException)
         {

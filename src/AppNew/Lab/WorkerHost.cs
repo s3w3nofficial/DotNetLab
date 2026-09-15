@@ -1,60 +1,378 @@
+using System.Collections.Concurrent;
+using System.Runtime.InteropServices.JavaScript;
+using System.Runtime.Versioning;
+using System.Text;
+using System.Text.Json;
+using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
+using Timer = System.Timers.Timer;
+
 namespace DotNetLab.Lab;
 
 /// <summary>
-/// Owns the compiler/worker <see cref="IServiceProvider"/> created by
-/// <see cref="WorkerServices"/>. This is a separate container from the Blazor UI
-/// host — same split as <c>src/App</c> uses via <c>WorkerController</c>.
+/// Owns the compiler/worker, either in-process via <see cref="WorkerServices"/>
+/// or in the existing <c>WorkerWebAssembly</c> web worker — same split as
+/// <c>src/App</c> <c>WorkerController</c>. Background-worker vs in-process is
+/// chosen on first use and requires a page reload to change.
 /// </summary>
 public sealed class WorkerHost
 {
     private readonly string _baseUrl;
-    private readonly Func<LogLevel> _logLevel;
-    private readonly SemaphoreSlim _gate = new(1, 1);
-    private IServiceProvider _services;
+    private readonly LabLogging _logging;
+    private readonly LabSettings _settings;
+    private readonly ILogger<WorkerHost> _logger;
+    private readonly Dispatcher _dispatcher = Dispatcher.CreateDefault();
+    private readonly ConcurrentDictionary<int, TaskCompletionSource<WorkerOutputMessage>> _pending = new();
+    private readonly SemaphoreSlim _startLock = new(1, 1);
+    private readonly SemaphoreSlim _inProcessGate = new(1, 1);
+    [SupportedOSPlatform("browser")]
+    private readonly Lazy<Task> _controllerJs = new(() =>
+        JSHost.ImportAsync(nameof(WorkerHost), "../_content/DotNetLab.AppNew/js/WorkerController.js"));
+    private IServiceProvider? _services;
+    private WorkerInstance? _worker;
+    private bool? _useWorker;
     private int _messageId;
 
-    public WorkerHost(string baseUrl, Func<LogLevel> logLevel)
+    public WorkerHost(
+        IWebAssemblyHostEnvironment hostEnvironment,
+        LabLogging logging,
+        LabSettings settings,
+        ILogger<WorkerHost> logger)
     {
-        _baseUrl = baseUrl;
-        _logLevel = logLevel;
-        _services = CreateServices();
+        _baseUrl = hostEnvironment.BaseAddress;
+        _logging = logging;
+        _settings = settings;
+        _logger = logger;
     }
 
-    public WorkerInputMessage.IExecutor Executor
-        => _services.GetRequiredService<WorkerInputMessage.IExecutor>();
+    public PingResult? LastPingResult { get; private set; }
 
     public int NextMessageId() => Interlocked.Increment(ref _messageId);
 
     public async Task RecreateAsync()
     {
-        await _gate.WaitAsync();
+        await _startLock.WaitAsync();
         try
         {
-            await DisposeServicesAsync(_services);
-            _services = CreateServices();
+            await DisposeCurrentNoLockAsync();
+            _useWorker ??= await LoadUseWorkerAsync();
+            await StartNoLockAsync();
             _messageId = 0;
         }
         finally
         {
-            _gate.Release();
+            _startLock.Release();
         }
     }
 
     public async Task<T> SendAsync<T>(IWorkerInputMessage<T> message)
     {
-        await _gate.WaitAsync();
-        try
+        var incoming = await PostAsync(message);
+        return incoming switch
         {
-            return await message.HandleAsync(Executor);
+            WorkerOutputMessage.Success success => success.Result switch
+            {
+                null => default!,
+                JsonElement json => json.Deserialize<T>(WorkerJsonContext.Default.Options)!,
+                T result => result,
+                var other => throw new InvalidOperationException(
+                    $"Expected result of type '{typeof(T)}', got '{other.GetType()}': {other}"),
+            },
+            WorkerOutputMessage.Failure failure => throw new InvalidOperationException(failure.FullString),
+            _ => throw new InvalidOperationException($"Unexpected message type: {incoming}"),
+        };
+    }
+
+    public async Task CollectAndDownloadGcDumpAsync()
+    {
+        if (!OperatingSystem.IsBrowser())
+        {
+            return;
         }
-        finally
+
+        await EnsureStartedAsync();
+        await _controllerJs.Value;
+        WorkerHostInterop.CollectAndDownloadGcDump();
+        if (_useWorker == true && _worker is { } worker)
         {
-            _gate.Release();
+            WorkerHostInterop.PostSideMessage(worker.Handle, "collect-gc-dump");
         }
     }
 
-    private IServiceProvider CreateServices()
-        => WorkerServices.Create(_baseUrl, _logLevel());
+    private async Task<WorkerOutputMessage> PostAsync(IWorkerInputMessage message)
+    {
+        await EnsureStartedAsync();
+        if (_useWorker != true)
+        {
+            var executor = _services!.GetRequiredService<WorkerInputMessage.IExecutor>();
+            await _inProcessGate.WaitAsync();
+            try
+            {
+                _logger.Log(
+                    message is WorkerInputMessage.Ping ? LogLevel.Trace : LogLevel.Debug,
+                    "=> {Id}: {Type} (fg)",
+                    message.Id,
+                    message.GetType().Name);
+                return await message.HandleAndGetOutputAsync(executor);
+            }
+            finally
+            {
+                _inProcessGate.Release();
+            }
+        }
+
+        var tcs = new TaskCompletionSource<WorkerOutputMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (!_pending.TryAdd(message.Id, tcs))
+        {
+            throw new InvalidOperationException($"Request with ID {message.Id} already exists.");
+        }
+
+        var serialized = JsonSerializer.Serialize(message, WorkerJsonContext.Default.WorkerInputMessage);
+        _logger.Log(
+            message is WorkerInputMessage.Ping ? LogLevel.Trace : LogLevel.Debug,
+            "=> {Id}: {Type} ({Details})",
+            message.Id,
+            message.GetType().Name,
+            serialized.Length.SeparateThousands());
+
+        try
+        {
+            Debug.Assert(OperatingSystem.IsBrowser());
+            WorkerHostInterop.PostMessage(_worker!.Handle, serialized);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Sending worker message {Id} failed.", message.Id);
+            _pending.TryRemove(message.Id, out _);
+            return new WorkerOutputMessage.Failure(ex)
+            {
+                Id = message.Id,
+                InputType = message.GetType().Name,
+            };
+        }
+
+        return await tcs.Task;
+    }
+
+    private bool IsStarted => _worker is not null || _services is not null;
+
+    private async Task EnsureStartedAsync()
+    {
+        if (IsStarted)
+        {
+            return;
+        }
+
+        await _startLock.WaitAsync();
+        try
+        {
+            if (IsStarted)
+            {
+                return;
+            }
+
+            _useWorker ??= await LoadUseWorkerAsync();
+            await StartNoLockAsync();
+        }
+        finally
+        {
+            _startLock.Release();
+        }
+    }
+
+    private async Task<bool> LoadUseWorkerAsync()
+    {
+        try
+        {
+            var snapshot = await _settings.LoadAsync();
+            return snapshot?.BackgroundWorker ?? true;
+        }
+        catch (JSException)
+        {
+            return true;
+        }
+    }
+
+    private async Task StartNoLockAsync()
+    {
+        if (_useWorker == true)
+        {
+            if (!OperatingSystem.IsBrowser())
+            {
+                throw new InvalidOperationException("Workers are only supported in the browser.");
+            }
+
+            _logger.LogInformation("Starting compilation web worker.");
+            _worker = await CreateWorkerAsync();
+            return;
+        }
+
+        _logger.LogInformation("Using in-process compilation worker.");
+        if (OperatingSystem.IsBrowser())
+        {
+            await JSHost.ImportAsync("worker-interop.js", "../_content/DotNetLab.WorkerWebAssembly/interop.js");
+        }
+
+        _services = WorkerServices.Create(_baseUrl, _logging.LogLevel);
+    }
+
+    private async Task DisposeCurrentNoLockAsync()
+    {
+        if (_worker is { } worker)
+        {
+            try
+            {
+                worker.PingTimer.Stop();
+                worker.PingTimer.Dispose();
+                if (OperatingSystem.IsBrowser())
+                {
+                    WorkerHostInterop.DisposeWorker(worker.Handle);
+                    worker.Handle.Dispose();
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Disposing worker failed.");
+            }
+
+            _worker = null;
+        }
+
+        if (_services is not null)
+        {
+            await _inProcessGate.WaitAsync();
+            try
+            {
+                await DisposeServicesAsync(_services);
+            }
+            finally
+            {
+                _inProcessGate.Release();
+            }
+
+            _services = null;
+        }
+
+        DiscardPending("Worker disposed");
+    }
+
+    [SupportedOSPlatform("browser")]
+    private async Task<WorkerInstance> CreateWorkerAsync()
+    {
+        await _controllerJs.Value;
+
+        var pingTimer = new Timer(TimeSpan.FromSeconds(10));
+        pingTimer.Elapsed += (_, _) =>
+        {
+            _ = _dispatcher.InvokeAsync(async () =>
+            {
+                pingTimer.Enabled = false;
+                try
+                {
+                    LastPingResult = await SendAsync(new WorkerInputMessage.Ping { Id = NextMessageId() });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Worker ping failed.");
+                }
+                finally
+                {
+                    pingTimer.Enabled = true;
+                }
+            });
+        };
+
+        var workerReady = new TaskCompletionSource();
+        Action<string> messageHandler = data =>
+        {
+            _ = _dispatcher.InvokeAsync(() =>
+            {
+                var message = JsonSerializer.Deserialize(data, WorkerJsonContext.Default.WorkerOutputMessage)!;
+                _logger.Log(
+                    message.InputType == nameof(WorkerInputMessage.Ping) ? LogLevel.Trace : LogLevel.Debug,
+                    "<= {Id}: {InputType} → {OutputType} ({Size})",
+                    message.Id,
+                    message.InputType,
+                    message.GetType().Name,
+                    data.Length.SeparateThousands());
+                if (message is WorkerOutputMessage.Ready)
+                {
+                    workerReady.TrySetResult();
+                }
+                else if (message.Id < 0)
+                {
+                    _logger.LogError("Unpaired message {Message}", message);
+                    DiscardPending("Unpaired message received", $"Unpaired message received: {message}");
+                }
+                else if (_pending.TryRemove(message.Id, out var tcs))
+                {
+                    tcs.TrySetResult(message);
+                }
+                else
+                {
+                    _logger.LogWarning("No pending request for message {Id}", message.Id);
+                }
+
+                return Task.CompletedTask;
+            });
+        };
+        Action<string> errorHandler = error =>
+        {
+            _logger.LogError("Worker error: {Error}", error);
+            pingTimer.Stop();
+            workerReady.TrySetException(new InvalidOperationException($"Worker error: {error}"));
+            _ = _dispatcher.InvokeAsync(() =>
+            {
+                DiscardPending("Worker error", error);
+                return Task.CompletedTask;
+            });
+        };
+
+        var handle = WorkerHostInterop.CreateWorker(
+            GetWorkerUrl("../_content/DotNetLab.WorkerWebAssembly/main.js", [_baseUrl, _logging.LogLevel.ToString()]),
+            messageHandler,
+            errorHandler);
+        await workerReady.Task;
+        WorkerHostInterop.WorkerReady(handle);
+        pingTimer.Start();
+        return new WorkerInstance
+        {
+            Handle = handle,
+            PingTimer = pingTimer,
+            MessageHandler = messageHandler,
+            ErrorHandler = errorHandler,
+        };
+    }
+
+    private void DiscardPending(string message, string? fullString = null)
+    {
+        var failure = new WorkerOutputMessage.Failure(message, fullString ?? message)
+        {
+            Id = WorkerOutputMessage.BroadcastId,
+            InputType = WorkerOutputMessage.BroadcastInputType,
+        };
+        foreach (var kvp in _pending)
+        {
+            if (_pending.TryRemove(kvp.Key, out var tcs))
+            {
+                _logger.LogDebug("Discarding pending request {Id}", kvp.Key);
+                tcs.TrySetResult(failure);
+            }
+        }
+    }
+
+    private static string GetWorkerUrl(string url, ReadOnlySpan<string> args)
+    {
+        var sb = new StringBuilder(url);
+        var i = 0;
+        foreach (var arg in args)
+        {
+            sb.Append(i++ == 0 ? '?' : '&');
+            sb.Append("arg=");
+            sb.Append(Uri.EscapeDataString(arg));
+        }
+
+        return sb.ToString();
+    }
 
     private static async ValueTask DisposeServicesAsync(IServiceProvider services)
     {
@@ -68,4 +386,39 @@ public sealed class WorkerHost
                 break;
         }
     }
+
+    private sealed class WorkerInstance
+    {
+        public required JSObject Handle { get; init; }
+        public required Timer PingTimer { get; init; }
+        public required Action<string> MessageHandler { get; init; }
+        public required Action<string> ErrorHandler { get; init; }
+    }
+}
+
+[SupportedOSPlatform("browser")]
+internal static partial class WorkerHostInterop
+{
+    [JSImport("createWorker", nameof(WorkerHost))]
+    public static partial JSObject CreateWorker(
+        string scriptUrl,
+        [JSMarshalAs<JSType.Function<JSType.String>>]
+        Action<string> messageHandler,
+        [JSMarshalAs<JSType.Function<JSType.String>>]
+        Action<string> errorHandler);
+
+    [JSImport("workerReady", nameof(WorkerHost))]
+    public static partial void WorkerReady(JSObject workerSetup);
+
+    [JSImport("postMessage", nameof(WorkerHost))]
+    public static partial void PostMessage(JSObject workerSetup, string message);
+
+    [JSImport("postSideMessage", nameof(WorkerHost))]
+    public static partial void PostSideMessage(JSObject workerSetup, string message);
+
+    [JSImport("disposeWorker", nameof(WorkerHost))]
+    public static partial void DisposeWorker(JSObject workerSetup);
+
+    [JSImport("collectAndDownloadGcDump", nameof(WorkerHost))]
+    public static partial void CollectAndDownloadGcDump();
 }
