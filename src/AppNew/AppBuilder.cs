@@ -14,6 +14,7 @@ public static class AppBuilder
         builder.Services.AddFluentUIComponents();
         builder.Services.AddScoped<LabWorkspaceState>();
         builder.Services.AddScoped<ILabStatus>(sp => sp.GetRequiredService<LabWorkspaceState>());
+        builder.Services.AddScoped<ILabBrand>(sp => sp.GetRequiredService<LabWorkspaceState>());
         builder.Services.AddScoped<LabUrlSync>();
         builder.Services.AddScoped<LabThemeService>();
         builder.Services.AddScoped<LabPlatform>();
