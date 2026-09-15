@@ -17,6 +17,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     private readonly InputOutputCache _cache;
     private readonly IState<CompilerState> _compiler;
     private readonly IState<PreferencesState> _preferences;
+    private readonly CompilationStore _compilation;
     private readonly IDispatcher _dispatcher;
     private readonly ILogger<LabWorkspaceState> _logger;
     private readonly Dictionary<string, OutputSnapshot> _outputCache = new(StringComparer.Ordinal);
@@ -44,6 +45,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
         InputOutputCache cache,
         IState<CompilerState> compiler,
         IState<PreferencesState> preferences,
+        CompilationStore compilation,
         IDispatcher dispatcher,
         ILogger<LabWorkspaceState> logger)
     {
@@ -55,6 +57,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
         _cache = cache;
         _compiler = compiler;
         _preferences = preferences;
+        _compilation = compilation;
         _dispatcher = dispatcher;
         _logger = logger;
         Documents = new LabDocuments(this);
@@ -94,8 +97,16 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
 
     public bool Stacked => Preferences.Stacked;
     public double Split { get; private set; } = 50;
-    public bool Running { get; private set; }
-    public bool Stale { get; internal set; } = true;
+    public bool Running
+    {
+        get => Compilation.Running;
+        private set => PatchCompilation(state => state with { Running = value });
+    }
+    public bool Stale
+    {
+        get => Compilation.Stale;
+        internal set => PatchCompilation(state => state with { Stale = value });
+    }
     public string Template => Documents.Template;
 
     public string ActiveSource
@@ -907,6 +918,11 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     private CompilerState Compiler => _compiler.Value;
 
     private PreferencesState Preferences => _preferences.Value;
+
+    private CompilationState Compilation => _compilation.Value;
+
+    private void PatchCompilation(Func<CompilationState, CompilationState> mutate)
+        => _compilation.Update(mutate);
 
     private void BeginNewOutputGeneration()
     {

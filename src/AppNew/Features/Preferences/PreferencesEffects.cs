@@ -5,48 +5,48 @@ namespace DotNetLab.Features.Preferences;
 
 public sealed class PreferencesEffects(LabSettings settings, IState<PreferencesState> state, LabLogging logging)
 {
-    [EffectMethod]
-    public Task Handle(SeedPreferencesAction _, IDispatcher dispatcher)
+    [EffectMethod(typeof(SeedPreferencesAction))]
+    public Task HandleSeed(IDispatcher dispatcher)
     {
         _ = dispatcher;
         ApplyLogLevel();
         return Task.CompletedTask;
     }
 
-    [EffectMethod]
-    public Task Handle(HydratePreferencesAction _, IDispatcher dispatcher)
+    [EffectMethod(typeof(HydratePreferencesAction))]
+    public Task HandleHydrate(IDispatcher dispatcher)
     {
         _ = dispatcher;
         ApplyLogLevel();
         return Task.CompletedTask;
     }
 
-    [EffectMethod]
-    public Task Handle(PreferencesReadyAction _, IDispatcher dispatcher)
+    [EffectMethod(typeof(PreferencesReadyAction))]
+    public Task HandleReady(IDispatcher dispatcher)
     {
         _ = dispatcher;
         ApplyLogLevel();
         return Task.CompletedTask;
     }
 
-    [EffectMethod]
-    public Task Handle(SetDebugLogsAction _, IDispatcher dispatcher)
+    [EffectMethod(typeof(SetDebugLogsAction))]
+    public Task HandleDebugLogs(IDispatcher dispatcher)
     {
         _ = dispatcher;
         ApplyLogLevel();
         return Task.CompletedTask;
     }
 
-    [EffectMethod]
-    public Task Handle(SetTraceLogsAction _, IDispatcher dispatcher)
+    [EffectMethod(typeof(SetTraceLogsAction))]
+    public Task HandleTraceLogs(IDispatcher dispatcher)
     {
         _ = dispatcher;
         ApplyLogLevel();
         return Task.CompletedTask;
     }
 
-    [EffectMethod]
-    public async Task Handle(PersistPreferencesAction _, IDispatcher dispatcher)
+    [EffectMethod(typeof(PersistPreferencesAction))]
+    public async Task HandlePersist(IDispatcher dispatcher)
     {
         _ = dispatcher;
         var prefs = state.Value;
