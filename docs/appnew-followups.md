@@ -25,6 +25,7 @@ Keep the current chrome folders until feature stores exist, then move into
 - [x] Splitter pointer-move in JS; `LabCodeEditor` `IAsyncDisposable`
 - [x] `CompilerStore` under `Lab/` (`CompilerState`; worker apply stays on the workspace)
 - [x] Fluxor `Features/Compiler` with `CompilerPicker` / `CompilerSection` / `CompilerSettings`
+- [x] `PreferencesStore` under `Lab/` (`PreferencesState`; persist / language-services apply stay on the workspace)
 
 ## P0
 
@@ -189,7 +190,7 @@ Namespaces carry the rest (`DotNetLab.Features.Documents`).
 ## Later (not now)
 
 - [x] Next Fluxor features only after a real store exists (not wrapping `LabWorkspaceState`) — Compiler
-- [x] Small scoped feature stores still under `Lab/` until a store is real — started with `CompilerStore`
+- [x] Small scoped feature stores still under `Lab/` until a store is real — CompilerStore, PreferencesStore
 - [ ] Move each store + its UI into `Features/` / `Shell/` / `Editor/` / `Infrastructure/`
 - [ ] `LabWorkspace` injecting a narrow workspace surface instead of `LabWorkspaceState`
 - [ ] `Lab/` empty; `ILab*` gone

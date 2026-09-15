@@ -16,6 +16,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     private readonly TemplateCache _templates;
     private readonly InputOutputCache _cache;
     private readonly IState<CompilerState> _compiler;
+    private readonly PreferencesStore _preferences;
     private readonly IDispatcher _dispatcher;
     private readonly ILogger<LabWorkspaceState> _logger;
     private readonly Dictionary<string, OutputSnapshot> _outputCache = new(StringComparer.Ordinal);
@@ -43,8 +44,8 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
         TemplateCache templates,
         InputOutputCache cache,
         IState<CompilerState> compiler,
+        PreferencesStore preferences,
         IDispatcher dispatcher,
-        ILabEnvironment environment,
         ILogger<LabWorkspaceState> logger)
     {
         _worker = worker;
@@ -55,9 +56,9 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
         _templates = templates;
         _cache = cache;
         _compiler = compiler;
+        _preferences = preferences;
         _dispatcher = dispatcher;
         _logger = logger;
-        DebugLogs = environment.IsDevelopment;
         ApplyLogLevel();
         Documents = new LabDocuments(this);
         Tabs = new OutputTabLayout(this);
@@ -93,7 +94,11 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     public event Func<Task>? SnapshotRequested;
     public event Func<Task>? UrlPersistRequested;
 
-    public bool Stacked { get; private set; }
+    public bool Stacked
+    {
+        get => Preferences.Stacked;
+        private set => PatchPreferences(state => state with { Stacked = value });
+    }
     public double Split { get; private set; } = 50;
     public bool Running { get; private set; }
     public bool Stale { get; internal set; } = true;
@@ -141,20 +146,64 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     public bool Busy => Running || CompilerLoading;
     public string RazorToolchain { get; set; } = "Auto";
     public string RazorStrategy { get; set; } = "Runtime";
-    public bool WordWrap { get; set; }
-    public bool UseVim { get; set; }
-    public bool DisableInputVirtualKeyboard { get; private set; }
-    public bool LanguageServices { get; set; } = true;
-    public bool DebugLogs { get; set; }
-    public bool TraceLogs { get; set; }
-    public bool MemoryUsageView { get; set; }
-    public bool BackgroundWorker { get; set; } = true;
-    public bool DisplayHintSquiggles { get; set; }
-    public bool EnableCaching { get; set; } = true;
-    public bool AutomaticCompilation { get; set; } = true;
-    public string AppTheme { get; private set; } = "dark";
-    public bool ResolvedDark { get; private set; } = true;
-    public string MonacoTheme => LabTheme.MonacoThemeName(ResolvedDark);
+    public bool WordWrap
+    {
+        get => Preferences.WordWrap;
+        set => PatchPreferences(state => state with { WordWrap = value });
+    }
+    public bool UseVim
+    {
+        get => Preferences.UseVim;
+        set => PatchPreferences(state => state with { UseVim = value });
+    }
+    public bool DisableInputVirtualKeyboard
+    {
+        get => Preferences.DisableInputVirtualKeyboard;
+        private set => PatchPreferences(state => state with { DisableInputVirtualKeyboard = value });
+    }
+    public bool LanguageServices
+    {
+        get => Preferences.LanguageServices;
+        set => PatchPreferences(state => state with { LanguageServices = value });
+    }
+    public bool DebugLogs
+    {
+        get => Preferences.DebugLogs;
+        set => PatchPreferences(state => state with { DebugLogs = value });
+    }
+    public bool TraceLogs
+    {
+        get => Preferences.TraceLogs;
+        set => PatchPreferences(state => state with { TraceLogs = value });
+    }
+    public bool MemoryUsageView
+    {
+        get => Preferences.MemoryUsageView;
+        set => PatchPreferences(state => state with { MemoryUsageView = value });
+    }
+    public bool BackgroundWorker
+    {
+        get => Preferences.BackgroundWorker;
+        set => PatchPreferences(state => state with { BackgroundWorker = value });
+    }
+    public bool DisplayHintSquiggles
+    {
+        get => Preferences.DisplayHintSquiggles;
+        set => PatchPreferences(state => state with { DisplayHintSquiggles = value });
+    }
+    public bool EnableCaching
+    {
+        get => Preferences.EnableCaching;
+        set => PatchPreferences(state => state with { EnableCaching = value });
+    }
+    public bool AutomaticCompilation
+    {
+        get => Preferences.AutomaticCompilation;
+        set => PatchPreferences(state => state with { AutomaticCompilation = value });
+    }
+    public string AppTheme => Preferences.AppTheme;
+    public bool ResolvedDark => Preferences.ResolvedDark;
+    public string MonacoTheme => Preferences.MonacoTheme;
     public bool DecodeCustomAttributeBlobs { get; set; }
     public bool ShowSequencePoints { get; set; }
     public bool FullIl { get; set; }
@@ -305,78 +354,17 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
 
     private void ApplyUiSettings(LabSettingsSnapshot snapshot)
     {
-        if (snapshot.WordWrap is { } wordWrap)
-        {
-            WordWrap = wordWrap;
-        }
-
-        if (snapshot.UseVim is { } useVim)
-        {
-            UseVim = useVim;
-        }
-
-        if (snapshot.LanguageServices is { } languageServices)
-        {
-            LanguageServices = languageServices;
-        }
-
-        if (snapshot.DebugLogs is { } debugLogs)
-        {
-            DebugLogs = debugLogs;
-        }
-
-        if (snapshot.TraceLogs is { } traceLogs)
-        {
-            TraceLogs = traceLogs;
-        }
-
-        if (snapshot.MemoryUsageView is { } memoryUsageView)
-        {
-            MemoryUsageView = memoryUsageView;
-        }
-
-        if (snapshot.BackgroundWorker is { } backgroundWorker)
-        {
-            BackgroundWorker = backgroundWorker;
-        }
-
-        if (snapshot.DisplayHintSquiggles is { } displayHintSquiggles)
-        {
-            DisplayHintSquiggles = displayHintSquiggles;
-        }
-
-        if (snapshot.EnableCaching is { } enableCaching)
-        {
-            EnableCaching = enableCaching;
-        }
-
-        if (snapshot.AutomaticCompilation is { } automaticCompilation)
-        {
-            AutomaticCompilation = automaticCompilation;
-        }
-
-        if (snapshot.DisableInputVirtualKeyboard is { } disableInputVirtualKeyboard)
-        {
-            DisableInputVirtualKeyboard = disableInputVirtualKeyboard;
-        }
-
+        PatchPreferences(state => state.WithSnapshot(snapshot));
         ApplyLogLevel();
     }
 
     private void ApplyLogLevel()
     {
-        if (!DebugLogs)
-        {
-            TraceLogs = false;
-        }
-        else if (TraceLogs)
-        {
-            DebugLogs = true;
-        }
-
-        _logging.LogLevel = TraceLogs
+        PatchPreferences(state => state.WithNormalizedLogs());
+        var prefs = Preferences;
+        _logging.LogLevel = prefs.TraceLogs
             ? LogLevel.Trace
-            : DebugLogs
+            : prefs.DebugLogs
                 ? LogLevel.Debug
                 : LogLevel.Information;
     }
@@ -417,23 +405,13 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     }
 
     private LabSettingsSnapshot CaptureSettings()
-        => new()
-        {
-            WordWrap = WordWrap,
-            UseVim = UseVim,
-            LanguageServices = LanguageServices,
-            DebugLogs = DebugLogs,
-            TraceLogs = TraceLogs,
-            MemoryUsageView = MemoryUsageView,
-            BackgroundWorker = BackgroundWorker,
-            DisplayHintSquiggles = DisplayHintSquiggles,
-            EnableCaching = EnableCaching,
-            AutomaticCompilation = AutomaticCompilation,
-            DisableInputVirtualKeyboard = DisableInputVirtualKeyboard,
-            CompilationPreferences = EditingUserPreferences
-                ? GetPreferences()
-                : _settings.CompilationPreferences,
-        };
+    {
+        var snapshot = Preferences.ToSnapshot();
+        snapshot.CompilationPreferences = EditingUserPreferences
+            ? GetPreferences()
+            : _settings.CompilationPreferences;
+        return snapshot;
+    }
 
     private Task PersistSettingsAsync()
     {
@@ -594,8 +572,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
             return;
         }
 
-        AppTheme = preference;
-        ResolvedDark = resolvedDark;
+        PatchPreferences(state => state with { AppTheme = preference, ResolvedDark = resolvedDark });
         Notify();
     }
 
@@ -1043,6 +1020,11 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     private string CompilerKey() => Compiler.Key;
 
     private CompilerState Compiler => _compiler.Value;
+
+    private PreferencesState Preferences => _preferences.Value;
+
+    private void PatchPreferences(Func<PreferencesState, PreferencesState> mutate)
+        => _preferences.Update(mutate);
 
     private void BeginNewOutputGeneration()
     {
