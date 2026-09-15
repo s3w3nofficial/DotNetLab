@@ -27,8 +27,8 @@ god object; see [State direction](#state-direction).
 
 ## P1
 
-- [ ] Replace `EditorGroups` static drag fields with a scoped `EditorDragState`
-- [ ] Fix `LabLanguageServices` `_outputRegistered` so a failed JS register can retry
+- [x] Replace `EditorGroups` static drag fields with a scoped `EditorDragState`
+- [x] Fix `LabLanguageServices` `_outputRegistered` so a failed JS register can retry
 - [ ] Continue ISP: `CommandPalette` off `LabWorkspaceState`
 - [ ] Continue ISP: `SettingsDialog` off `LabWorkspaceState`
 - [ ] Continue ISP: `MainLayout` off `LabWorkspaceState`

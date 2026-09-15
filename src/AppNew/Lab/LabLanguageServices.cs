@@ -249,51 +249,51 @@ public sealed class LabLanguageServices(
         try
         {
             await blazorMonacoInterop.RegisterLanguageAsync(CompiledAssembly.OutputLanguageId);
+
+            _outputSemanticTokensProvider = await blazorMonacoInterop.RegisterSemanticTokensProviderAsync(_outputLanguageSelector, new(loggerFactory)
+            {
+                Legend = new SemanticTokensLegend
+                {
+                    TokenTypes = SemanticTokensUtil.TokenTypes.LspValues,
+                    TokenModifiers = SemanticTokensUtil.TokenModifiers.LspValues,
+                },
+                ProvideSemanticTokens = (modelUri, rangeJson, debug, cancellationToken) =>
+                {
+                    if (CurrentMetadata is { } metadata &&
+                        metadata.ModelUri == modelUri &&
+                        metadata.Metadata?.SemanticTokens is { } semanticTokens)
+                    {
+                        var decompressed = GZipStream.Decompress(Convert.FromBase64String(semanticTokens));
+                        return Task.FromResult<string?>(Convert.ToBase64String(decompressed));
+                    }
+
+                    return Task.FromResult<string?>(string.Empty);
+                },
+                RegisterRangeProvider = false,
+            });
+
+            _outputDefinitionProvider = await blazorMonacoInterop.RegisterDefinitionProviderAsync(_outputLanguageSelector, new(loggerFactory)
+            {
+                ProvideDefinition = (modelUri, offset) =>
+                {
+                    if (CurrentMetadata is { } metadata &&
+                        metadata.ModelUri == modelUri &&
+                        metadata.Metadata != null &&
+                        TryGetOutputToOutputMapping(metadata.Metadata, out var mapping) &&
+                        mapping.TryFind(offset, out _, out var targetSpan))
+                    {
+                        return targetSpan;
+                    }
+
+                    return null;
+                },
+            });
         }
         catch (JSException ex)
         {
             logger.LogError(ex, "Registering the output language failed");
-            return;
+            Interlocked.Exchange(ref _outputRegistered, 0);
         }
-
-        _outputSemanticTokensProvider = await blazorMonacoInterop.RegisterSemanticTokensProviderAsync(_outputLanguageSelector, new(loggerFactory)
-        {
-            Legend = new SemanticTokensLegend
-            {
-                TokenTypes = SemanticTokensUtil.TokenTypes.LspValues,
-                TokenModifiers = SemanticTokensUtil.TokenModifiers.LspValues,
-            },
-            ProvideSemanticTokens = (modelUri, rangeJson, debug, cancellationToken) =>
-            {
-                if (CurrentMetadata is { } metadata &&
-                    metadata.ModelUri == modelUri &&
-                    metadata.Metadata?.SemanticTokens is { } semanticTokens)
-                {
-                    var decompressed = GZipStream.Decompress(Convert.FromBase64String(semanticTokens));
-                    return Task.FromResult<string?>(Convert.ToBase64String(decompressed));
-                }
-
-                return Task.FromResult<string?>(string.Empty);
-            },
-            RegisterRangeProvider = false,
-        });
-
-        _outputDefinitionProvider = await blazorMonacoInterop.RegisterDefinitionProviderAsync(_outputLanguageSelector, new(loggerFactory)
-        {
-            ProvideDefinition = (modelUri, offset) =>
-            {
-                if (CurrentMetadata is { } metadata &&
-                    metadata.ModelUri == modelUri &&
-                    metadata.Metadata != null &&
-                    TryGetOutputToOutputMapping(metadata.Metadata, out var mapping) &&
-                    mapping.TryFind(offset, out _, out var targetSpan))
-                {
-                    return targetSpan;
-                }
-
-                return null;
-            },
-        });
     }
 
     private async Task RegisterAsync()
