@@ -31,6 +31,7 @@ Keep the current chrome folders until feature stores exist, then move into
 - [x] Fluxor `Features/Compilation` (`Running` / `Stale`; worker compile stays on the workspace)
 - [x] `StatusSelectors` (`CompilationState` + `CompilerState` → right pill / ready; left stays on `ILabStatus`)
 - [x] `DocumentsStore` under `Lab/` (`DocumentsState`; file contents stay on `LabDocuments`; Monaco stays source of truth)
+- [x] Fluxor `Features/Documents` (template / active file / file list / URIs; file contents stay on `LabDocuments`)
 
 ## P0
 
@@ -196,7 +197,7 @@ Namespaces carry the rest (`DotNetLab.Features.Documents`).
 
 ## Later (not now)
 
-- [x] Next Fluxor features only after a real store exists (not wrapping `LabWorkspaceState`) — Compiler, Preferences, Compilation
+- [x] Next Fluxor features only after a real store exists (not wrapping `LabWorkspaceState`) — Compiler, Preferences, Compilation, Documents
 - [x] Small scoped feature stores still under `Lab/` until a store is real — CompilerStore, PreferencesStore, CompilationStore, DocumentsStore
 - [ ] Move each store + its UI into `Features/` / `Shell/` / `Editor/` / `Infrastructure/`
 - [ ] `LabWorkspace` injecting a narrow workspace surface instead of `LabWorkspaceState`

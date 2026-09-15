@@ -1,5 +1,9 @@
-namespace DotNetLab.Lab;
+using DotNetLab.Lab;
+using Fluxor;
 
+namespace DotNetLab.Features.Documents;
+
+[FeatureState]
 public sealed record DocumentsState
 {
     public string Template { get; init; } = "C#";
@@ -9,4 +13,8 @@ public sealed record DocumentsState
     {
         [InitialCode.CSharp.SuggestedFileName] = CompiledAssembly.GetInputModelUri(InitialCode.CSharp.SuggestedFileName),
     };
+
+    public DocumentsState()
+    {
+    }
 }

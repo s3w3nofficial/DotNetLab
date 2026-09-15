@@ -1,15 +1,18 @@
+using DotNetLab.Features.Documents;
+using Fluxor;
+
 namespace DotNetLab.Lab;
 
 public sealed class LabDocuments
 {
     private readonly LabWorkspaceState _state;
-    private readonly DocumentsStore _documents;
+    private readonly IDispatcher _dispatcher;
     private readonly Dictionary<string, string> _modelUris = new(StringComparer.Ordinal);
 
-    public LabDocuments(LabWorkspaceState state, DocumentsStore documents)
+    public LabDocuments(LabWorkspaceState state, IDispatcher dispatcher)
     {
         _state = state;
-        _documents = documents;
+        _dispatcher = dispatcher;
         EnsureUri(InitialCode.CSharp.SuggestedFileName);
         Publish();
     }
@@ -460,12 +463,12 @@ public sealed class LabDocuments
 
     internal void Publish()
     {
-        _documents.Update(_ => new DocumentsState
+        _dispatcher.Dispatch(new SetDocumentsAction(new DocumentsState
         {
             Template = Template,
             ActiveSource = ActiveSource,
             SourceFiles = [.. _sourceFiles],
             ModelUris = new Dictionary<string, string>(_modelUris, StringComparer.Ordinal),
-        });
+        }));
     }
 }

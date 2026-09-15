@@ -2,6 +2,7 @@ using System.Collections.Immutable;
 using BlazorMonaco.Editor;
 using DotNetLab.Features.Compiler;
 using DotNetLab.Features.Compilation;
+using DotNetLab.Features.Documents;
 using DotNetLab.Features.Preferences;
 using Fluxor;
 using Microsoft.JSInterop;
@@ -19,7 +20,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     private readonly IState<CompilerState> _compiler;
     private readonly IState<PreferencesState> _preferences;
     private readonly IState<CompilationState> _compilation;
-    private readonly DocumentsStore _documentsStore;
+    private readonly IState<DocumentsState> _documents;
     private readonly IDispatcher _dispatcher;
     private readonly ILogger<LabWorkspaceState> _logger;
     private readonly Dictionary<string, OutputSnapshot> _outputCache = new(StringComparer.Ordinal);
@@ -48,7 +49,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
         IState<CompilerState> compiler,
         IState<PreferencesState> preferences,
         IState<CompilationState> compilation,
-        DocumentsStore documents,
+        IState<DocumentsState> documents,
         IDispatcher dispatcher,
         ILogger<LabWorkspaceState> logger)
     {
@@ -61,15 +62,16 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
         _compiler = compiler;
         _preferences = preferences;
         _compilation = compilation;
-        _documentsStore = documents;
+        _documents = documents;
         _dispatcher = dispatcher;
         _logger = logger;
-        Documents = new LabDocuments(this, documents);
+        Documents = new LabDocuments(this, dispatcher);
         Tabs = new OutputTabLayout(this);
         _compilerKey = Compiler.Key;
         _compiler.StateChanged += OnCompilerStoreChanged;
         _preferences.StateChanged += OnPreferencesChanged;
         _compilation.StateChanged += OnCompilationChanged;
+        _documents.StateChanged += OnDocumentsChanged;
         _worker.Failed += OnWorkerFailed;
     }
 
@@ -253,12 +255,19 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
         _compiler.StateChanged -= OnCompilerStoreChanged;
         _preferences.StateChanged -= OnPreferencesChanged;
         _compilation.StateChanged -= OnCompilationChanged;
+        _documents.StateChanged -= OnDocumentsChanged;
         _worker.Failed -= OnWorkerFailed;
     }
 
     private void OnPreferencesChanged(object? sender, EventArgs e) => Notify();
 
     private void OnCompilationChanged(object? sender, EventArgs e) => Notify();
+
+    private void OnDocumentsChanged(object? sender, EventArgs e)
+    {
+        Notify();
+        NotifyStatus();
+    }
 
     private void OnCompilerStoreChanged(object? sender, EventArgs e)
     {
@@ -928,7 +937,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
 
     private CompilationState Compilation => _compilation.Value;
 
-    private DocumentsState DocumentsSnapshot => _documentsStore.Value;
+    private DocumentsState DocumentsSnapshot => _documents.Value;
 
     private void BeginNewOutputGeneration()
     {

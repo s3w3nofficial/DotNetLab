@@ -4,6 +4,7 @@
 @inject LabShare Share
 @inject IState<UpdateState> Updates
 @inject IState<PreferencesState> Prefs
+@inject IState<DocumentsState> Documents
 
 <div class="lab-brand-bar">
     <span class="lab-brand-mark" aria-hidden="true">
@@ -17,7 +18,7 @@
                           Size="ButtonSize.Small"
                           Color="@BrandForeground"
                           IconStart="@(new Icons.Regular.Size20.Braces())">
-            Template: @Brand.Template
+            Template: @Documents.Value.Template
         </FluentMenuButton>
         <FluentMenuList>
             @foreach (var template in LabCatalog.Templates)
