@@ -19,6 +19,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     private readonly IState<CompilerState> _compiler;
     private readonly IState<PreferencesState> _preferences;
     private readonly IState<CompilationState> _compilation;
+    private readonly DocumentsStore _documentsStore;
     private readonly IDispatcher _dispatcher;
     private readonly ILogger<LabWorkspaceState> _logger;
     private readonly Dictionary<string, OutputSnapshot> _outputCache = new(StringComparer.Ordinal);
@@ -47,6 +48,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
         IState<CompilerState> compiler,
         IState<PreferencesState> preferences,
         IState<CompilationState> compilation,
+        DocumentsStore documents,
         IDispatcher dispatcher,
         ILogger<LabWorkspaceState> logger)
     {
@@ -59,9 +61,10 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
         _compiler = compiler;
         _preferences = preferences;
         _compilation = compilation;
+        _documentsStore = documents;
         _dispatcher = dispatcher;
         _logger = logger;
-        Documents = new LabDocuments(this);
+        Documents = new LabDocuments(this, documents);
         Tabs = new OutputTabLayout(this);
         _compilerKey = Compiler.Key;
         _compiler.StateChanged += OnCompilerStoreChanged;
@@ -109,12 +112,16 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
         get => Compilation.Stale;
         internal set => _dispatcher.Dispatch(new SetStaleAction(value));
     }
-    public string Template => Documents.Template;
+    public string Template => DocumentsSnapshot.Template;
 
     public string ActiveSource
     {
-        get => Documents.ActiveSource;
-        set => Documents.ActiveSource = value;
+        get => DocumentsSnapshot.ActiveSource;
+        set
+        {
+            Documents.ActiveSource = value;
+            Documents.Publish();
+        }
     }
 
     public string ActiveOutput
@@ -212,7 +219,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     }
 
     public IReadOnlyDictionary<string, string> Sources => Documents.Sources;
-    public IReadOnlyList<string> SourceFiles => Documents.SourceFiles;
+    public IReadOnlyList<string> SourceFiles => DocumentsSnapshot.SourceFiles;
     public string UriFor(string fileName) => Documents.UriFor(fileName);
     public int OutputLayoutRevision => Tabs.Revision;
 
@@ -920,6 +927,8 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     private PreferencesState Preferences => _preferences.Value;
 
     private CompilationState Compilation => _compilation.Value;
+
+    private DocumentsState DocumentsSnapshot => _documentsStore.Value;
 
     private void BeginNewOutputGeneration()
     {

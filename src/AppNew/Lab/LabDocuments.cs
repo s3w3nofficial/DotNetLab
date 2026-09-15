@@ -3,12 +3,15 @@ namespace DotNetLab.Lab;
 public sealed class LabDocuments
 {
     private readonly LabWorkspaceState _state;
+    private readonly DocumentsStore _documents;
     private readonly Dictionary<string, string> _modelUris = new(StringComparer.Ordinal);
 
-    public LabDocuments(LabWorkspaceState state)
+    public LabDocuments(LabWorkspaceState state, DocumentsStore documents)
     {
         _state = state;
+        _documents = documents;
         EnsureUri(InitialCode.CSharp.SuggestedFileName);
+        Publish();
     }
 
     public string Template { get; private set; } = "C#";
@@ -30,6 +33,7 @@ public sealed class LabDocuments
         {
             uri = CompiledAssembly.GetInputModelUri(fileName);
             _modelUris[fileName] = uri;
+            Publish();
         }
 
         return uri;
@@ -93,19 +97,18 @@ public sealed class LabDocuments
         if (template is "Razor")
         {
             ActiveSource = "TestComponent.razor";
-            _state.ActiveOutput = "gcs";
         }
         else if (template is "CSHTML")
         {
             ActiveSource = "TestPage.cshtml";
-            _state.ActiveOutput = "gcs";
         }
         else
         {
             ActiveSource = "Program.cs";
-            _state.ActiveOutput = "cs";
         }
 
+        Publish();
+        _state.ActiveOutput = template is "Razor" or "CSHTML" ? "gcs" : "cs";
         _state.Stale = true;
         _state.Tabs.EnsureActiveOutput();
         _state.Notify();
@@ -166,7 +169,12 @@ public sealed class LabDocuments
         if (string.Equals(ActiveSource, oldName, StringComparison.Ordinal))
         {
             ActiveSource = normalized;
+            Publish();
             _state.Tabs.EnsureActiveOutput();
+        }
+        else
+        {
+            Publish();
         }
 
         _state.Stale = true;
@@ -205,7 +213,12 @@ public sealed class LabDocuments
         if (ActiveSource == file)
         {
             ActiveSource = _sourceFiles.FirstOrDefault(name => !IsSpecialSource(name)) ?? _sourceFiles[0];
+            Publish();
             _state.Tabs.EnsureActiveOutput();
+        }
+        else
+        {
+            Publish();
         }
 
         _state.Stale = true;
@@ -238,6 +251,7 @@ public sealed class LabDocuments
         _sources[name] = contents;
         EnsureUri(name);
         ActiveSource = name;
+        Publish();
         _state.Tabs.EnsureActiveOutput();
         _state.Stale = true;
         _state.Notify();
@@ -261,6 +275,7 @@ public sealed class LabDocuments
         }
 
         ActiveSource = fileName;
+        Publish();
         _state.Tabs.EnsureActiveOutput();
         _state.Notify();
     }
@@ -342,6 +357,7 @@ public sealed class LabDocuments
         }
 
         ActiveSource = _sourceFiles.FirstOrDefault(name => !IsSpecialSource(name)) ?? _sourceFiles[0];
+        Publish();
         _state.Tabs.EnsureActiveOutput();
         _state.Stale = true;
         _state.Notify();
@@ -355,6 +371,7 @@ public sealed class LabDocuments
         }
 
         ActiveSource = file;
+        Publish();
         _state.Tabs.EnsureActiveOutput();
         _state.Notify();
     }
@@ -436,7 +453,19 @@ public sealed class LabDocuments
                 ? "CSHTML"
                 : "C#";
 
+        Publish();
         _state.Tabs.EnsureActiveOutput();
         _state.Notify();
+    }
+
+    internal void Publish()
+    {
+        _documents.Update(_ => new DocumentsState
+        {
+            Template = Template,
+            ActiveSource = ActiveSource,
+            SourceFiles = [.. _sourceFiles],
+            ModelUris = new Dictionary<string, string>(_modelUris, StringComparer.Ordinal),
+        });
     }
 }
