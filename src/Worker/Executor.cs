@@ -52,13 +52,6 @@ public sealed class WorkerExecutor(
 
         if (message.LanguageServicesEnabled)
         {
-            notifyLanguageServices(compiler);
-        }
-
-        return result;
-
-        async void notifyLanguageServices(CompilerProxy compiler)
-        {
             try
             {
                 var languageServices = await compiler.GetLanguageServicesAsync();
@@ -69,6 +62,8 @@ public sealed class WorkerExecutor(
                 logger.LogError(ex, "Error notifying language services after compilation.");
             }
         }
+
+        return result;
     }
 
     public async Task<string> HandleAsync(WorkerInputMessage.FormatCode message)

@@ -1,3 +1,6 @@
+@inject LabWorkspaceState State
+@implements IDisposable
+
 <div class="lab-statusbar">
     @foreach (var (item, index) in Left.Select((value, i) => (value, i)))
     {
@@ -11,7 +14,23 @@
 </div>
 
 @code {
-    [Parameter] public IReadOnlyList<string> Left { get; set; } = [];
-    [Parameter] public string Right { get; set; } = "";
-    [Parameter] public bool Ready { get; set; } = true;
+    [Parameter] public string Side { get; set; } = "source";
+
+    private IReadOnlyList<string> Left => Side == "output" ? State.OutputStatusLeft : State.SourceStatusLeft;
+    private string Right => Side == "output" ? State.OutputStatusRight : State.SourceStatusRight;
+    private bool Ready => Side == "output" ? !State.Running : !State.Stale && !State.Running;
+
+    protected override void OnInitialized()
+    {
+        State.Changed += OnChanged;
+        State.StatusChanged += OnChanged;
+    }
+
+    public void Dispose()
+    {
+        State.Changed -= OnChanged;
+        State.StatusChanged -= OnChanged;
+    }
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
 }

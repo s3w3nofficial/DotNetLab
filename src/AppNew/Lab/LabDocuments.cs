@@ -135,7 +135,7 @@ public sealed class LabDocuments
         }
 
         _state.Stale = true;
-        _state.Notify();
+        _state.NotifyStatus();
     }
 
     public void RenameFile(string oldName, string newName)

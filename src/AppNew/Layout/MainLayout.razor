@@ -33,7 +33,6 @@
 
     protected override void OnInitialized()
     {
-        State.Changed += OnStateChanged;
         State.SettingsRequested += OpenSettingsAsync;
         State.PaletteRequested += TogglePaletteAsync;
         State.PasteUrlRequested += OpenPasteAsync;
@@ -72,8 +71,6 @@
         StateHasChanged();
     }
 
-    private void OnStateChanged() => InvokeAsync(StateHasChanged);
-
     private void OnUpdatesChanged() => InvokeAsync(StateHasChanged);
 
     private Task OpenSettingsAsync() => _settings?.ShowAsync() ?? Task.CompletedTask;
@@ -84,7 +81,6 @@
 
     public void Dispose()
     {
-        State.Changed -= OnStateChanged;
         State.SettingsRequested -= OpenSettingsAsync;
         State.PaletteRequested -= TogglePaletteAsync;
         State.PasteUrlRequested -= OpenPasteAsync;

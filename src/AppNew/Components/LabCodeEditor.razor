@@ -35,6 +35,7 @@
 
     [Parameter] public string Value { get; set; } = "";
     [Parameter] public string Language { get; set; } = "csharp";
+    [Parameter] public string? FileName { get; set; }
     [Parameter] public string? ModelUri { get; set; }
     [Parameter] public bool ReadOnly { get; set; }
     [Parameter] public bool WordWrap { get; set; }
@@ -372,9 +373,31 @@
         }
     }
 
-    private async Task OnModelChangedAsync(ModelContentChangedEvent args)
+    private Task OnModelChangedAsync(ModelContentChangedEvent args)
     {
         if (_suppressChange || !_ready || _editor is null || ReadOnly)
+        {
+            return Task.CompletedTask;
+        }
+
+        if (!TryApplyContentChanges(args, out var next))
+        {
+            _ = SyncFromEditorAsync(args);
+            return Task.CompletedTask;
+        }
+
+        PushSource(next);
+        if (!string.IsNullOrEmpty(ModelUri))
+        {
+            _ = State.OnSourceModelContentChangedAsync(ModelUri, args);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private async Task SyncFromEditorAsync(ModelContentChangedEvent args)
+    {
+        if (_editor is null)
         {
             return;
         }
@@ -382,8 +405,7 @@
         try
         {
             var next = await _editor.GetValue();
-            _lastValue = next;
-            await OnValueChanged.InvokeAsync(next);
+            PushSource(next);
             if (!string.IsNullOrEmpty(ModelUri))
             {
                 await State.OnSourceModelContentChangedAsync(ModelUri, args);
@@ -392,6 +414,42 @@
         catch (JSException)
         {
         }
+    }
+
+    private void PushSource(string next)
+    {
+        _lastValue = next;
+        if (!string.IsNullOrEmpty(FileName))
+        {
+            State.SetSource(FileName, next);
+        }
+        else if (OnValueChanged.HasDelegate)
+        {
+            _ = OnValueChanged.InvokeAsync(next);
+        }
+    }
+
+    private bool TryApplyContentChanges(ModelContentChangedEvent args, out string next)
+    {
+        next = _lastValue;
+        if (args.Changes is not { Count: > 0 } changes)
+        {
+            return false;
+        }
+
+        foreach (var change in changes.OrderByDescending(static change => change.RangeOffset))
+        {
+            var offset = change.RangeOffset;
+            var length = change.RangeLength;
+            if (offset < 0 || length < 0 || offset + length > next.Length)
+            {
+                return false;
+            }
+
+            next = string.Concat(next.AsSpan(0, offset), change.Text, next.AsSpan(offset + length));
+        }
+
+        return true;
     }
 
     private async Task FlushAsync()
@@ -409,8 +467,7 @@
                 return;
             }
 
-            _lastValue = next;
-            await OnValueChanged.InvokeAsync(next);
+            PushSource(next);
         }
         catch (JSException)
         {

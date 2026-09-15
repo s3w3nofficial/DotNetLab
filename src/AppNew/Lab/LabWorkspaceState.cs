@@ -63,6 +63,7 @@ public sealed class LabWorkspaceState
     public CompilationInput? LastInput { get; private set; }
 
     public event Action? Changed;
+    public event Action? StatusChanged;
     public event Func<Task>? SettingsRequested;
     public event Func<Task>? PaletteRequested;
     public event Func<Task>? PasteUrlRequested;
@@ -220,6 +221,8 @@ public sealed class LabWorkspaceState
     public static bool IsRazorLike(string fileName) => LabCatalog.IsRazorLike(fileName);
 
     public void Notify() => Changed?.Invoke();
+
+    public void NotifyStatus() => StatusChanged?.Invoke();
 
     public void OnUiSettingsChanged()
     {
@@ -406,6 +409,17 @@ public sealed class LabWorkspaceState
             if (enabled)
             {
                 await SyncLanguageWorkspaceAsync(refresh: true);
+                if (_liveCompiledInput is not null)
+                {
+                    await _language.UpdateDiagnosticsAfterCompilationAsync(Documents.UriFor(ActiveSource));
+                }
+                else if (Compiled is { } compiled)
+                {
+                    await _language.OnCachedCompilationLoadedAsync(
+                        CaptureSavedState().GetCompilerConfiguration(),
+                        compiled,
+                        Documents.UriFor(ActiveSource));
+                }
             }
             else
             {
@@ -686,13 +700,14 @@ public sealed class LabWorkspaceState
 
         await compilers;
 
-        // Template output is already the default-preference tree. Compiling again
+        // Template/server cache already has displayable output. Compiling again
         // (e.g. after URL/settings apply Public Symbols) reloads Tree at ~45k LOC.
-        if (AutomaticCompilation && !usedTemplateCache)
+        // Still run a worker compile so language services pick up #:package references.
+        if (AutomaticCompilation)
         {
             // Do not block URL/state application on the compile itself — editors should
             // mount with the loaded sources rather than waiting for the worker.
-            _ = CompileAsync(storeInCache: false);
+            _ = CompileAsync(storeInCache: false, updateDisplayedOutput: Compiled is null);
         }
     }
 
@@ -1104,7 +1119,9 @@ public sealed class LabWorkspaceState
 
     public Task CompileAsync() => CompileAsync(storeInCache: true);
 
-    public async Task CompileAsync(bool storeInCache)
+    public Task CompileAsync(bool storeInCache) => CompileAsync(storeInCache, updateDisplayedOutput: true);
+
+    public async Task CompileAsync(bool storeInCache, bool updateDisplayedOutput)
     {
         if (Running || CompilerLoading)
         {
@@ -1122,68 +1139,101 @@ public sealed class LabWorkspaceState
                 TryStoreInCache(CaptureSavedState(), reused);
             }
 
-            if (_outputCache.Count == 0)
+            if (updateDisplayedOutput && _outputCache.Count == 0)
             {
                 _ = LoadDisplayedOutputAsync();
             }
 
+            _ = RefreshLanguageServicesAfterCompileAsync();
             return;
         }
 
-        Running = true;
-        Notify();
-        // Cached same-input compiles can finish synchronously; yield so Busy UI can paint.
-        await Task.Yield();
+        var showBusy = storeInCache || (updateDisplayedOutput && Compiled is null);
+        var appliedToDisplay = false;
+        if (showBusy)
+        {
+            Running = true;
+            Notify();
+            // Cached same-input compiles can finish synchronously; yield so Busy UI can paint.
+            await Task.Yield();
+        }
+
         try
         {
-            await PersistUrlAsync(snapshot: true);
+            if (showBusy)
+            {
+                await PersistUrlAsync(snapshot: true);
+            }
+
             LastInput = input;
             var compiled = await _worker.SendAsync(
                 new WorkerInputMessage.Compile(input, LanguageServicesEnabled: LanguageServices)
                 {
                     Id = _worker.NextMessageId(),
                 });
-            var sameAssembly = ReferenceEquals(Compiled, compiled);
-            Compiled = compiled;
             _liveCompiledInput = input;
             _compiledCompilerKey = CompilerKey();
-            _storeInCache = storeInCache;
-            Stale = false;
-            // The worker reuses LastResult for identical input. Keep the output cache so
-            // the editor is not forced through Compiling/Loading for an unchanged assembly.
-            if (!sameAssembly)
-            {
-                BeginNewOutputGeneration();
-            }
 
-            if (storeInCache)
+            // Keep template/server-cache Tree on screen after refresh. A live compile
+            // is still required so language services get #:package references.
+            var applyToDisplay = storeInCache || (updateDisplayedOutput && Compiled is null);
+            if (applyToDisplay)
             {
-                TryStoreInCache(CaptureSavedState(), compiled);
+                var sameAssembly = ReferenceEquals(Compiled, compiled);
+                Compiled = compiled;
+                _storeInCache = storeInCache;
+                Stale = false;
+                appliedToDisplay = true;
+                // The worker reuses LastResult for identical input. Keep the output cache so
+                // the editor is not forced through Compiling/Loading for an unchanged assembly.
+                if (!sameAssembly)
+                {
+                    BeginNewOutputGeneration();
+                }
+
+                if (storeInCache)
+                {
+                    TryStoreInCache(CaptureSavedState(), compiled);
+                }
             }
         }
         catch (Exception ex)
         {
-            Compiled = CompiledAssembly.Fail(ex.ToString());
-            LastInput = input;
-            _liveCompiledInput = input;
-            _compiledCompilerKey = CompilerKey();
-            BeginNewOutputGeneration();
+            if (storeInCache || (updateDisplayedOutput && Compiled is null))
+            {
+                Compiled = CompiledAssembly.Fail(ex.ToString());
+                LastInput = input;
+                _liveCompiledInput = input;
+                _compiledCompilerKey = CompilerKey();
+                BeginNewOutputGeneration();
+                appliedToDisplay = true;
+            }
+            else
+            {
+                _logger.LogError(ex, "Language services compile after cached output failed.");
+            }
         }
         finally
         {
-            Running = false;
-            Notify();
+            if (showBusy)
+            {
+                Running = false;
+                Notify();
+            }
         }
 
-        RefreshTemporaryErrorList();
-        _ = LoadDisplayedOutputAsync();
-        _ = RefreshLanguageServicesAfterCompileAsync();
+        if (appliedToDisplay)
+        {
+            RefreshTemporaryErrorList();
+            _ = LoadDisplayedOutputAsync();
+        }
+
+        await RefreshLanguageServicesAfterCompileAsync();
     }
 
     private bool CanReuseLastCompile(CompilationInput input)
-        => Compiled is not null
-           && LastInput is { } last
-           && last.Equals(input)
+        => _liveCompiledInput is { } live
+           && live.Equals(input)
            && string.Equals(_compiledCompilerKey, CompilerKey(), StringComparison.Ordinal);
 
     private string CompilerKey()

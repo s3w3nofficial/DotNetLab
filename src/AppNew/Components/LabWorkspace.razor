@@ -78,18 +78,16 @@
                     </ItemLabel>
                     <ItemContent>
                         <LabCodeEditor @key="@($"source-{context}")"
+                                       FileName="@context"
                                        Value="@State.Sources.GetValueOrDefault(context, "")"
                                        Language="@State.LanguageFor(context)"
                                        ModelUri="@State.UriFor(context)"
                                        WordWrap="State.WordWrap"
-                                       OnValueChanged="@(value => State.SetSource(context, value))"
                                        OnCursorChanged="OnCursorChanged"
                                        OnFocused="@(() => OnSourceSelected(context))" />
                     </ItemContent>
                 </EditorGroups>
-                <StatusBar Left="@State.SourceStatusLeft"
-                           Right="@State.SourceStatusRight"
-                           Ready="@(!State.Stale && !State.Running)" />
+                <StatusBar Side="source" />
             }
             else
             {
@@ -230,9 +228,7 @@
                         }
                     </ItemContent>
                 </EditorGroups>
-                <StatusBar Left="@State.OutputStatusLeft"
-                           Right="@State.OutputStatusRight"
-                           Ready="@(!State.Running)" />
+                <StatusBar Side="output" />
             }
         </section>
 
@@ -348,6 +344,7 @@
 
         State.CursorLine = line;
         State.CursorColumn = column;
+        State.NotifyStatus();
     }
 
     private async Task OnSplitterPointerDown(PointerEventArgs args)

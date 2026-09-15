@@ -115,16 +115,18 @@ public sealed class LabLanguageServices(
         return RefreshSemanticTokensAsync();
     }
 
-    public async Task OnDidChangeModelContentAsync(string modelUri, ModelContentChangedEvent args)
+    public Task OnDidChangeModelContentAsync(string modelUri, ModelContentChangedEvent args)
     {
         if (!Enabled)
         {
-            return;
+            return Task.CompletedTask;
         }
 
         InvalidateCaches();
-        await SendAsync(new WorkerInputMessage.OnDidChangeModelContent(modelUri, args) { Id = _worker.NextMessageId() });
+        // Do not wait for the worker: keystrokes must not queue behind completions/diagnostics.
+        _ = SendAsync(new WorkerInputMessage.OnDidChangeModelContent(modelUri, args) { Id = _worker.NextMessageId() });
         _ = UpdateDiagnosticsAsync(modelUri);
+        return Task.CompletedTask;
     }
 
     public Task<bool> UpdateDiagnosticsAfterCompilationAsync(string? activeModelUri)
@@ -316,6 +318,7 @@ public sealed class LabLanguageServices(
                             Id = args.Item1._worker.NextMessageId(),
                         },
                         cancellationToken),
+                    skipDebounce: context.TriggerKind == CompletionTriggerKind.TriggerCharacter,
                     cancellationToken: cancellationToken);
             },
             ResolveCompletionItemFunc = (item, cancellationToken) =>
