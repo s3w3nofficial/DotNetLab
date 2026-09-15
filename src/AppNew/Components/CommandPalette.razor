@@ -273,6 +273,11 @@
             State.ToggleVim();
             return Task.CompletedTask;
         });
+        yield return new("Toggle hint squiggles", "squiggly hint hidden diagnostic decoration", "", () =>
+        {
+            State.ToggleHintSquiggles();
+            return Task.CompletedTask;
+        });
         yield return new(
             State.Stacked ? "Show panes side by side" : "Stack panes vertically",
             "stack layout panes split",

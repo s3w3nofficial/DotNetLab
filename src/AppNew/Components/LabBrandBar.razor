@@ -1,6 +1,7 @@
 @inject LabWorkspaceState State
 @inject LabThemeService Theme
 @inject LabShare Share
+@inject IUpdateChecker Updates
 @implements IDisposable
 
 <div class="lab-brand-bar">
@@ -86,6 +87,14 @@
                   IconStart="@(new Icons.Regular.Size20.Settings())"
                   OnClick="State.ShowSettingsAsync">
         Settings
+        @if (Updates.UpdateIsAvailable)
+        {
+            <FluentBadge Appearance="BadgeAppearance.Filled"
+                         Color="BadgeColor.Success"
+                         Size="BadgeSize.Tiny"
+                         Content="1"
+                         title="Update is available" />
+        }
     </FluentButton>
 </div>
 

@@ -53,6 +53,7 @@ public sealed class LabWorkspaceState
         ApplyLogLevel();
         Documents = new LabDocuments(this);
         Tabs = new OutputTabLayout(this);
+        _worker.Failed += OnWorkerFailed;
     }
 
     public LabDocuments Documents { get; }
@@ -132,6 +133,7 @@ public sealed class LabWorkspaceState
     public bool TraceLogs { get; set; }
     public bool MemoryUsageView { get; set; }
     public bool BackgroundWorker { get; set; } = true;
+    public bool DisplayHintSquiggles { get; set; }
     public bool EnableCaching { get; set; } = true;
     public bool AutomaticCompilation { get; set; } = true;
     public string AppTheme { get; private set; } = "dark";
@@ -149,7 +151,7 @@ public sealed class LabWorkspaceState
     public bool IncludeHiddenDiagnostics { get; set; }
     public int CursorLine { get; set; } = 9;
     public int CursorColumn { get; set; } = 34;
-    public string UpdateState { get; private set; } = "idle";
+    public string? WorkerError { get; private set; }
     public bool EditingUserPreferences { get; set; }
     public int ErrorCount => Compiled?.NumErrors ?? 0;
     public int WarningCount => Compiled?.NumWarnings ?? 0;
@@ -286,6 +288,11 @@ public sealed class LabWorkspaceState
             BackgroundWorker = backgroundWorker;
         }
 
+        if (snapshot.DisplayHintSquiggles is { } displayHintSquiggles)
+        {
+            DisplayHintSquiggles = displayHintSquiggles;
+        }
+
         if (snapshot.EnableCaching is { } enableCaching)
         {
             EnableCaching = enableCaching;
@@ -324,6 +331,8 @@ public sealed class LabWorkspaceState
 
     public async Task ReloadWorkerAsync()
     {
+        WorkerError = null;
+        Notify();
         await _worker.RecreateAsync();
         _sdkListLoaded = false;
         _languageInit = null;
@@ -343,6 +352,12 @@ public sealed class LabWorkspaceState
         await InitializeLanguageServicesAsync();
     }
 
+    private void OnWorkerFailed(string error)
+    {
+        WorkerError = error;
+        Notify();
+    }
+
     private LabSettingsSnapshot CaptureSettings()
         => new()
         {
@@ -353,6 +368,7 @@ public sealed class LabWorkspaceState
             TraceLogs = TraceLogs,
             MemoryUsageView = MemoryUsageView,
             BackgroundWorker = BackgroundWorker,
+            DisplayHintSquiggles = DisplayHintSquiggles,
             EnableCaching = EnableCaching,
             AutomaticCompilation = AutomaticCompilation,
             DisableInputVirtualKeyboard = DisableInputVirtualKeyboard,
@@ -694,6 +710,12 @@ public sealed class LabWorkspaceState
     }
 
     public void ToggleStacked() => SetStacked(!Stacked);
+
+    public void ToggleHintSquiggles()
+    {
+        DisplayHintSquiggles = !DisplayHintSquiggles;
+        OnUiSettingsChanged();
+    }
 
     public void ToggleInputVirtualKeyboard()
     {
@@ -1183,15 +1205,6 @@ public sealed class LabWorkspaceState
             ExcludeSingleFileNameInDiagnostics = ExcludeSingleFileNameInDiagnostics,
             IncludeHiddenDiagnostics = IncludeHiddenDiagnostics,
         };
-
-    public async Task CheckUpdatesAsync()
-    {
-        UpdateState = "checking";
-        Notify();
-        await Task.Delay(900);
-        UpdateState = "available";
-        Notify();
-    }
 
     public string OutputLanguage(string type)
         => TryGetOutputSnapshot(type, out var snapshot)

@@ -63,6 +63,7 @@ public sealed class LabSettingsSnapshot
     public bool? TraceLogs { get; set; }
     public bool? MemoryUsageView { get; set; }
     public bool? BackgroundWorker { get; set; }
+    public bool? DisplayHintSquiggles { get; set; }
     public bool? EnableCaching { get; set; }
     public bool? AutomaticCompilation { get; set; }
     public bool? DisableInputVirtualKeyboard { get; set; }

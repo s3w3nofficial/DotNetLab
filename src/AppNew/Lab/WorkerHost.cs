@@ -44,6 +44,8 @@ public sealed class WorkerHost
         _logger = logger;
     }
 
+    public event Action<string>? Failed;
+
     public PingResult? LastPingResult { get; private set; }
 
     public int NextMessageId() => Interlocked.Increment(ref _messageId);
@@ -323,6 +325,7 @@ public sealed class WorkerHost
             _ = _dispatcher.InvokeAsync(() =>
             {
                 DiscardPending("Worker error", error);
+                Failed?.Invoke(error);
                 return Task.CompletedTask;
             });
         };

@@ -4,8 +4,12 @@ using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using System.Runtime.Versioning;
 
 var builder = AppBuilder.CreateDotnetLabWebAssemblyHostBuilder(args);
+builder.Services.AddScoped<IUpdateChecker, WebAssemblyUpdateChecker>();
 
 await builder.Build().RunAsync();
+
+[SupportedOSPlatform("browser")]
+partial class Program;
 
 /*
 [SupportedOSPlatform("browser")]

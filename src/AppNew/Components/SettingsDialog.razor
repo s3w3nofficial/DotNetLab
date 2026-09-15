@@ -1,5 +1,6 @@
 @inject LabWorkspaceState State
 @inject LabThemeService Theme
+@inject IUpdateChecker Updates
 @inject IJSRuntime JS
 @implements IDisposable
 
@@ -234,24 +235,36 @@
                 <span>2026.9.11</span>
                 <span aria-hidden="true"> · </span>
                 <a href="@LabLinks.Repository" target="_blank" rel="noopener noreferrer">GitHub</a>
-                @if (State.UpdateState == "idle")
+                @if (Updates.Enabled && !_checking)
                 {
                     <span aria-hidden="true"> · </span>
-                    <button type="button" @onclick="State.CheckUpdatesAsync">Check for updates</button>
+                    <button type="button" @onclick="CheckForUpdatesAsync">Check for updates</button>
                 }
-                else if (State.UpdateState == "checking")
+                else if (_checking)
                 {
                     <span aria-hidden="true"> · </span>
                     <span>Checking…</span>
                 }
             </p>
 
-            @if (State.UpdateState == "available")
+            @if (Updates.LoadUpdate is { } loadUpdate)
             {
                 <div class="lab-update">
                     <span>Update available</span>
-                    <FluentButton Size="ButtonSize.Small" Appearance="ButtonAppearance.Primary">Reload</FluentButton>
+                    <FluentButton Size="ButtonSize.Small" Appearance="ButtonAppearance.Primary" OnClick="() => LoadUpdateAsync(loadUpdate)">Reload</FluentButton>
                     <a href="@LabLinks.Releases" target="_blank" rel="noopener noreferrer">Release notes</a>
+                </div>
+            }
+            else if (Updates.UpdateIsDownloading)
+            {
+                <div class="lab-update">
+                    <span>An update is being downloaded in the background.</span>
+                </div>
+            }
+            else if (_checkedForUpdates)
+            {
+                <div class="lab-update">
+                    <span>No update found.</span>
                 </div>
             }
 
@@ -290,12 +303,41 @@
     private string _sdkQuery = "";
     private IReadOnlyList<SdkOption> _sdkMatches = LabCatalog.SdkVersions;
     private OutputFileKind _outputKind = OutputFileKind.Cs;
+    private bool _checking;
+    private bool _checkedForUpdates;
+    private bool _updatesBound;
 
-    protected override void OnInitialized() => State.Changed += OnStateChanged;
+    protected override void OnInitialized()
+    {
+        State.Changed += OnStateChanged;
+        Updates.UpdateStatusChanged += OnUpdatesChanged;
+        _updatesBound = true;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await Updates.InitializeAsync();
+        }
+        catch (JSException)
+        {
+        }
+    }
 
     private void OnStateChanged() => InvokeAsync(StateHasChanged);
 
-    public void Dispose() => State.Changed -= OnStateChanged;
+    private void OnUpdatesChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        State.Changed -= OnStateChanged;
+        if (_updatesBound)
+        {
+            Updates.UpdateStatusChanged -= OnUpdatesChanged;
+            _updatesBound = false;
+        }
+    }
 
     protected override void OnParametersSet()
     {
@@ -448,5 +490,29 @@
         catch (JSException)
         {
         }
+    }
+
+    private async Task CheckForUpdatesAsync()
+    {
+        _checkedForUpdates = false;
+        _checking = true;
+        try
+        {
+            await Updates.CheckForUpdatesAsync();
+            _checkedForUpdates = true;
+        }
+        catch (JSException)
+        {
+        }
+        finally
+        {
+            _checking = false;
+        }
+    }
+
+    private async Task LoadUpdateAsync(Action loadUpdate)
+    {
+        await State.PersistUrlAsync();
+        loadUpdate();
     }
 }

@@ -3,6 +3,7 @@
 @inject LabWorkspaceState State
 @inject LabUrlSync Urls
 @inject LabPlatform Platform
+@inject IUpdateChecker Updates
 @inject IJSRuntime JS
 @implements IDisposable
 
@@ -32,6 +33,7 @@
         State.SettingsRequested += OpenSettingsAsync;
         State.PaletteRequested += TogglePaletteAsync;
         State.PasteUrlRequested += OpenPasteAsync;
+        Updates.UpdateStatusChanged += OnUpdatesChanged;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -43,6 +45,13 @@
 
         await Theme.InitializeAsync();
         await Platform.InitializeAsync();
+        try
+        {
+            await Updates.InitializeAsync();
+        }
+        catch (JSException)
+        {
+        }
         await State.LoadSettingsAsync();
         try
         {
@@ -59,6 +68,8 @@
 
     private void OnStateChanged() => InvokeAsync(StateHasChanged);
 
+    private void OnUpdatesChanged() => InvokeAsync(StateHasChanged);
+
     private Task OpenSettingsAsync() => _settings?.ShowAsync() ?? Task.CompletedTask;
 
     private Task TogglePaletteAsync() => _palette?.ToggleAsync() ?? Task.CompletedTask;
@@ -71,5 +82,6 @@
         State.SettingsRequested -= OpenSettingsAsync;
         State.PaletteRequested -= TogglePaletteAsync;
         State.PasteUrlRequested -= OpenPasteAsync;
+        Updates.UpdateStatusChanged -= OnUpdatesChanged;
     }
 }

@@ -23,6 +23,7 @@ public static class AppBuilder
         builder.Services.AddScoped<BlazorMonacoInterop>();
         builder.Services.AddScoped<LabLanguageServices>();
         builder.Services.AddScoped<LabCursorSync>();
+        builder.Services.AddScoped<IUpdateChecker, DisabledUpdateChecker>();
         builder.Services.AddSingleton<LabLogging>();
         builder.Services.AddOptions<LoggerFilterOptions>().Configure<LabLogging>((options, logging) =>
         {
