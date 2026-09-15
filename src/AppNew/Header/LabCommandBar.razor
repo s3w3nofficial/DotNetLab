@@ -2,6 +2,7 @@
 @inject ILabCommands Commands
 @inject LabPlatform Platform
 @inject IState<CompilerState> Compiler
+@inject IState<CompilationState> Compilation
 @inject IState<PreferencesState> Prefs
 @inject IDispatcher Dispatcher
 
@@ -133,7 +134,7 @@
     private static readonly CompilerPickerOption[] CompilerRefOptions =
         [.. LabCatalog.CompilerRefs.Select(item => new CompilerPickerOption(item, item))];
 
-    private bool Busy => Commands.Busy || Compiler.Value.Loading;
+    private bool Busy => Compilation.Value.Running || Compiler.Value.Loading;
 
     private IReadOnlyList<CompilerPickerOption> SdkOptions
     {

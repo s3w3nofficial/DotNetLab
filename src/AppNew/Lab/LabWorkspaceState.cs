@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using BlazorMonaco.Editor;
 using DotNetLab.Features.Compiler;
+using DotNetLab.Features.Compilation;
 using DotNetLab.Features.Preferences;
 using Fluxor;
 using Microsoft.JSInterop;
@@ -17,7 +18,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     private readonly InputOutputCache _cache;
     private readonly IState<CompilerState> _compiler;
     private readonly IState<PreferencesState> _preferences;
-    private readonly CompilationStore _compilation;
+    private readonly IState<CompilationState> _compilation;
     private readonly IDispatcher _dispatcher;
     private readonly ILogger<LabWorkspaceState> _logger;
     private readonly Dictionary<string, OutputSnapshot> _outputCache = new(StringComparer.Ordinal);
@@ -45,7 +46,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
         InputOutputCache cache,
         IState<CompilerState> compiler,
         IState<PreferencesState> preferences,
-        CompilationStore compilation,
+        IState<CompilationState> compilation,
         IDispatcher dispatcher,
         ILogger<LabWorkspaceState> logger)
     {
@@ -65,6 +66,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
         _compilerKey = Compiler.Key;
         _compiler.StateChanged += OnCompilerStoreChanged;
         _preferences.StateChanged += OnPreferencesChanged;
+        _compilation.StateChanged += OnCompilationChanged;
         _worker.Failed += OnWorkerFailed;
     }
 
@@ -100,12 +102,12 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     public bool Running
     {
         get => Compilation.Running;
-        private set => PatchCompilation(state => state with { Running = value });
+        private set => _dispatcher.Dispatch(new SetRunningAction(value));
     }
     public bool Stale
     {
         get => Compilation.Stale;
-        internal set => PatchCompilation(state => state with { Stale = value });
+        internal set => _dispatcher.Dispatch(new SetStaleAction(value));
     }
     public string Template => Documents.Template;
 
@@ -248,10 +250,17 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     {
         _compiler.StateChanged -= OnCompilerStoreChanged;
         _preferences.StateChanged -= OnPreferencesChanged;
+        _compilation.StateChanged -= OnCompilationChanged;
         _worker.Failed -= OnWorkerFailed;
     }
 
     private void OnPreferencesChanged(object? sender, EventArgs e) => Notify();
+
+    private void OnCompilationChanged(object? sender, EventArgs e)
+    {
+        Notify();
+        NotifyStatus();
+    }
 
     private void OnCompilerStoreChanged(object? sender, EventArgs e)
     {
@@ -920,9 +929,6 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     private PreferencesState Preferences => _preferences.Value;
 
     private CompilationState Compilation => _compilation.Value;
-
-    private void PatchCompilation(Func<CompilationState, CompilationState> mutate)
-        => _compilation.Update(mutate);
 
     private void BeginNewOutputGeneration()
     {
