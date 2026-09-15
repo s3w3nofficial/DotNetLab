@@ -14,21 +14,7 @@ public interface ILabCommands
 
     bool Stacked { get; }
 
-    string Sdk { get; }
-
-    string Roslyn { get; }
-
-    string Razor { get; }
-
-    IReadOnlyList<SdkOption> AvailableSdks { get; }
-
     Task CompileAsync();
-
-    Task ApplySdk(string value);
-
-    Task SetRoslyn(string value);
-
-    Task SetRazor(string value);
 
     void SetRazorToolchain(string value);
 
@@ -41,6 +27,4 @@ public interface ILabCommands
     void ToggleInputVirtualKeyboard();
 
     void ToggleStacked();
-
-    Task EnsureSdkVersionsAsync();
 }

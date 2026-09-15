@@ -127,93 +127,7 @@
             </details>
         </div>
 
-        <div class="lab-settings-compiler">
-            <h2 class="lab-setting-section">Compiler SDK &amp; packages</h2>
-            <p class="lab-setting-hint lab-settings-field-label">.NET SDK version</p>
-            <div class="lab-sdk-search" @onfocusin="OpenSdkSearch" @onfocusout="CloseSdkSearchAsync">
-                <label class="lab-settings-field">
-                    <input class="lab-settings-input"
-                           type="text"
-                           role="combobox"
-                           aria-label=".NET SDK version"
-                           aria-autocomplete="list"
-                           aria-expanded="@(_sdkMenuOpen ? "true" : "false")"
-                           aria-controls="lab-sdk-listbox"
-                           autocomplete="off"
-                           spellcheck="false"
-                           placeholder="Filter SDK versions"
-                           value="@_sdkQuery"
-                           @oninput="OnSdkInput"
-                           @onfocus="OpenSdkSearch" />
-                    <span class="lab-sdk-chevron @(_sdkMenuOpen ? "is-open" : null)" aria-hidden="true">
-                        <FluentIcon Value="@(new Icons.Regular.Size16.ChevronDown())" Width="16px" />
-                    </span>
-                </label>
-                @if (_sdkMenuOpen)
-                {
-                    <ul id="lab-sdk-listbox" class="lab-sdk-results" role="listbox" aria-label=".NET SDK versions">
-                        @if (_sdkMatches.Count == 0)
-                        {
-                            <li class="lab-sdk-empty">No matching SDK versions</li>
-                        }
-                        else
-                        {
-                            @foreach (var sdk in _sdkMatches)
-                            {
-                                <li>
-                                    <button type="button"
-                                            role="option"
-                                            class="lab-sdk-result @(Settings.Sdk == sdk.Value ? "is-selected" : null)"
-                                            aria-selected="@(Settings.Sdk == sdk.Value)"
-                                            @onmousedown:preventDefault
-                                            @onclick="@(() => SelectSdk(sdk))">
-                                        <span class="lab-sdk-result-version">@sdk.Value</span>
-                                        @if (!string.IsNullOrEmpty(sdk.Released))
-                                        {
-                                            <span class="lab-sdk-result-date">@sdk.Released</span>
-                                        }
-                                    </button>
-                                </li>
-                            }
-                        }
-                    </ul>
-                }
-            </div>
-            <p class="lab-sdk-summary">
-                Uses
-                <span class="lab-sdk-summary-versions">Roslyn @Settings.Roslyn</span>
-                <span aria-hidden="true"> · </span>
-                <span class="lab-sdk-summary-versions">Razor @Settings.Razor</span>
-            </p>
-            @if (Settings.SdkLoading)
-            {
-                <p class="lab-setting-hint">Loading SDK…</p>
-            }
-            else if (!string.IsNullOrEmpty(Settings.SdkError))
-            {
-                <p class="lab-setting-hint">@Settings.SdkError</p>
-            }
-
-            <details class="lab-settings-fold">
-                <summary>Override compilers</summary>
-                <div class="lab-settings-fold-body">
-                    <div class="lab-compiler-grid">
-                        <CompilerSection Name="Roslyn"
-                                         Value="@Settings.Roslyn"
-                                         ValueChanged="Settings.SetRoslyn"
-                                         Config="@Settings.RoslynConfig"
-                                         ConfigChanged="Settings.SetRoslynConfig"
-                                         Resolved="@Settings.RoslynResolved" />
-                        <CompilerSection Name="Razor"
-                                         Value="@Settings.Razor"
-                                         ValueChanged="Settings.SetRazor"
-                                         Config="@Settings.RazorConfig"
-                                         ConfigChanged="Settings.SetRazorConfig"
-                                         Resolved="@Settings.RazorResolved" />
-                    </div>
-                </div>
-            </details>
-        </div>
+        <CompilerSettings />
 
         <div class="lab-settings-about">
             <div>
@@ -308,10 +222,6 @@
 
     private FluentDialog? _dialog;
     private bool _hiding;
-    private bool _sdkMenuOpen;
-    private bool _sdkKeepOpen;
-    private string _sdkQuery = "";
-    private IReadOnlyList<SdkOption> _sdkMatches = LabCatalog.SdkVersions;
     private OutputFileKind _outputKind = OutputFileKind.Cs;
 
     protected override void OnInitialized()
@@ -332,14 +242,6 @@
         return base.DisposeAsyncCore(disposing);
     }
 
-    protected override void OnParametersSet()
-    {
-        if (!_sdkMenuOpen)
-        {
-            _sdkQuery = Settings.ResolvedSdk.Value;
-        }
-    }
-
     public async Task ShowAsync()
     {
         if (_dialog is null)
@@ -348,8 +250,7 @@
         }
 
         _outputKind = LabCatalog.OutputKindFor(Settings.ActiveSource);
-        await Settings.EnsureSdkVersionsAsync();
-        FilterSdkMatches(_sdkQuery);
+        Dispatcher.Dispatch(new EnsureSdkVersionsAction());
         try
         {
             await _dialog.ShowAsync();
@@ -383,75 +284,6 @@
     private Task OnDialogStateChange(DialogEventArgs args)
     {
         return args.State == DialogState.Closed ? HideAsync() : Task.CompletedTask;
-    }
-
-    private void OpenSdkSearch()
-    {
-        _sdkKeepOpen = true;
-        _sdkMenuOpen = true;
-        FilterSdkMatches(_sdkQuery);
-    }
-
-    private async Task CloseSdkSearchAsync()
-    {
-        _sdkKeepOpen = false;
-        await Task.Delay(200);
-        if (_sdkKeepOpen)
-        {
-            return;
-        }
-
-        _sdkMenuOpen = false;
-        _sdkQuery = Settings.ResolvedSdk.Value;
-    }
-
-    private void OnSdkInput(ChangeEventArgs args)
-    {
-        OnSdkQueryChanged(args.Value?.ToString() ?? "");
-    }
-
-    private void OnSdkQueryChanged(string value)
-    {
-        _sdkQuery = value ?? "";
-        _sdkKeepOpen = true;
-        _sdkMenuOpen = true;
-        FilterSdkMatches(_sdkQuery);
-    }
-
-    private async Task SelectSdk(SdkOption sdk)
-    {
-        _sdkKeepOpen = false;
-        _sdkQuery = sdk.Value;
-        _sdkMenuOpen = false;
-        await Settings.ApplySdk(sdk.Value);
-    }
-
-    private void FilterSdkMatches(string query)
-    {
-        var text = query?.Trim() ?? "";
-        if (IsUnfilteredSdkQuery(text))
-        {
-            _sdkMatches = Settings.AvailableSdks;
-            return;
-        }
-
-        _sdkMatches = Settings.AvailableSdks
-            .Where(sdk =>
-                sdk.Value.Contains(text, StringComparison.OrdinalIgnoreCase) ||
-                (text.Length >= 4 && sdk.Released.Contains(text, StringComparison.OrdinalIgnoreCase)))
-            .ToArray();
-    }
-
-    private bool IsUnfilteredSdkQuery(string text)
-    {
-        if (text.Length == 0)
-        {
-            return true;
-        }
-
-        var sdk = Settings.ResolvedSdk;
-        return string.Equals(text, sdk.Value, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(text, sdk.Label, StringComparison.OrdinalIgnoreCase);
     }
 
     private Task OnThemeChangedAsync(string theme) => Theme.SetPreferenceAsync(theme);

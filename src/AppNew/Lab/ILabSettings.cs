@@ -28,29 +28,7 @@ public interface ILabSettings
 
     string AppTheme { get; }
 
-    string Sdk { get; }
-
-    string Roslyn { get; }
-
-    string Razor { get; }
-
-    string RoslynConfig { get; set; }
-
-    string RazorConfig { get; set; }
-
-    string RoslynResolved { get; }
-
-    string RazorResolved { get; }
-
-    bool SdkLoading { get; }
-
-    string? SdkError { get; }
-
     string ActiveSource { get; }
-
-    SdkOption ResolvedSdk { get; }
-
-    IReadOnlyList<SdkOption> AvailableSdks { get; }
 
     void OnUiSettingsChanged();
 
@@ -59,18 +37,6 @@ public interface ILabSettings
     Task SetLanguageServicesAsync(bool enabled);
 
     Task ReloadWorkerAsync();
-
-    Task ApplySdk(string value);
-
-    Task SetRoslyn(string value);
-
-    Task SetRazor(string value);
-
-    Task SetRoslynConfig(string value);
-
-    Task SetRazorConfig(string value);
-
-    Task EnsureSdkVersionsAsync();
 
     Task PersistUrlAsync(bool snapshot = false);
 

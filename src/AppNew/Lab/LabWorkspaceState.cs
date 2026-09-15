@@ -1,10 +1,12 @@
 using System.Collections.Immutable;
 using BlazorMonaco.Editor;
+using DotNetLab.Features.Compiler;
+using Fluxor;
 using Microsoft.JSInterop;
 
 namespace DotNetLab.Lab;
 
-public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILabPalette, ILabSettings, ILabShell
+public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILabPalette, ILabSettings, ILabShell, IDisposable
 {
     private readonly WorkerHost _worker;
     private readonly LabLanguageServices _language;
@@ -13,7 +15,8 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     private readonly LabLogging _logging;
     private readonly TemplateCache _templates;
     private readonly InputOutputCache _cache;
-    private readonly CompilerStore _compiler;
+    private readonly IState<CompilerState> _compiler;
+    private readonly IDispatcher _dispatcher;
     private readonly ILogger<LabWorkspaceState> _logger;
     private readonly Dictionary<string, OutputSnapshot> _outputCache = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _outputModelUris = new(StringComparer.Ordinal);
@@ -27,6 +30,8 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     private bool _storeInCache;
     private CompilationInput? _liveCompiledInput;
     private string? _compiledCompilerKey;
+    private string _compilerKey;
+    private bool _compilerWasLoading;
     private Task? _languageInit;
 
     public LabWorkspaceState(
@@ -37,7 +42,8 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
         LabLogging logging,
         TemplateCache templates,
         InputOutputCache cache,
-        CompilerStore compiler,
+        IState<CompilerState> compiler,
+        IDispatcher dispatcher,
         ILabEnvironment environment,
         ILogger<LabWorkspaceState> logger)
     {
@@ -49,11 +55,14 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
         _templates = templates;
         _cache = cache;
         _compiler = compiler;
+        _dispatcher = dispatcher;
         _logger = logger;
         DebugLogs = environment.IsDevelopment;
         ApplyLogLevel();
         Documents = new LabDocuments(this);
         Tabs = new OutputTabLayout(this);
+        _compilerKey = Compiler.Key;
+        _compiler.StateChanged += OnCompilerStoreChanged;
         _worker.Failed += OnWorkerFailed;
     }
 
@@ -126,27 +135,10 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     public string Sdk => Compiler.Sdk;
     public string Roslyn => Compiler.Roslyn;
     public string Razor => Compiler.Razor;
-    public string RoslynConfig
-    {
-        get => Compiler.RoslynConfig;
-        set => PatchCompiler(state => state with { RoslynConfig = value });
-    }
-    public string RazorConfig
-    {
-        get => Compiler.RazorConfig;
-        set => PatchCompiler(state => state with { RazorConfig = value });
-    }
+    public string RoslynConfig => Compiler.RoslynConfig;
+    public string RazorConfig => Compiler.RazorConfig;
     public bool CompilerLoading => Compiler.Loading;
     public bool Busy => Running || CompilerLoading;
-    public bool SdkLoading => Compiler.SdkLoading;
-    public bool RoslynLoading => Compiler.RoslynLoading;
-    public bool RazorLoading => Compiler.RazorLoading;
-    public string? SdkError => Compiler.SdkError;
-    public string? RoslynError => Compiler.RoslynError;
-    public string? RazorError => Compiler.RazorError;
-    public PackageDependencyInfo? RoslynInfo => Compiler.RoslynInfo;
-    public PackageDependencyInfo? RazorInfo => Compiler.RazorInfo;
-    public IReadOnlyList<SdkOption> AvailableSdks => Compiler.AvailableSdks;
     public string RazorToolchain { get; set; } = "Auto";
     public string RazorStrategy { get; set; } = "Runtime";
     public bool WordWrap { get; set; }
@@ -215,8 +207,6 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     public IReadOnlyList<string> SourceFiles => Documents.SourceFiles;
     public string UriFor(string fileName) => Documents.UriFor(fileName);
     public SdkOption ResolvedSdk => Compiler.Resolved;
-    public string RoslynResolved => Compiler.RoslynResolved;
-    public string RazorResolved => Compiler.RazorResolved;
     public int OutputLayoutRevision => Tabs.Revision;
 
     public IReadOnlyList<string> CurrentOutputTabIds => Tabs.CurrentOutputTabIds;
@@ -243,6 +233,43 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     public void Notify() => Changed?.Invoke();
 
     public void NotifyStatus() => StatusChanged?.Invoke();
+
+    public void Dispose()
+    {
+        _compiler.StateChanged -= OnCompilerStoreChanged;
+        _worker.Failed -= OnWorkerFailed;
+    }
+
+    private void OnCompilerStoreChanged(object? sender, EventArgs e)
+    {
+        var compiler = Compiler;
+        if (!string.Equals(_compilerKey, compiler.Key, StringComparison.Ordinal))
+        {
+            _compilerKey = compiler.Key;
+            Stale = true;
+        }
+
+        if (compiler.Loading && !_compilerWasLoading)
+        {
+            Stale = true;
+        }
+
+        var loadingFinished = _compilerWasLoading && !compiler.Loading;
+        _compilerWasLoading = compiler.Loading;
+        Notify();
+        if (!_suppressUrlPersist && loadingFinished)
+        {
+            _ = PersistUrlAsync();
+        }
+    }
+
+    private async Task WaitUntilCompilerIdleAsync()
+    {
+        for (var i = 0; i < 2400 && Compiler.Loading; i++)
+        {
+            await Task.Delay(50);
+        }
+    }
 
     public void OnUiSettingsChanged()
     {
@@ -362,21 +389,24 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
         _compiledCompilerKey = null;
         Notify();
         await _worker.RecreateAsync();
-        PatchCompiler(state => state with { ListLoaded = false });
+        _dispatcher.Dispatch(new ResetSdkListAction());
         _languageInit = null;
 
-        if (ToSpecifier(Sdk) is null)
+        if (CompilerSpec.ToSpecifier(Sdk) is null)
         {
-            var generation = _compiler.BeginUpdate();
-            await Task.WhenAll(
-                ApplyCompilerAsync(CompilerKind.Roslyn, Roslyn, RoslynConfig, generation),
-                ApplyCompilerAsync(CompilerKind.Razor, Razor, RazorConfig, generation));
+            _dispatcher.Dispatch(new RestoreCompilersAction(
+                Sdk,
+                Roslyn,
+                Compiler.RoslynConfig,
+                Razor,
+                Compiler.RazorConfig));
         }
         else
         {
-            await ApplySdk(Sdk);
+            _dispatcher.Dispatch(new ApplySdkAction(Sdk));
         }
 
+        await WaitUntilCompilerIdleAsync();
         await InitializeLanguageServicesAsync();
     }
 
@@ -638,11 +668,11 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
             FullIl = FullIl,
             ExcludeSingleFileNameInDiagnostics = ExcludeSingleFileNameInDiagnostics,
             IncludeHiddenDiagnostics = IncludeHiddenDiagnostics,
-            SdkVersion = ToSpecifier(Sdk),
-            RoslynVersion = ToSpecifier(Roslyn),
-            RoslynConfiguration = ToBuildConfiguration(RoslynConfig),
-            RazorVersion = ToSpecifier(Razor),
-            RazorConfiguration = ToBuildConfiguration(RazorConfig),
+            SdkVersion = CompilerSpec.ToSpecifier(Sdk),
+            RoslynVersion = CompilerSpec.ToSpecifier(Roslyn),
+            RoslynConfiguration = CompilerSpec.ToBuildConfiguration(Compiler.RoslynConfig),
+            RazorVersion = CompilerSpec.ToSpecifier(Razor),
+            RazorConfiguration = CompilerSpec.ToBuildConfiguration(Compiler.RazorConfig),
         };
     }
 
@@ -700,22 +730,19 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
         ExcludeSingleFileNameInDiagnostics = state.ExcludeSingleFileNameInDiagnostics;
         IncludeHiddenDiagnostics = state.IncludeHiddenDiagnostics;
 
-        PatchCompiler(compiler => compiler with
-        {
-            Sdk = DisplaySpecifier(state.SdkVersion),
-            RoslynConfig = state.RoslynConfiguration == BuildConfiguration.Debug ? "Debug" : "Release",
-            RazorConfig = state.RazorConfiguration == BuildConfiguration.Debug ? "Debug" : "Release",
-        });
+        _dispatcher.Dispatch(new RestoreCompilersAction(
+            CompilerSpec.Display(state.SdkVersion),
+            CompilerSpec.Display(state.RoslynVersion),
+            state.RoslynConfiguration == BuildConfiguration.Debug ? "Debug" : "Release",
+            CompilerSpec.Display(state.RazorVersion),
+            state.RazorConfiguration == BuildConfiguration.Debug ? "Debug" : "Release"));
         Stale = true;
         _liveCompiledInput = null;
         BeginNewOutputGeneration();
         Notify();
 
         var applyGeneration = ++_applyGeneration;
-        var generation = _compiler.BeginUpdate();
-        var compilers = Task.WhenAll(
-            ApplyCompilerAsync(CompilerKind.Roslyn, DisplaySpecifier(state.RoslynVersion), RoslynConfig, generation),
-            ApplyCompilerAsync(CompilerKind.Razor, DisplaySpecifier(state.RazorVersion), RazorConfig, generation));
+        var compilers = WaitUntilCompilerIdleAsync();
 
         var usedTemplateCache = TryApplyTemplateCache(state);
         if (!usedTemplateCache && EnableCaching)
@@ -793,239 +820,6 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
         Documents.SetTemplate(template);
         _ = AfterDocumentsChangedAsync(before);
         _ = PersistUrlAsync();
-    }
-
-    public async Task EnsureSdkVersionsAsync()
-    {
-        if (Compiler.ListLoaded)
-        {
-            return;
-        }
-
-        try
-        {
-            var versions = await _worker.SendAsync(
-                new WorkerInputMessage.GetSdkVersions
-                {
-                    Id = _worker.NextMessageId(),
-                });
-
-            if (versions is not { Count: > 0 })
-            {
-                return;
-            }
-
-            PatchCompiler(state => state with
-            {
-                AvailableSdks = versions
-                    .Select(static version => new SdkOption(
-                        version.Version,
-                        string.IsNullOrEmpty(version.ReleaseDate)
-                            ? version.Version
-                            : $"{version.Version} — {version.ReleaseDate}",
-                        "",
-                        ""))
-                    .ToArray(),
-                ListLoaded = true,
-            });
-            Notify();
-        }
-        catch
-        {
-            // Keep the built-in catalog if the SDK list cannot be downloaded.
-        }
-    }
-
-    public async Task ApplySdk(string value)
-    {
-        var generation = _compiler.BeginUpdate();
-        PatchCompiler(state => state with
-        {
-            Sdk = DisplaySpecifier(value),
-            SdkError = null,
-            SdkLoading = true,
-        });
-        Stale = true;
-        Notify();
-
-        try
-        {
-            if (ToSpecifier(Sdk) is null)
-            {
-                await Task.WhenAll(
-                    ApplyCompilerAsync(CompilerKind.Roslyn, "built-in", RoslynConfig, generation),
-                    ApplyCompilerAsync(CompilerKind.Razor, "built-in", RazorConfig, generation));
-                return;
-            }
-
-            SdkInfo info;
-            try
-            {
-                info = await _worker.SendAsync(
-                    new WorkerInputMessage.GetSdkInfo(Sdk)
-                    {
-                        Id = _worker.NextMessageId(),
-                    });
-            }
-            catch (Exception ex)
-            {
-                if (!_compiler.IsCurrent(generation))
-                {
-                    return;
-                }
-
-                PatchCompiler(state => state with { SdkError = ex.Message });
-                var found = ResolvedSdk;
-                if (string.IsNullOrEmpty(found.Roslyn) && string.IsNullOrEmpty(found.Razor))
-                {
-                    return;
-                }
-
-                await Task.WhenAll(
-                    ApplyCompilerAsync(CompilerKind.Roslyn, string.IsNullOrEmpty(found.Roslyn) ? Roslyn : found.Roslyn, RoslynConfig, generation),
-                    ApplyCompilerAsync(CompilerKind.Razor, string.IsNullOrEmpty(found.Razor) ? Razor : found.Razor, RazorConfig, generation));
-                return;
-            }
-
-            if (!_compiler.IsCurrent(generation))
-            {
-                return;
-            }
-
-            PatchCompiler(state => state with { Sdk = DisplaySpecifier(info.SdkVersion) });
-            await Task.WhenAll(
-                ApplyCompilerAsync(CompilerKind.Roslyn, info.RoslynVersion ?? "built-in", RoslynConfig, generation),
-                ApplyCompilerAsync(CompilerKind.Razor, info.RazorVersion ?? "built-in", RazorConfig, generation));
-        }
-        finally
-        {
-            if (_compiler.IsCurrent(generation))
-            {
-                PatchCompiler(state => state with { SdkLoading = false });
-                Notify();
-                await PersistUrlAsync();
-            }
-        }
-    }
-
-    public Task SetRoslyn(string value) => SetCompilerAsync(CompilerKind.Roslyn, value, RoslynConfig);
-
-    public Task SetRazor(string value) => SetCompilerAsync(CompilerKind.Razor, value, RazorConfig);
-
-    public Task SetRoslynConfig(string value) => SetCompilerAsync(CompilerKind.Roslyn, Roslyn, value);
-
-    public Task SetRazorConfig(string value) => SetCompilerAsync(CompilerKind.Razor, Razor, value);
-
-    private async Task SetCompilerAsync(CompilerKind kind, string version, string config)
-    {
-        var generation = _compiler.BeginUpdate();
-        PatchCompiler(state => kind == CompilerKind.Roslyn
-            ? state with { RoslynLoading = true }
-            : state with { RazorLoading = true });
-
-        Notify();
-        try
-        {
-            await ApplyCompilerAsync(kind, version, config, generation);
-        }
-        finally
-        {
-            if (_compiler.IsCurrent(generation))
-            {
-                Notify();
-                await PersistUrlAsync();
-            }
-        }
-    }
-
-    private async Task ApplyCompilerAsync(CompilerKind kind, string version, string config, int generation)
-    {
-        var display = DisplaySpecifier(version);
-        PatchCompiler(state => kind == CompilerKind.Roslyn
-            ? state with
-            {
-                Roslyn = display,
-                RoslynConfig = config,
-                RoslynError = null,
-                RoslynLoading = true,
-            }
-            : state with
-            {
-                Razor = display,
-                RazorConfig = config,
-                RazorError = null,
-                RazorLoading = true,
-            });
-
-        Stale = true;
-        Notify();
-
-        try
-        {
-            var changed = await _worker.SendAsync(
-                new WorkerInputMessage.UseCompilerVersion(
-                    kind,
-                    ToSpecifier(version),
-                    ToBuildConfiguration(config))
-                {
-                    Id = _worker.NextMessageId(),
-                });
-
-            if (!_compiler.IsCurrent(generation))
-            {
-                return;
-            }
-
-            PackageDependencyInfo? info = null;
-            try
-            {
-                info = await _worker.SendAsync(
-                    new WorkerInputMessage.GetCompilerDependencyInfo(kind)
-                    {
-                        Id = _worker.NextMessageId(),
-                    });
-            }
-            catch
-            {
-                // Resolved package info is optional.
-            }
-
-            if (!_compiler.IsCurrent(generation))
-            {
-                return;
-            }
-
-            PatchCompiler(state => kind == CompilerKind.Roslyn
-                ? state with { RoslynInfo = info }
-                : state with { RazorInfo = info });
-
-            if (changed)
-            {
-                Stale = true;
-            }
-        }
-        catch (Exception ex)
-        {
-            if (!_compiler.IsCurrent(generation))
-            {
-                return;
-            }
-
-            PatchCompiler(state => kind == CompilerKind.Roslyn
-                ? state with { RoslynError = ex.Message, RoslynInfo = null }
-                : state with { RazorError = ex.Message, RazorInfo = null });
-        }
-        finally
-        {
-            if (_compiler.IsCurrent(generation))
-            {
-                PatchCompiler(state => kind == CompilerKind.Roslyn
-                    ? state with { RoslynLoading = false }
-                    : state with { RazorLoading = false });
-
-                Notify();
-            }
-        }
     }
 
     public void MarkStale()
@@ -1249,9 +1043,6 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     private string CompilerKey() => Compiler.Key;
 
     private CompilerState Compiler => _compiler.Value;
-
-    private void PatchCompiler(Func<CompilerState, CompilerState> mutate)
-        => _compiler.Update(mutate);
 
     private void BeginNewOutputGeneration()
     {
@@ -1712,19 +1503,6 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
             await SyncLanguageWorkspaceAsync(refresh: true);
         }
     }
-
-    private static string? ToSpecifier(string? value)
-        => string.IsNullOrWhiteSpace(value) ||
-           string.Equals(value.Trim(), "built-in", StringComparison.OrdinalIgnoreCase)
-            ? null
-            : value.Trim();
-
-    private static string DisplaySpecifier(string? value) => ToSpecifier(value) ?? "built-in";
-
-    private static BuildConfiguration ToBuildConfiguration(string value)
-        => string.Equals(value, "Debug", StringComparison.OrdinalIgnoreCase)
-            ? BuildConfiguration.Debug
-            : BuildConfiguration.Release;
 
     private static async Task InvokeHandlersAsync(Func<Task>? handlers)
     {

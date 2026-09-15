@@ -1,5 +1,9 @@
-namespace DotNetLab.Lab;
+using DotNetLab.Lab;
+using Fluxor;
 
+namespace DotNetLab.Features.Compiler;
+
+[FeatureState]
 public sealed record CompilerState
 {
     public string Sdk { get; init; } = "built-in";
@@ -17,6 +21,10 @@ public sealed record CompilerState
     public PackageDependencyInfo? RazorInfo { get; init; }
     public IReadOnlyList<SdkOption> AvailableSdks { get; init; } = LabCatalog.SdkVersions;
     public bool ListLoaded { get; init; }
+
+    public CompilerState()
+    {
+    }
 
     public bool Loading => SdkLoading || RoslynLoading || RazorLoading;
 

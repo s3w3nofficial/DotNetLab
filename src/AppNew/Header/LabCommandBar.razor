@@ -1,9 +1,11 @@
+@inherits FluxorComponent
 @inject ILabCommands Commands
 @inject LabPlatform Platform
-@implements IDisposable
+@inject IState<CompilerState> Compiler
+@inject IDispatcher Dispatcher
 
 <div class="lab-command-bar">
-    @if (Commands.Busy)
+    @if (Busy)
     {
         <FluentButton Appearance="ButtonAppearance.Subtle"
                       Size="ButtonSize.Small"
@@ -12,7 +14,7 @@
                       IconStart="@(new Icons.Regular.Size20.ArrowSync())"
                       Loading="true"
                       Disabled="true"
-                      Label="@(Commands.CompilerLoading ? "Loading compiler" : "Compiling")" />
+                      Label="@(Compiler.Value.Loading ? "Loading compiler" : "Compiling")" />
     }
     else
     {
@@ -30,10 +32,10 @@
     <div aria-label="Compiler selection" style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
         <CompilerPicker Id="lab-sdk"
                         Label="SDK"
-                        Value="@Commands.Sdk"
+                        Value="@Compiler.Value.Sdk"
                         IconStart="@(new Icons.Regular.Size20.Toolbox())"
                         Options="@SdkOptions"
-                        Selected="Commands.ApplySdk">
+                        Selected="SelectSdk">
             <Trailing>
                 <FluentMenuItem Label="More SDK versions…" OnClick="Commands.ShowSettingsAsync" />
             </Trailing>
@@ -41,10 +43,10 @@
 
         <CompilerPicker Id="lab-roslyn"
                         Label="Roslyn"
-                        Value="@Commands.Roslyn"
+                        Value="@Compiler.Value.Roslyn"
                         IconStart="@(new Icons.Regular.Size20.CodeText())"
                         Options="@CompilerRefOptions"
-                        Selected="Commands.SetRoslyn">
+                        Selected="SelectRoslyn">
             <Trailing>
                 <FluentMenuItem Label="Version, PR, branch or build…" OnClick="Commands.ShowSettingsAsync" />
             </Trailing>
@@ -52,10 +54,10 @@
 
         <CompilerPicker Id="lab-razor"
                         Label="Razor"
-                        Value="@Commands.Razor"
+                        Value="@Compiler.Value.Razor"
                         IconStart="@(new Icons.Regular.Size20.CodeBlock())"
                         Options="@CompilerRefOptions"
-                        Selected="Commands.SetRazor">
+                        Selected="SelectRazor">
             <Trailing>
                 @foreach (var item in LabCatalog.RazorToolchains)
                 {
@@ -130,13 +132,15 @@
     private static readonly CompilerPickerOption[] CompilerRefOptions =
         [.. LabCatalog.CompilerRefs.Select(item => new CompilerPickerOption(item, item))];
 
+    private bool Busy => Commands.Busy || Compiler.Value.Loading;
+
     private IReadOnlyList<CompilerPickerOption> SdkOptions
     {
         get
         {
             var options = new List<CompilerPickerOption> { new("built-in", "built-in") };
             var first = true;
-            foreach (var sdk in Commands.AvailableSdks)
+            foreach (var sdk in Compiler.Value.AvailableSdks)
             {
                 options.Add(new(sdk.Value, sdk.Label, DividerBefore: first));
                 first = false;
@@ -146,11 +150,40 @@
         }
     }
 
-    protected override void OnInitialized() => Commands.Changed += OnStateChanged;
-
-    protected override Task OnInitializedAsync() => Commands.EnsureSdkVersionsAsync();
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        Commands.Changed += OnStateChanged;
+        Dispatcher.Dispatch(new EnsureSdkVersionsAction());
+    }
 
     private void OnStateChanged() => InvokeAsync(StateHasChanged);
 
-    public void Dispose() => Commands.Changed -= OnStateChanged;
+    private Task SelectSdk(string value)
+    {
+        Dispatcher.Dispatch(new ApplySdkAction(value));
+        return Task.CompletedTask;
+    }
+
+    private Task SelectRoslyn(string value)
+    {
+        Dispatcher.Dispatch(new SetRoslynAction(value));
+        return Task.CompletedTask;
+    }
+
+    private Task SelectRazor(string value)
+    {
+        Dispatcher.Dispatch(new SetRazorAction(value));
+        return Task.CompletedTask;
+    }
+
+    protected override ValueTask DisposeAsyncCore(bool disposing)
+    {
+        if (disposing)
+        {
+            Commands.Changed -= OnStateChanged;
+        }
+
+        return base.DisposeAsyncCore(disposing);
+    }
 }
