@@ -21,6 +21,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     private readonly IState<PreferencesState> _preferences;
     private readonly IState<CompilationState> _compilation;
     private readonly IState<DocumentsState> _documents;
+    private readonly LayoutStore _layout;
     private readonly IDispatcher _dispatcher;
     private readonly ILogger<LabWorkspaceState> _logger;
     private readonly Dictionary<string, OutputSnapshot> _outputCache = new(StringComparer.Ordinal);
@@ -50,6 +51,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
         IState<PreferencesState> preferences,
         IState<CompilationState> compilation,
         IState<DocumentsState> documents,
+        LayoutStore layout,
         IDispatcher dispatcher,
         ILogger<LabWorkspaceState> logger)
     {
@@ -63,6 +65,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
         _preferences = preferences;
         _compilation = compilation;
         _documents = documents;
+        _layout = layout;
         _dispatcher = dispatcher;
         _logger = logger;
         Documents = new LabDocuments(this, dispatcher);
@@ -103,7 +106,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     public event Func<Task>? UrlPersistRequested;
 
     public bool Stacked => Preferences.Stacked;
-    public double Split { get; private set; } = 50;
+    public double Split => Layout.Split;
     public bool Running
     {
         get => Compilation.Running;
@@ -689,7 +692,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
             return;
         }
 
-        Split = next;
+        _layout.Update(state => state with { Split = next });
         if (notify)
         {
             Notify();
@@ -931,6 +934,8 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     private CompilationState Compilation => _compilation.Value;
 
     private DocumentsState DocumentsSnapshot => _documents.Value;
+
+    private LayoutState Layout => _layout.Value;
 
     private void BeginNewOutputGeneration()
     {
