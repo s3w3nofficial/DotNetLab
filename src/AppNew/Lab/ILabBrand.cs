@@ -6,8 +6,6 @@ public interface ILabBrand
 
     string Template { get; }
 
-    bool ResolvedDark { get; }
-
     void SetTemplate(string template);
 
     Task ShowPasteUrlAsync();

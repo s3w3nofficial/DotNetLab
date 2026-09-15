@@ -4,33 +4,11 @@ public interface ILabSettings
 {
     event Action? Changed;
 
-    bool WordWrap { get; set; }
-
-    bool UseVim { get; set; }
-
-    bool LanguageServices { get; set; }
-
-    bool DebugLogs { get; set; }
-
-    bool TraceLogs { get; set; }
-
-    bool MemoryUsageView { get; set; }
-
-    bool BackgroundWorker { get; set; }
-
-    bool EnableCaching { get; set; }
-
-    bool AutomaticCompilation { get; set; }
-
     string RazorToolchain { get; set; }
 
     string RazorStrategy { get; set; }
 
-    string AppTheme { get; }
-
     string ActiveSource { get; }
-
-    void OnUiSettingsChanged();
 
     void OnSavedStateChanged();
 

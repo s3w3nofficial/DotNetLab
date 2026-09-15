@@ -8,12 +8,6 @@ public interface ILabCommands
 
     bool CompilerLoading { get; }
 
-    bool MemoryUsageView { get; }
-
-    bool DisableInputVirtualKeyboard { get; }
-
-    bool Stacked { get; }
-
     Task CompileAsync();
 
     void SetRazorToolchain(string value);
@@ -23,8 +17,4 @@ public interface ILabCommands
     Task ShowSettingsAsync();
 
     Task ShowPaletteAsync();
-
-    void ToggleInputVirtualKeyboard();
-
-    void ToggleStacked();
 }

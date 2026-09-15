@@ -1,5 +1,9 @@
-namespace DotNetLab.Lab;
+using DotNetLab.Lab;
+using Fluxor;
 
+namespace DotNetLab.Features.Preferences;
+
+[FeatureState]
 public sealed record PreferencesState
 {
     public bool WordWrap { get; init; }
@@ -16,6 +20,11 @@ public sealed record PreferencesState
     public bool Stacked { get; init; }
     public string AppTheme { get; init; } = "dark";
     public bool ResolvedDark { get; init; } = true;
+    public bool Ready { get; init; }
+
+    public PreferencesState()
+    {
+    }
 
     public string MonacoTheme => LabTheme.MonacoThemeName(ResolvedDark);
 

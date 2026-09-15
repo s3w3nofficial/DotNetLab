@@ -37,7 +37,6 @@ public static class AppBuilder
         builder.Services.AddScoped<LabPlatform>();
         builder.Services.AddScoped<LabShare>();
         builder.Services.AddScoped<LabSettings>();
-        builder.Services.AddScoped<PreferencesStore>();
         builder.Services.AddScoped<TemplateCache>();
         builder.Services.AddScoped<InputOutputCache>();
         builder.Services.AddScoped<BlazorMonacoInterop>();

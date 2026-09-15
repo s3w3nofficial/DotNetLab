@@ -3,6 +3,8 @@
 @inject LabShare Share
 @inject LabPlatform Platform
 @inject IJSRuntime JS
+@inject IState<PreferencesState> Prefs
+@inject IDispatcher Dispatcher
 @implements IAsyncDisposable
 
 <div @ref="_host"
@@ -169,7 +171,8 @@
     public Task ToggleWordWrapFromKeyboard()
         => InvokeAsync(() =>
         {
-            Palette.ToggleWordWrap();
+            Dispatcher.Dispatch(new ToggleWordWrapAction());
+            Dispatcher.Dispatch(new PersistPreferencesAction());
             return Task.CompletedTask;
         });
 
@@ -265,33 +268,36 @@
         yield return new("Settings", "settings preferences options", "", () => Palette.ShowSettingsAsync());
         yield return new("Toggle word wrap", "wrap word-wrap", "Alt+Z", () =>
         {
-            Palette.ToggleWordWrap();
+            Dispatcher.Dispatch(new ToggleWordWrapAction());
+            Dispatcher.Dispatch(new PersistPreferencesAction());
             return Task.CompletedTask;
         });
         yield return new("Toggle VIM keybindings", "vim vi keybindings", "", () =>
         {
-            Palette.ToggleVim();
+            Dispatcher.Dispatch(new ToggleVimAction());
+            Dispatcher.Dispatch(new PersistPreferencesAction());
             return Task.CompletedTask;
         });
         yield return new("Toggle hint squiggles", "squiggly hint hidden diagnostic decoration", "", () =>
         {
-            Palette.ToggleHintSquiggles();
+            Dispatcher.Dispatch(new ToggleHintSquigglesAction());
+            Dispatcher.Dispatch(new PersistPreferencesAction());
             return Task.CompletedTask;
         });
         yield return new(
-            Palette.Stacked ? "Show panes side by side" : "Stack panes vertically",
+            Prefs.Value.Stacked ? "Show panes side by side" : "Stack panes vertically",
             "stack layout panes split",
             "",
             () =>
             {
-                Palette.ToggleStacked();
+                Dispatcher.Dispatch(new ToggleStackedAction());
                 return Task.CompletedTask;
             });
         yield return new(
-            Palette.ResolvedDark ? "Switch to light theme" : "Switch to dark theme",
+            Prefs.Value.ResolvedDark ? "Switch to light theme" : "Switch to dark theme",
             "theme dark light appearance",
             "",
-            () => Theme.SetPreferenceAsync(Palette.ResolvedDark ? "light" : "dark"));
+            () => Theme.SetPreferenceAsync(Prefs.Value.ResolvedDark ? "light" : "dark"));
     }
 
     private static string OptionId(int index) => $"lab-palette-option-{index}";

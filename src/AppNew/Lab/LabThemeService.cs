@@ -1,3 +1,5 @@
+using DotNetLab.Features.Preferences;
+using Fluxor;
 using Microsoft.JSInterop;
 
 namespace DotNetLab.Lab;
@@ -5,14 +7,16 @@ namespace DotNetLab.Lab;
 public sealed class LabThemeService : IAsyncDisposable
 {
     private readonly IJSRuntime _js;
-    private readonly LabWorkspaceState _state;
+    private readonly IDispatcher _dispatcher;
+    private readonly IState<PreferencesState> _prefs;
     private DotNetObjectReference<LabThemeService>? _self;
     private bool _listening;
 
-    public LabThemeService(IJSRuntime js, LabWorkspaceState state)
+    public LabThemeService(IJSRuntime js, IDispatcher dispatcher, IState<PreferencesState> prefs)
     {
         _js = js;
-        _state = state;
+        _dispatcher = dispatcher;
+        _prefs = prefs;
     }
 
     public async Task InitializeAsync()
@@ -48,7 +52,7 @@ public sealed class LabThemeService : IAsyncDisposable
     [JSInvokable]
     public async Task OnSystemThemeChanged(bool dark)
     {
-        if (!string.Equals(_state.AppTheme, "system", StringComparison.Ordinal))
+        if (!string.Equals(_prefs.Value.AppTheme, "system", StringComparison.Ordinal))
         {
             return;
         }
@@ -83,7 +87,7 @@ public sealed class LabThemeService : IAsyncDisposable
         {
         }
 
-        _state.SetTheme(preference, dark);
+        _dispatcher.Dispatch(new SetThemeAction(preference, dark));
 
         try
         {

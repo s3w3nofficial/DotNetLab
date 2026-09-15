@@ -2,6 +2,7 @@
 @inject ILabCommands Commands
 @inject LabPlatform Platform
 @inject IState<CompilerState> Compiler
+@inject IState<PreferencesState> Prefs
 @inject IDispatcher Dispatcher
 
 <div class="lab-command-bar">
@@ -73,7 +74,7 @@
     </div>
 
     <span class="lab-spacer"></span>
-    @if (Commands.MemoryUsageView)
+    @if (Prefs.Value.MemoryUsageView)
     {
         <MemoryUsageView />
         <span class="lab-vsep" aria-hidden="true"></span>
@@ -98,30 +99,30 @@
                       Appearance="ButtonAppearance.Subtle"
                       Size="ButtonSize.Small"
                       IconOnly="true"
-                      Class="@(Commands.DisableInputVirtualKeyboard ? "lab-toolbar-toggle-on" : null)"
-                      Title="@(Commands.DisableInputVirtualKeyboard ? "Show on-screen keyboard" : "Hide on-screen keyboard")"
-                      AriaLabel="@(Commands.DisableInputVirtualKeyboard ? "Show on-screen keyboard" : "Hide on-screen keyboard")"
-                      IconStart="@(Commands.DisableInputVirtualKeyboard ? new Icons.Regular.Size20.KeyboardOff() : new Icons.Regular.Size20.Keyboard())"
-                      OnClick="Commands.ToggleInputVirtualKeyboard" />
+                      Class="@(Prefs.Value.DisableInputVirtualKeyboard ? "lab-toolbar-toggle-on" : null)"
+                      Title="@(Prefs.Value.DisableInputVirtualKeyboard ? "Show on-screen keyboard" : "Hide on-screen keyboard")"
+                      AriaLabel="@(Prefs.Value.DisableInputVirtualKeyboard ? "Show on-screen keyboard" : "Hide on-screen keyboard")"
+                      IconStart="@(Prefs.Value.DisableInputVirtualKeyboard ? new Icons.Regular.Size20.KeyboardOff() : new Icons.Regular.Size20.Keyboard())"
+                      OnClick="ToggleKeyboard" />
         <FluentTooltip Anchor="lab-cmd-keyboard"
                        Class="lab-command-tooltip"
                        Positioning="Positioning.Below"
                        UseTooltipService="false">
-            @(Commands.DisableInputVirtualKeyboard ? "Show on-screen keyboard" : "Hide on-screen keyboard")
+            @(Prefs.Value.DisableInputVirtualKeyboard ? "Show on-screen keyboard" : "Hide on-screen keyboard")
         </FluentTooltip>
         <FluentButton Id="lab-cmd-layout"
                       Appearance="ButtonAppearance.Subtle"
                       Size="ButtonSize.Small"
                       IconOnly="true"
-                      Title="@(Commands.Stacked ? "Show panes side by side" : "Stack panes vertically")"
-                      AriaLabel="@(Commands.Stacked ? "Show panes side by side" : "Stack panes vertically")"
-                      IconStart="@(Commands.Stacked ? new Icons.Regular.Size20.LayoutColumnTwo() : new Icons.Regular.Size20.LayoutRowTwo())"
-                      OnClick="Commands.ToggleStacked" />
+                      Title="@(Prefs.Value.Stacked ? "Show panes side by side" : "Stack panes vertically")"
+                      AriaLabel="@(Prefs.Value.Stacked ? "Show panes side by side" : "Stack panes vertically")"
+                      IconStart="@(Prefs.Value.Stacked ? new Icons.Regular.Size20.LayoutColumnTwo() : new Icons.Regular.Size20.LayoutRowTwo())"
+                      OnClick="ToggleStacked" />
         <FluentTooltip Anchor="lab-cmd-layout"
                        Class="lab-command-tooltip"
                        Positioning="Positioning.Below"
                        UseTooltipService="false">
-            @(Commands.Stacked ? "Show panes side by side" : "Stack panes vertically")
+            @(Prefs.Value.Stacked ? "Show panes side by side" : "Stack panes vertically")
         </FluentTooltip>
     </div>
 </div>
@@ -176,6 +177,14 @@
         Dispatcher.Dispatch(new SetRazorAction(value));
         return Task.CompletedTask;
     }
+
+    private void ToggleKeyboard()
+    {
+        Dispatcher.Dispatch(new ToggleInputVirtualKeyboardAction());
+        Dispatcher.Dispatch(new PersistPreferencesAction());
+    }
+
+    private void ToggleStacked() => Dispatcher.Dispatch(new ToggleStackedAction());
 
     protected override ValueTask DisposeAsyncCore(bool disposing)
     {

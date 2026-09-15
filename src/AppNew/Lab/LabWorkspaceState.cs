@@ -1,6 +1,7 @@
 using System.Collections.Immutable;
 using BlazorMonaco.Editor;
 using DotNetLab.Features.Compiler;
+using DotNetLab.Features.Preferences;
 using Fluxor;
 using Microsoft.JSInterop;
 
@@ -12,11 +13,10 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     private readonly LabLanguageServices _language;
     private readonly LabCursorSync _cursors;
     private readonly LabSettings _settings;
-    private readonly LabLogging _logging;
     private readonly TemplateCache _templates;
     private readonly InputOutputCache _cache;
     private readonly IState<CompilerState> _compiler;
-    private readonly PreferencesStore _preferences;
+    private readonly IState<PreferencesState> _preferences;
     private readonly IDispatcher _dispatcher;
     private readonly ILogger<LabWorkspaceState> _logger;
     private readonly Dictionary<string, OutputSnapshot> _outputCache = new(StringComparer.Ordinal);
@@ -40,11 +40,10 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
         LabLanguageServices language,
         LabCursorSync cursors,
         LabSettings settings,
-        LabLogging logging,
         TemplateCache templates,
         InputOutputCache cache,
         IState<CompilerState> compiler,
-        PreferencesStore preferences,
+        IState<PreferencesState> preferences,
         IDispatcher dispatcher,
         ILogger<LabWorkspaceState> logger)
     {
@@ -52,18 +51,17 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
         _language = language;
         _cursors = cursors;
         _settings = settings;
-        _logging = logging;
         _templates = templates;
         _cache = cache;
         _compiler = compiler;
         _preferences = preferences;
         _dispatcher = dispatcher;
         _logger = logger;
-        ApplyLogLevel();
         Documents = new LabDocuments(this);
         Tabs = new OutputTabLayout(this);
         _compilerKey = Compiler.Key;
         _compiler.StateChanged += OnCompilerStoreChanged;
+        _preferences.StateChanged += OnPreferencesChanged;
         _worker.Failed += OnWorkerFailed;
     }
 
@@ -94,11 +92,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     public event Func<Task>? SnapshotRequested;
     public event Func<Task>? UrlPersistRequested;
 
-    public bool Stacked
-    {
-        get => Preferences.Stacked;
-        private set => PatchPreferences(state => state with { Stacked = value });
-    }
+    public bool Stacked => Preferences.Stacked;
     public double Split { get; private set; } = 50;
     public bool Running { get; private set; }
     public bool Stale { get; internal set; } = true;
@@ -146,61 +140,17 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     public bool Busy => Running || CompilerLoading;
     public string RazorToolchain { get; set; } = "Auto";
     public string RazorStrategy { get; set; } = "Runtime";
-    public bool WordWrap
-    {
-        get => Preferences.WordWrap;
-        set => PatchPreferences(state => state with { WordWrap = value });
-    }
-    public bool UseVim
-    {
-        get => Preferences.UseVim;
-        set => PatchPreferences(state => state with { UseVim = value });
-    }
-    public bool DisableInputVirtualKeyboard
-    {
-        get => Preferences.DisableInputVirtualKeyboard;
-        private set => PatchPreferences(state => state with { DisableInputVirtualKeyboard = value });
-    }
-    public bool LanguageServices
-    {
-        get => Preferences.LanguageServices;
-        set => PatchPreferences(state => state with { LanguageServices = value });
-    }
-    public bool DebugLogs
-    {
-        get => Preferences.DebugLogs;
-        set => PatchPreferences(state => state with { DebugLogs = value });
-    }
-    public bool TraceLogs
-    {
-        get => Preferences.TraceLogs;
-        set => PatchPreferences(state => state with { TraceLogs = value });
-    }
-    public bool MemoryUsageView
-    {
-        get => Preferences.MemoryUsageView;
-        set => PatchPreferences(state => state with { MemoryUsageView = value });
-    }
-    public bool BackgroundWorker
-    {
-        get => Preferences.BackgroundWorker;
-        set => PatchPreferences(state => state with { BackgroundWorker = value });
-    }
-    public bool DisplayHintSquiggles
-    {
-        get => Preferences.DisplayHintSquiggles;
-        set => PatchPreferences(state => state with { DisplayHintSquiggles = value });
-    }
-    public bool EnableCaching
-    {
-        get => Preferences.EnableCaching;
-        set => PatchPreferences(state => state with { EnableCaching = value });
-    }
-    public bool AutomaticCompilation
-    {
-        get => Preferences.AutomaticCompilation;
-        set => PatchPreferences(state => state with { AutomaticCompilation = value });
-    }
+    public bool WordWrap => Preferences.WordWrap;
+    public bool UseVim => Preferences.UseVim;
+    public bool DisableInputVirtualKeyboard => Preferences.DisableInputVirtualKeyboard;
+    public bool LanguageServices => Preferences.LanguageServices;
+    public bool DebugLogs => Preferences.DebugLogs;
+    public bool TraceLogs => Preferences.TraceLogs;
+    public bool MemoryUsageView => Preferences.MemoryUsageView;
+    public bool BackgroundWorker => Preferences.BackgroundWorker;
+    public bool DisplayHintSquiggles => Preferences.DisplayHintSquiggles;
+    public bool EnableCaching => Preferences.EnableCaching;
+    public bool AutomaticCompilation => Preferences.AutomaticCompilation;
     public string AppTheme => Preferences.AppTheme;
     public bool ResolvedDark => Preferences.ResolvedDark;
     public string MonacoTheme => Preferences.MonacoTheme;
@@ -286,8 +236,11 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     public void Dispose()
     {
         _compiler.StateChanged -= OnCompilerStoreChanged;
+        _preferences.StateChanged -= OnPreferencesChanged;
         _worker.Failed -= OnWorkerFailed;
     }
+
+    private void OnPreferencesChanged(object? sender, EventArgs e) => Notify();
 
     private void OnCompilerStoreChanged(object? sender, EventArgs e)
     {
@@ -320,13 +273,6 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
         }
     }
 
-    public void OnUiSettingsChanged()
-    {
-        ApplyLogLevel();
-        Notify();
-        _ = PersistSettingsAsync();
-    }
-
     public async Task LoadSettingsAsync()
     {
         try
@@ -334,13 +280,13 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
             var snapshot = await _settings.LoadAsync();
             if (snapshot is not null)
             {
-                ApplyUiSettings(snapshot);
+                _dispatcher.Dispatch(new HydratePreferencesAction(snapshot));
             }
         }
         finally
         {
             _settingsReady = true;
-            ApplyLogLevel();
+            _dispatcher.Dispatch(new PreferencesReadyAction());
         }
 
         if (_languageInit is not null)
@@ -350,23 +296,6 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
 
         ApplySavedOutputTabs(await _settings.ReadOutputTabsAsync());
         Notify();
-    }
-
-    private void ApplyUiSettings(LabSettingsSnapshot snapshot)
-    {
-        PatchPreferences(state => state.WithSnapshot(snapshot));
-        ApplyLogLevel();
-    }
-
-    private void ApplyLogLevel()
-    {
-        PatchPreferences(state => state.WithNormalizedLogs());
-        var prefs = Preferences;
-        _logging.LogLevel = prefs.TraceLogs
-            ? LogLevel.Trace
-            : prefs.DebugLogs
-                ? LogLevel.Debug
-                : LogLevel.Information;
     }
 
     public async Task ReloadWorkerAsync()
@@ -431,7 +360,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
 
     private async Task SetLanguageServicesAsync(bool enabled, bool persist)
     {
-        LanguageServices = enabled;
+        _dispatcher.Dispatch(new SetLanguageServicesAction(enabled));
         try
         {
             await _language.EnableAsync(enabled);
@@ -464,7 +393,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
         Notify();
         if (persist)
         {
-            await PersistSettingsAsync();
+            _dispatcher.Dispatch(new PersistPreferencesAction());
         }
     }
 
@@ -563,18 +492,6 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     public IReadOnlyList<OutputTab> OutputTabsFor(string fileName) => Tabs.OutputTabsFor(fileName);
     public string OutputLabel(string type) => Tabs.OutputLabel(type);
     public string OutputTabTitle(string type) => Tabs.OutputTabTitle(type);
-
-    public void SetTheme(string preference, bool resolvedDark)
-    {
-        preference = LabTheme.NormalizePreference(preference);
-        if (AppTheme == preference && ResolvedDark == resolvedDark)
-        {
-            return;
-        }
-
-        PatchPreferences(state => state with { AppTheme = preference, ResolvedDark = resolvedDark });
-        Notify();
-    }
 
     public Task SnapshotEditorsAsync() => InvokeHandlersAsync(SnapshotRequested);
 
@@ -743,38 +660,6 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     public Task ShowSettingsAsync() => SettingsRequested?.Invoke() ?? Task.CompletedTask;
     public Task ShowPaletteAsync() => PaletteRequested?.Invoke() ?? Task.CompletedTask;
     public Task ShowPasteUrlAsync() => PasteUrlRequested?.Invoke() ?? Task.CompletedTask;
-
-    public void ToggleWordWrap()
-    {
-        WordWrap = !WordWrap;
-        OnUiSettingsChanged();
-    }
-
-    public void ToggleVim()
-    {
-        UseVim = !UseVim;
-        OnUiSettingsChanged();
-    }
-
-    public void SetStacked(bool stacked)
-    {
-        Stacked = stacked;
-        Notify();
-    }
-
-    public void ToggleStacked() => SetStacked(!Stacked);
-
-    public void ToggleHintSquiggles()
-    {
-        DisplayHintSquiggles = !DisplayHintSquiggles;
-        OnUiSettingsChanged();
-    }
-
-    public void ToggleInputVirtualKeyboard()
-    {
-        DisableInputVirtualKeyboard = !DisableInputVirtualKeyboard;
-        OnUiSettingsChanged();
-    }
 
     public void SetSplit(double value, bool notify = true)
     {
@@ -1022,9 +907,6 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     private CompilerState Compiler => _compiler.Value;
 
     private PreferencesState Preferences => _preferences.Value;
-
-    private void PatchPreferences(Func<PreferencesState, PreferencesState> mutate)
-        => _preferences.Update(mutate);
 
     private void BeginNewOutputGeneration()
     {

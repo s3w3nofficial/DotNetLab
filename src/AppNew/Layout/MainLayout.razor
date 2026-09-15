@@ -3,6 +3,7 @@
 @inject ILabShell Shell
 @inject LabUrlSync Urls
 @inject LabPlatform Platform
+@inject ILabEnvironment Environment
 @inject IDispatcher Dispatcher
 @implements IDisposable
 
@@ -46,6 +47,7 @@
 
         try
         {
+            Dispatcher.Dispatch(new SeedPreferencesAction(Environment.IsDevelopment));
             await Theme.InitializeAsync();
             await Platform.InitializeAsync();
             Dispatcher.Dispatch(new InitializeUpdatesAction());

@@ -3,6 +3,7 @@
 @inject LabThemeService Theme
 @inject IUpdateChecker Updates
 @inject IState<UpdateState> UpdateStore
+@inject IState<PreferencesState> Prefs
 @inject IDispatcher Dispatcher
 
 <FluentDialog @ref="_dialog" Class="lab-settings-dialog" Modal="false" OnStateChange="OnDialogStateChange">
@@ -22,54 +23,14 @@
         <ChildContent>
         <div class="lab-settings-stack">
         <div class="lab-settings-top">
-            <div class="lab-setting-toggles">
-                <label class="lab-setting-chip">
-                    <span>Alt+Z in the editors</span>
-                    <FluentSwitch @bind-Value="Settings.WordWrap" @bind-Value:after="Settings.OnUiSettingsChanged" AriaLabel="Word wrap" />
-                </label>
-                <label class="lab-setting-chip">
-                    <span>VIM keybindings in the editors</span>
-                    <FluentSwitch @bind-Value="Settings.UseVim" @bind-Value:after="Settings.OnUiSettingsChanged" AriaLabel="Use VIM" />
-                </label>
-            </div>
-
-            <details class="lab-settings-fold">
-                <summary>Advanced</summary>
-                <div class="lab-settings-fold-body">
-                    <SettingRow Title="Language Services" Hint="Completions and live diagnostics">
-                        <FluentSwitch Value="Settings.LanguageServices" ValueChanged="Settings.SetLanguageServicesAsync" AriaLabel="Language services" />
-                    </SettingRow>
-                    <SettingRow Title="Debug Logs" Hint="Debug logs in the browser console">
-                        <FluentSwitch @bind-Value="Settings.DebugLogs" @bind-Value:after="Settings.OnUiSettingsChanged" AriaLabel="Debug logs" />
-                    </SettingRow>
-                    <SettingRow Title="Trace Logs" Hint="Trace logs in the browser console">
-                        <FluentSwitch @bind-Value="Settings.TraceLogs" @bind-Value:after="Settings.OnUiSettingsChanged" AriaLabel="Trace logs" />
-                    </SettingRow>
-                    <SettingRow Title="Memory Usage View" Hint="Header memory widget and GC trace download (browser only)">
-                        <FluentSwitch @bind-Value="Settings.MemoryUsageView" @bind-Value:after="Settings.OnUiSettingsChanged" AriaLabel="Memory usage view" />
-                    </SettingRow>
-                    <SettingRow Title="Background worker" Hint="Compile in a background worker thread (requires restart)">
-                        <FluentSwitch @bind-Value="Settings.BackgroundWorker" @bind-Value:after="Settings.OnUiSettingsChanged" AriaLabel="Background worker" />
-                    </SettingRow>
-                    <SettingRow Title="Worker stuck?" Hint="Restart the compilation worker">
-                        <FluentButton Size="ButtonSize.Small"
-                                      IconStart="@(new Icons.Regular.Size20.ArrowSync())"
-                                      OnClick="Settings.ReloadWorkerAsync">Restart the worker</FluentButton>
-                    </SettingRow>
-                    <SettingRow Title="Enable Caching" Hint="Server cache for faster sharing">
-                        <FluentSwitch @bind-Value="Settings.EnableCaching" @bind-Value:after="Settings.OnUiSettingsChanged" AriaLabel="Enable caching" />
-                    </SettingRow>
-                    <SettingRow Title="Automatic Compilation" Hint="Compile on start">
-                        <FluentSwitch @bind-Value="Settings.AutomaticCompilation" @bind-Value:after="Settings.OnUiSettingsChanged" AriaLabel="Automatic compilation" />
-                    </SettingRow>
+            <PreferenceSettings>
                     <SettingRow Title="Razor Toolchain">
                         <FluentSelect TOption="string" TValue="string" Items="LabCatalog.RazorToolchains" @bind-Value="Settings.RazorToolchain" @bind-Value:after="Settings.OnSavedStateChanged" />
                     </SettingRow>
                     <SettingRow Title="Razor Strategy">
                         <FluentSelect TOption="string" TValue="string" Items="LabCatalog.RazorStrategies" @bind-Value="Settings.RazorStrategy" @bind-Value:after="Settings.OnSavedStateChanged" />
                     </SettingRow>
-                </div>
-            </details>
+            </PreferenceSettings>
 
             <details class="lab-settings-fold lab-settings-output-tabs">
                 <summary>Output tabs</summary>
@@ -136,7 +97,7 @@
                     @foreach (var theme in _themes)
                     {
                         <button type="button"
-                                class="lab-seg-item @(Settings.AppTheme == theme.Value ? "active" : null)"
+                                class="lab-seg-item @(Prefs.Value.AppTheme == theme.Value ? "active" : null)"
                                 @onclick="@(() => OnThemeChangedAsync(theme.Value))">
                             @theme.Label
                         </button>
