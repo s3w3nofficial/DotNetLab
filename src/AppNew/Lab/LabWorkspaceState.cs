@@ -678,14 +678,17 @@ public sealed class LabWorkspaceState
             ApplyCompilerAsync(CompilerKind.Roslyn, DisplaySpecifier(state.RoslynVersion), RoslynConfig, generation),
             ApplyCompilerAsync(CompilerKind.Razor, DisplaySpecifier(state.RazorVersion), RazorConfig, generation));
 
-        if (!TryApplyTemplateCache(state) && EnableCaching)
+        var usedTemplateCache = TryApplyTemplateCache(state);
+        if (!usedTemplateCache && EnableCaching)
         {
             _ = TryLoadServerCacheAsync(state, applyGeneration);
         }
 
         await compilers;
 
-        if (AutomaticCompilation)
+        // Template output is already the default-preference tree. Compiling again
+        // (e.g. after URL/settings apply Public Symbols) reloads Tree at ~45k LOC.
+        if (AutomaticCompilation && !usedTemplateCache)
         {
             // Do not block URL/state application on the compile itself — editors should
             // mount with the loaded sources rather than waiting for the worker.
