@@ -1,4 +1,6 @@
 using DotNetLab.Lab;
+using Fluxor;
+using Fluxor.Blazor.Web.ReduxDevTools;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using Microsoft.FluentUI.AspNetCore.Components;
@@ -12,6 +14,14 @@ public static class AppBuilder
         var builder = WebAssemblyHostBuilder.CreateDefault(args);
         
         builder.Services.AddFluentUIComponents();
+        builder.Services.AddFluxor(options =>
+        {
+            options.ScanAssemblies(typeof(App).Assembly);
+            if (builder.HostEnvironment.IsDevelopment())
+            {
+                options.UseReduxDevTools();
+            }
+        });
         builder.Services.AddScoped<LabWorkspaceState>();
         builder.Services.AddScoped<ILabStatus>(sp => sp.GetRequiredService<LabWorkspaceState>());
         builder.Services.AddScoped<ILabBrand>(sp => sp.GetRequiredService<LabWorkspaceState>());

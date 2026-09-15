@@ -215,6 +215,7 @@
                             <iframe @key="@("html-preview")"
                                     class="lab-html-preview"
                                     title="Rendered HTML"
+                                    sandbox=""
                                     srcdoc="@State.GetOutput("html")"></iframe>
                         }
                         else

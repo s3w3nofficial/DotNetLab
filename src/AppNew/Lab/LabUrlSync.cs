@@ -95,7 +95,6 @@ public sealed class LabUrlSync : IDisposable
             return;
         }
 
-        _appliedSlug = slug;
         SavedState state;
         if (WellKnownSlugs.ShorthandToState.TryGetValue(slug, out var wellKnown))
         {
@@ -113,6 +112,7 @@ public sealed class LabUrlSync : IDisposable
 
         _state.EditingUserPreferences = loadPreferences;
         await _state.ApplySavedStateAsync(state);
+        _appliedSlug = slug;
     }
 
     private async Task<string> ReadBrowserHashAsync()

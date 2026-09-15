@@ -3,7 +3,7 @@
 @inject LabWorkspaceState State
 @inject LabUrlSync Urls
 @inject LabPlatform Platform
-@inject IUpdateChecker Updates
+@inject IDispatcher Dispatcher
 @inject IJSRuntime JS
 @implements IDisposable
 
@@ -36,7 +36,6 @@
         State.SettingsRequested += OpenSettingsAsync;
         State.PaletteRequested += TogglePaletteAsync;
         State.PasteUrlRequested += OpenPasteAsync;
-        Updates.UpdateStatusChanged += OnUpdatesChanged;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -46,32 +45,29 @@
             return;
         }
 
-        await Theme.InitializeAsync();
-        await Platform.InitializeAsync();
         try
         {
-            await Updates.InitializeAsync();
-        }
-        catch (JSException)
-        {
-        }
+            await Theme.InitializeAsync();
+            await Platform.InitializeAsync();
+            Dispatcher.Dispatch(new InitializeUpdatesAction());
+            await State.LoadSettingsAsync();
+            try
+            {
+                var json = await JS.InvokeAsync<string>("netLabPrefs.readOutputTabs");
+                State.ApplySavedOutputTabs(json);
+            }
+            catch (JSException)
+            {
+            }
 
-        await State.LoadSettingsAsync();
-        try
-        {
-            var json = await JS.InvokeAsync<string>("netLabPrefs.readOutputTabs");
-            State.ApplySavedOutputTabs(json);
+            await Urls.LoadFromUriAsync();
         }
-        catch (JSException)
+        finally
         {
+            _ready = true;
+            StateHasChanged();
         }
-
-        await Urls.LoadFromUriAsync();
-        _ready = true;
-        StateHasChanged();
     }
-
-    private void OnUpdatesChanged() => InvokeAsync(StateHasChanged);
 
     private Task OpenSettingsAsync() => _settings?.ShowAsync() ?? Task.CompletedTask;
 
@@ -84,6 +80,5 @@
         State.SettingsRequested -= OpenSettingsAsync;
         State.PaletteRequested -= TogglePaletteAsync;
         State.PasteUrlRequested -= OpenPasteAsync;
-        Updates.UpdateStatusChanged -= OnUpdatesChanged;
     }
 }

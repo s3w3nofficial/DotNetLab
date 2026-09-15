@@ -1,8 +1,8 @@
+@inherits FluxorComponent
 @inject ILabBrand Brand
 @inject LabThemeService Theme
 @inject LabShare Share
-@inject IUpdateChecker Updates
-@implements IDisposable
+@inject IState<UpdateState> Updates
 
 <div class="lab-brand-bar">
     <span class="lab-brand-mark" aria-hidden="true">
@@ -87,7 +87,7 @@
                   IconStart="@(new Icons.Regular.Size20.Settings())"
                   OnClick="Brand.ShowSettingsAsync">
         Settings
-        @if (Updates.UpdateIsAvailable)
+        @if (Updates.Value.Available)
         {
             <FluentBadge Appearance="BadgeAppearance.Filled"
                          Color="BadgeColor.Success"
@@ -101,12 +101,24 @@
 @code {
     private const string BrandForeground = "#f7f1fc";
 
-    protected override void OnInitialized() => Brand.Changed += OnStateChanged;
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        Brand.Changed += OnStateChanged;
+    }
 
     private void OnStateChanged() => InvokeAsync(StateHasChanged);
 
     private Task ToggleThemeAsync()
         => Theme.SetPreferenceAsync(Brand.ResolvedDark ? "light" : "dark");
 
-    public void Dispose() => Brand.Changed -= OnStateChanged;
+    protected override ValueTask DisposeAsyncCore(bool disposing)
+    {
+        if (disposing)
+        {
+            Brand.Changed -= OnStateChanged;
+        }
+
+        return base.DisposeAsyncCore(disposing);
+    }
 }

@@ -15,14 +15,15 @@ god object; see [State direction](#state-direction).
 - [x] `StatusBar` injects `ILabStatus`
 - [x] `LabBrandBar` injects `ILabBrand`
 - [x] `LabCommandBar` injects `ILabCommands`
+- [x] Fluxor store + first feature (`Features/Updates`), not wrapping `LabWorkspaceState`
 
 ## P0
 
-- [ ] Render the shell even if restore fails
+- [x] Render the shell even if restore fails
   - Wrap theme / platform / settings / URL load in `MainLayout`
   - Set `_ready` in `finally` so a throw cannot leave a blank page
   - Assign `_appliedSlug` only after a successful apply
-- [ ] Sandbox the HTML preview iframe (`sandbox=""` on `srcdoc`)
+- [x] Sandbox the HTML preview iframe (`sandbox=""` on `srcdoc`)
 
 ## P1
 
@@ -76,21 +77,27 @@ delete the facade in one pass.
 
 ### Sequence
 
-1. Finish P0/P1 chrome ISP (`CommandPalette`, `SettingsDialog`, `MainLayout`).
-2. Extract small scoped stores (`CompilationStore`, `CompilerStore`,
+1. Fluxor in the host (`AddFluxor`, `StoreInitializer`). First feature is
+   **Updates** (`Features/Updates`): `IUpdateChecker` stays infrastructure;
+   `LoadUpdate` stays on the checker (not serializable). `LabBrandBar` /
+   Settings check UI read `IState<UpdateState>`.
+2. Remaining P0 bugs (shell always renders, slug after apply, HTML sandbox).
+3. P1 chrome ISP (`CommandPalette`, `SettingsDialog`, `MainLayout`).
+4. Extract small scoped stores (`CompilationStore`, `CompilerStore`,
    `PreferencesStore`, …) next to the current types in `Lab/`.
-   `StateStore<T>` / immutable records / generation checks are enough here.
-3. When a store is real, colocate its UI with it (e.g. `CompilerPicker` +
-   `CompilerSection` move with `CompilerStore`, not before).
-4. Optional Fluxor **per feature** inside those folders. Shrink
-   `LabWorkspaceState` / `Lab/` until both disappear.
-5. Cosmetic leftover: `Header/` → `Shell/Header/` for brand / command / memory
+   `StateStore<T>` / immutable records / generation checks are enough until a
+   slice is ready to become a Fluxor feature.
+5. When a store is real, colocate its UI with it (e.g. `CompilerPicker` +
+   `CompilerSection` move with `CompilerStore`, not before) and optionally
+   convert that slice to Fluxor the same way Updates was converted.
+6. Shrink `LabWorkspaceState` / `Lab/` until both disappear.
+7. Cosmetic leftover: `Header/` → `Shell/Header/` for brand / command / memory
    only.
 
-Fluxor constraints if/when adopted: no keystrokes, no Monaco handles, no worker
-handles, no `CompiledAssembly` in the store. Effects for async; reducers for
+Fluxor constraints: no keystrokes, no Monaco handles, no worker handles, no
+`CompiledAssembly` in the store. Effects for async; reducers for
 `{ Running, Stale, SelectedSdk, … }`. Do not create empty
-`Features/*/…Actions.cs` ahead of a store.
+`Features/*/…Actions.cs` ahead of a store. Do not wrap `LabWorkspaceState`.
 
 ## Target folders
 
@@ -172,9 +179,9 @@ Namespaces carry the rest (`DotNetLab.Features.Documents`).
 
 ## Later (not now)
 
-- [ ] Small scoped feature stores (before Fluxor), still under `Lab/` until a store is real
+- [ ] Next Fluxor features only after a real store exists (not wrapping `LabWorkspaceState`)
+- [ ] Small scoped feature stores still under `Lab/` until a store is real
 - [ ] Move each store + its UI into `Features/` / `Shell/` / `Editor/` / `Infrastructure/`
-- [ ] Optional Fluxor hybrid once stores exist (separate features, not one store)
 - [ ] `LabWorkspace` injecting a narrow workspace surface instead of `LabWorkspaceState`
 - [ ] `Lab/` empty; `ILab*` gone
 - Host-neutral `AddDotNetLabApp()` and a true Server vs WASM split

@@ -1,8 +1,10 @@
+@inherits FluxorComponent
 @inject LabWorkspaceState State
 @inject LabThemeService Theme
 @inject IUpdateChecker Updates
+@inject IState<UpdateState> UpdateStore
+@inject IDispatcher Dispatcher
 @inject IJSRuntime JS
-@implements IDisposable
 
 <FluentDialog @ref="_dialog" Class="lab-settings-dialog" Modal="false" OnStateChange="OnDialogStateChange">
     <FluentDialogBody>
@@ -235,12 +237,12 @@
                 <span>2026.9.11</span>
                 <span aria-hidden="true"> · </span>
                 <a href="@LabLinks.Repository" target="_blank" rel="noopener noreferrer">GitHub</a>
-                @if (Updates.Enabled && !_checking)
+                @if (UpdateStore.Value.Enabled && !UpdateStore.Value.Checking)
                 {
                     <span aria-hidden="true"> · </span>
-                    <button type="button" @onclick="CheckForUpdatesAsync">Check for updates</button>
+                    <button type="button" @onclick="CheckForUpdates">Check for updates</button>
                 }
-                else if (_checking)
+                else if (UpdateStore.Value.Checking)
                 {
                     <span aria-hidden="true"> · </span>
                     <span>Checking…</span>
@@ -255,13 +257,13 @@
                     <a href="@LabLinks.Releases" target="_blank" rel="noopener noreferrer">Release notes</a>
                 </div>
             }
-            else if (Updates.UpdateIsDownloading)
+            else if (UpdateStore.Value.Downloading)
             {
                 <div class="lab-update">
                     <span>An update is being downloaded in the background.</span>
                 </div>
             }
-            else if (_checkedForUpdates)
+            else if (UpdateStore.Value.CheckCompleted)
             {
                 <div class="lab-update">
                     <span>No update found.</span>
@@ -303,40 +305,23 @@
     private string _sdkQuery = "";
     private IReadOnlyList<SdkOption> _sdkMatches = LabCatalog.SdkVersions;
     private OutputFileKind _outputKind = OutputFileKind.Cs;
-    private bool _checking;
-    private bool _checkedForUpdates;
-    private bool _updatesBound;
 
     protected override void OnInitialized()
     {
+        base.OnInitialized();
         State.Changed += OnStateChanged;
-        Updates.UpdateStatusChanged += OnUpdatesChanged;
-        _updatesBound = true;
-    }
-
-    protected override async Task OnInitializedAsync()
-    {
-        try
-        {
-            await Updates.InitializeAsync();
-        }
-        catch (JSException)
-        {
-        }
     }
 
     private void OnStateChanged() => InvokeAsync(StateHasChanged);
 
-    private void OnUpdatesChanged() => InvokeAsync(StateHasChanged);
-
-    public void Dispose()
+    protected override ValueTask DisposeAsyncCore(bool disposing)
     {
-        State.Changed -= OnStateChanged;
-        if (_updatesBound)
+        if (disposing)
         {
-            Updates.UpdateStatusChanged -= OnUpdatesChanged;
-            _updatesBound = false;
+            State.Changed -= OnStateChanged;
         }
+
+        return base.DisposeAsyncCore(disposing);
     }
 
     protected override void OnParametersSet()
@@ -492,23 +477,7 @@
         }
     }
 
-    private async Task CheckForUpdatesAsync()
-    {
-        _checkedForUpdates = false;
-        _checking = true;
-        try
-        {
-            await Updates.CheckForUpdatesAsync();
-            _checkedForUpdates = true;
-        }
-        catch (JSException)
-        {
-        }
-        finally
-        {
-            _checking = false;
-        }
-    }
+    private void CheckForUpdates() => Dispatcher.Dispatch(new CheckUpdatesAction());
 
     private async Task LoadUpdateAsync(Action loadUpdate)
     {
