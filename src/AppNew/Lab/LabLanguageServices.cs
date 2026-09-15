@@ -310,20 +310,21 @@ public sealed class LabLanguageServices(
                     ref _completionDebounce,
                     (this, modelUri, position, context),
                     """{"suggestions":[],"isIncomplete":true}""",
-                    static (args, _) => args.Item1.SendAsync(
+                    static (args, cancellationToken) => args.Item1.SendAsync(
                         new WorkerInputMessage.ProvideCompletionItems(args.modelUri, args.position, args.context)
                         {
                             Id = args.Item1._worker.NextMessageId(),
-                        }),
+                        },
+                        cancellationToken),
                     cancellationToken: cancellationToken);
             },
-            ResolveCompletionItemFunc = (item, _) =>
-                SendAsync(new WorkerInputMessage.ResolveCompletionItem(item) { Id = _worker.NextMessageId() }),
+            ResolveCompletionItemFunc = (item, cancellationToken) =>
+                SendAsync(new WorkerInputMessage.ResolveCompletionItem(item) { Id = _worker.NextMessageId() }, cancellationToken),
         });
 
         _codeActionProvider = await blazorMonacoInterop.RegisterCodeActionProviderAsync(_cSharpLanguageSelector, new(loggerFactory)
         {
-            ProvideCodeActions = (modelUri, rangeJson, _) =>
+            ProvideCodeActions = (modelUri, rangeJson, cancellationToken) =>
             {
                 if (_lastCodeActions is { } cached &&
                     cached.ModelUri == modelUri && cached.RangeJson == rangeJson)
@@ -334,7 +335,7 @@ public sealed class LabLanguageServices(
                 var result = SendAsync(new WorkerInputMessage.ProvideCodeActions(modelUri, rangeJson)
                 {
                     Id = _worker.NextMessageId(),
-                });
+                }, cancellationToken);
                 _lastCodeActions = (modelUri, rangeJson, result);
                 return result;
             },
@@ -342,17 +343,17 @@ public sealed class LabLanguageServices(
 
         _hoverProvider = await blazorMonacoInterop.RegisterHoverProviderAsync(_cSharpLanguageSelector, new(loggerFactory)
         {
-            ProvideHover = (modelUri, positionJson, _) =>
-                SendAsync(new WorkerInputMessage.ProvideHover(modelUri, positionJson) { Id = _worker.NextMessageId() }),
+            ProvideHover = (modelUri, positionJson, cancellationToken) =>
+                SendAsync(new WorkerInputMessage.ProvideHover(modelUri, positionJson) { Id = _worker.NextMessageId() }, cancellationToken),
         });
 
         _signatureHelpProvider = await blazorMonacoInterop.RegisterSignatureHelpProviderAsync(_cSharpLanguageSelector, new(loggerFactory)
         {
-            ProvideSignatureHelp = (modelUri, positionJson, contextJson, _) =>
+            ProvideSignatureHelp = (modelUri, positionJson, contextJson, cancellationToken) =>
                 SendAsync(new WorkerInputMessage.ProvideSignatureHelp(modelUri, positionJson, contextJson)
                 {
                     Id = _worker.NextMessageId(),
-                }),
+                }, cancellationToken),
         });
     }
 
@@ -366,11 +367,11 @@ public sealed class LabLanguageServices(
                 TokenTypes = SemanticTokensUtil.TokenTypes.LspValues,
                 TokenModifiers = SemanticTokensUtil.TokenModifiers.LspValues,
             },
-            ProvideSemanticTokens = (modelUri, rangeJson, debug, _) =>
+            ProvideSemanticTokens = (modelUri, rangeJson, debug, cancellationToken) =>
                 SendAsync(new WorkerInputMessage.ProvideSemanticTokens(modelUri, rangeJson, debug)
                 {
                     Id = _worker.NextMessageId(),
-                }),
+                }, cancellationToken),
         });
     }
 
@@ -414,7 +415,7 @@ public sealed class LabLanguageServices(
                 var markers = (await services.SendAsync(new WorkerInputMessage.GetDiagnostics(uri)
                 {
                     Id = services._worker.NextMessageId(),
-                }))
+                }, cancellationToken))
                     .Select(static m => m.WithSeverityIcon())
                     .ToList();
                 var model = await BlazorMonaco.Editor.Global.GetModel(js, uri);
@@ -437,8 +438,8 @@ public sealed class LabLanguageServices(
         }
     }
 
-    private Task<T> SendAsync<T>(IWorkerInputMessage<T> message)
-        => _worker.SendAsync(message);
+    private Task<T> SendAsync<T>(IWorkerInputMessage<T> message, CancellationToken cancellationToken = default)
+        => _worker.SendAsync(message, cancellationToken);
 
     private static Task<TOut> DebounceAsync<TIn, TOut>(
         ref DebounceInfo info,

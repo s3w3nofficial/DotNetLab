@@ -129,6 +129,11 @@ public sealed class LabDocuments
     public void SetSource(string file, string contents)
     {
         Sources[file] = contents;
+        if (_state.Stale)
+        {
+            return;
+        }
+
         _state.Stale = true;
         _state.Notify();
     }

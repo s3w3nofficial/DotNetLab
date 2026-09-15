@@ -66,22 +66,41 @@ public sealed class WorkerHost
         }
     }
 
-    public async Task<T> SendAsync<T>(IWorkerInputMessage<T> message)
+    public async Task<T> SendAsync<T>(IWorkerInputMessage<T> message, CancellationToken cancellationToken = default)
     {
-        var incoming = await PostAsync(message);
-        return incoming switch
+        CancellationTokenRegistration registration = default;
+        if (cancellationToken.CanBeCanceled)
         {
-            WorkerOutputMessage.Success success => success.Result switch
+            registration = cancellationToken.Register(() =>
             {
-                null => default!,
-                JsonElement json => json.Deserialize<T>(WorkerJsonContext.Default.Options)!,
-                T result => result,
-                var other => throw new InvalidOperationException(
-                    $"Expected result of type '{typeof(T)}', got '{other.GetType()}': {other}"),
-            },
-            WorkerOutputMessage.Failure failure => throw new InvalidOperationException(failure.FullString),
-            _ => throw new InvalidOperationException($"Unexpected message type: {incoming}"),
-        };
+                _ = PostAsync(new WorkerInputMessage.Cancel(MessageIdToCancel: message.Id)
+                {
+                    Id = NextMessageId(),
+                });
+            });
+        }
+
+        try
+        {
+            var incoming = await PostAsync(message);
+            return incoming switch
+            {
+                WorkerOutputMessage.Success success => success.Result switch
+                {
+                    null => default!,
+                    JsonElement json => json.Deserialize<T>(WorkerJsonContext.Default.Options)!,
+                    T result => result,
+                    var other => throw new InvalidOperationException(
+                        $"Expected result of type '{typeof(T)}', got '{other.GetType()}': {other}"),
+                },
+                WorkerOutputMessage.Failure failure => throw new InvalidOperationException(failure.FullString),
+                _ => throw new InvalidOperationException($"Unexpected message type: {incoming}"),
+            };
+        }
+        finally
+        {
+            await registration.DisposeAsync();
+        }
     }
 
     public async Task CollectAndDownloadGcDumpAsync()
@@ -106,20 +125,14 @@ public sealed class WorkerHost
         if (_useWorker != true)
         {
             var executor = _services!.GetRequiredService<WorkerInputMessage.IExecutor>();
-            await _inProcessGate.WaitAsync();
-            try
-            {
-                _logger.Log(
-                    message is WorkerInputMessage.Ping ? LogLevel.Trace : LogLevel.Debug,
-                    "=> {Id}: {Type} (fg)",
-                    message.Id,
-                    message.GetType().Name);
-                return await message.HandleAndGetOutputAsync(executor);
-            }
-            finally
-            {
-                _inProcessGate.Release();
-            }
+            // Do not serialize in-process messages: Cancel must overlap the request it aborts,
+            // matching src/App WorkerController (ungated HandleAndGetOutputAsync / Task.Run).
+            _logger.Log(
+                message is WorkerInputMessage.Ping ? LogLevel.Trace : LogLevel.Debug,
+                "=> {Id}: {Type} (fg)",
+                message.Id,
+                message.GetType().Name);
+            return await message.HandleAndGetOutputAsync(executor);
         }
 
         var tcs = new TaskCompletionSource<WorkerOutputMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
