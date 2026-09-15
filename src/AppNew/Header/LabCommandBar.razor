@@ -1,9 +1,9 @@
-@inject LabWorkspaceState State
+@inject ILabCommands Commands
 @inject LabPlatform Platform
 @implements IDisposable
 
 <div class="lab-command-bar">
-    @if (State.Busy)
+    @if (Commands.Busy)
     {
         <FluentButton Appearance="ButtonAppearance.Subtle"
                       Size="ButtonSize.Small"
@@ -12,7 +12,7 @@
                       IconStart="@(new Icons.Regular.Size20.ArrowSync())"
                       Loading="true"
                       Disabled="true"
-                      Label="@(State.CompilerLoading ? "Loading compiler" : "Compiling")" />
+                      Label="@(Commands.CompilerLoading ? "Loading compiler" : "Compiling")" />
     }
     else
     {
@@ -22,7 +22,7 @@
                       Color="@Success"
                       IconStart="@(new Icons.Filled.Size20.Play())"
                       Label="Compile"
-                      OnClick="State.CompileAsync" />
+                      OnClick="Commands.CompileAsync" />
     }
 
     <span class="lab-vsep" aria-hidden="true"></span>
@@ -30,48 +30,48 @@
     <div aria-label="Compiler selection" style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
         <CompilerPicker Id="lab-sdk"
                         Label="SDK"
-                        Value="@State.Sdk"
+                        Value="@Commands.Sdk"
                         IconStart="@(new Icons.Regular.Size20.Toolbox())"
                         Options="@SdkOptions"
-                        Selected="State.ApplySdk">
+                        Selected="Commands.ApplySdk">
             <Trailing>
-                <FluentMenuItem Label="More SDK versions…" OnClick="State.ShowSettingsAsync" />
+                <FluentMenuItem Label="More SDK versions…" OnClick="Commands.ShowSettingsAsync" />
             </Trailing>
         </CompilerPicker>
 
         <CompilerPicker Id="lab-roslyn"
                         Label="Roslyn"
-                        Value="@State.Roslyn"
+                        Value="@Commands.Roslyn"
                         IconStart="@(new Icons.Regular.Size20.CodeText())"
                         Options="@CompilerRefOptions"
-                        Selected="State.SetRoslyn">
+                        Selected="Commands.SetRoslyn">
             <Trailing>
-                <FluentMenuItem Label="Version, PR, branch or build…" OnClick="State.ShowSettingsAsync" />
+                <FluentMenuItem Label="Version, PR, branch or build…" OnClick="Commands.ShowSettingsAsync" />
             </Trailing>
         </CompilerPicker>
 
         <CompilerPicker Id="lab-razor"
                         Label="Razor"
-                        Value="@State.Razor"
+                        Value="@Commands.Razor"
                         IconStart="@(new Icons.Regular.Size20.CodeBlock())"
                         Options="@CompilerRefOptions"
-                        Selected="State.SetRazor">
+                        Selected="Commands.SetRazor">
             <Trailing>
                 @foreach (var item in LabCatalog.RazorToolchains)
                 {
-                    <FluentMenuItem Label="@($"Toolchain: {item}")" OnClick="@(() => State.SetRazorToolchain(item))" />
+                    <FluentMenuItem Label="@($"Toolchain: {item}")" OnClick="@(() => Commands.SetRazorToolchain(item))" />
                 }
                 <FluentDivider />
                 @foreach (var item in LabCatalog.RazorStrategies)
                 {
-                    <FluentMenuItem Label="@($"Strategy: {item}")" OnClick="@(() => State.SetRazorStrategy(item))" />
+                    <FluentMenuItem Label="@($"Strategy: {item}")" OnClick="@(() => Commands.SetRazorStrategy(item))" />
                 }
             </Trailing>
         </CompilerPicker>
     </div>
 
     <span class="lab-spacer"></span>
-    @if (State.MemoryUsageView)
+    @if (Commands.MemoryUsageView)
     {
         <MemoryUsageView />
         <span class="lab-vsep" aria-hidden="true"></span>
@@ -85,7 +85,7 @@
                       Title="@Platform.PaletteLabel"
                       AriaLabel="@Platform.PaletteLabel"
                       IconStart="@(new Icons.Regular.Size20.KeyCommand())"
-                      OnClick="State.ShowPaletteAsync" />
+                      OnClick="Commands.ShowPaletteAsync" />
         <FluentTooltip Anchor="lab-cmd-palette"
                        Class="lab-command-tooltip"
                        Positioning="Positioning.Below"
@@ -96,30 +96,30 @@
                       Appearance="ButtonAppearance.Subtle"
                       Size="ButtonSize.Small"
                       IconOnly="true"
-                      Class="@(State.DisableInputVirtualKeyboard ? "lab-toolbar-toggle-on" : null)"
-                      Title="@(State.DisableInputVirtualKeyboard ? "Show on-screen keyboard" : "Hide on-screen keyboard")"
-                      AriaLabel="@(State.DisableInputVirtualKeyboard ? "Show on-screen keyboard" : "Hide on-screen keyboard")"
-                      IconStart="@(State.DisableInputVirtualKeyboard ? new Icons.Regular.Size20.KeyboardOff() : new Icons.Regular.Size20.Keyboard())"
-                      OnClick="State.ToggleInputVirtualKeyboard" />
+                      Class="@(Commands.DisableInputVirtualKeyboard ? "lab-toolbar-toggle-on" : null)"
+                      Title="@(Commands.DisableInputVirtualKeyboard ? "Show on-screen keyboard" : "Hide on-screen keyboard")"
+                      AriaLabel="@(Commands.DisableInputVirtualKeyboard ? "Show on-screen keyboard" : "Hide on-screen keyboard")"
+                      IconStart="@(Commands.DisableInputVirtualKeyboard ? new Icons.Regular.Size20.KeyboardOff() : new Icons.Regular.Size20.Keyboard())"
+                      OnClick="Commands.ToggleInputVirtualKeyboard" />
         <FluentTooltip Anchor="lab-cmd-keyboard"
                        Class="lab-command-tooltip"
                        Positioning="Positioning.Below"
                        UseTooltipService="false">
-            @(State.DisableInputVirtualKeyboard ? "Show on-screen keyboard" : "Hide on-screen keyboard")
+            @(Commands.DisableInputVirtualKeyboard ? "Show on-screen keyboard" : "Hide on-screen keyboard")
         </FluentTooltip>
         <FluentButton Id="lab-cmd-layout"
                       Appearance="ButtonAppearance.Subtle"
                       Size="ButtonSize.Small"
                       IconOnly="true"
-                      Title="@(State.Stacked ? "Show panes side by side" : "Stack panes vertically")"
-                      AriaLabel="@(State.Stacked ? "Show panes side by side" : "Stack panes vertically")"
-                      IconStart="@(State.Stacked ? new Icons.Regular.Size20.LayoutColumnTwo() : new Icons.Regular.Size20.LayoutRowTwo())"
-                      OnClick="State.ToggleStacked" />
+                      Title="@(Commands.Stacked ? "Show panes side by side" : "Stack panes vertically")"
+                      AriaLabel="@(Commands.Stacked ? "Show panes side by side" : "Stack panes vertically")"
+                      IconStart="@(Commands.Stacked ? new Icons.Regular.Size20.LayoutColumnTwo() : new Icons.Regular.Size20.LayoutRowTwo())"
+                      OnClick="Commands.ToggleStacked" />
         <FluentTooltip Anchor="lab-cmd-layout"
                        Class="lab-command-tooltip"
                        Positioning="Positioning.Below"
                        UseTooltipService="false">
-            @(State.Stacked ? "Show panes side by side" : "Stack panes vertically")
+            @(Commands.Stacked ? "Show panes side by side" : "Stack panes vertically")
         </FluentTooltip>
     </div>
 </div>
@@ -136,7 +136,7 @@
         {
             var options = new List<CompilerPickerOption> { new("built-in", "built-in") };
             var first = true;
-            foreach (var sdk in State.AvailableSdks)
+            foreach (var sdk in Commands.AvailableSdks)
             {
                 options.Add(new(sdk.Value, sdk.Label, DividerBefore: first));
                 first = false;
@@ -146,11 +146,11 @@
         }
     }
 
-    protected override void OnInitialized() => State.Changed += OnStateChanged;
+    protected override void OnInitialized() => Commands.Changed += OnStateChanged;
 
-    protected override Task OnInitializedAsync() => State.EnsureSdkVersionsAsync();
+    protected override Task OnInitializedAsync() => Commands.EnsureSdkVersionsAsync();
 
     private void OnStateChanged() => InvokeAsync(StateHasChanged);
 
-    public void Dispose() => State.Changed -= OnStateChanged;
+    public void Dispose() => Commands.Changed -= OnStateChanged;
 }

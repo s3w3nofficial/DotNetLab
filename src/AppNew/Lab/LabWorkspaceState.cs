@@ -5,7 +5,7 @@ using Microsoft.JSInterop;
 
 namespace DotNetLab.Lab;
 
-public sealed class LabWorkspaceState : ILabStatus, ILabBrand
+public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands
 {
     private readonly WorkerHost _worker;
     private readonly LabLanguageServices _language;
