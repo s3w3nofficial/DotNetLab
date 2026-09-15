@@ -221,6 +221,7 @@ if (!window.netLabDropBound) {
 
 window.netLabPrefs = {
     outputTabsKey: "netlab-output-tabs",
+    settingsKey: "netlab-settings",
     readOutputTabs: function () {
         try {
             return localStorage.getItem(this.outputTabsKey) || "";
@@ -236,6 +237,24 @@ window.netLabPrefs = {
             }
 
             localStorage.setItem(this.outputTabsKey, json);
+        } catch {
+        }
+    },
+    readSettings: function () {
+        try {
+            return localStorage.getItem(this.settingsKey) || "";
+        } catch {
+            return "";
+        }
+    },
+    persistSettings: function (json) {
+        try {
+            if (!json) {
+                localStorage.removeItem(this.settingsKey);
+                return;
+            }
+
+            localStorage.setItem(this.settingsKey, json);
         } catch {
         }
     }

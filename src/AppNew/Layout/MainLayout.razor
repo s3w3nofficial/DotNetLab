@@ -43,6 +43,7 @@
 
         await Theme.InitializeAsync();
         await Platform.InitializeAsync();
+        await State.LoadSettingsAsync();
         try
         {
             var json = await JS.InvokeAsync<string>("netLabPrefs.readOutputTabs");

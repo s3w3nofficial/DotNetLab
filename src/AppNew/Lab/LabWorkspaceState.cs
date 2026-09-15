@@ -9,6 +9,7 @@ public sealed class LabWorkspaceState
     private readonly WorkerHost _worker;
     private readonly LabLanguageServices _language;
     private readonly LabCursorSync _cursors;
+    private readonly LabSettings _settings;
     private readonly Dictionary<string, OutputSnapshot> _outputCache = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _outputModelUris = new(StringComparer.Ordinal);
     private readonly HashSet<string> _outputLoading = new(StringComparer.Ordinal);
@@ -17,13 +18,15 @@ public sealed class LabWorkspaceState
     private int _compilerGeneration;
     private bool _sdkListLoaded;
     private bool _suppressUrlPersist;
+    private bool _settingsReady;
     private Task? _languageInit;
 
-    public LabWorkspaceState(WorkerHost worker, LabLanguageServices language, LabCursorSync cursors)
+    public LabWorkspaceState(WorkerHost worker, LabLanguageServices language, LabCursorSync cursors, LabSettings settings)
     {
         _worker = worker;
         _language = language;
         _cursors = cursors;
+        _settings = settings;
         Documents = new LabDocuments(this);
         Tabs = new OutputTabLayout(this);
     }
@@ -111,6 +114,7 @@ public sealed class LabWorkspaceState
     public int CursorLine { get; set; } = 9;
     public int CursorColumn { get; set; } = 34;
     public string UpdateState { get; private set; } = "idle";
+    public bool EditingUserPreferences { get; set; }
 
     public Dictionary<string, string> Sources => Documents.Sources;
     public List<string> SourceFiles => Documents.SourceFiles;
@@ -147,10 +151,123 @@ public sealed class LabWorkspaceState
 
     public void Notify() => Changed?.Invoke();
 
-    public Task InitializeLanguageServicesAsync()
-        => _languageInit ??= SetLanguageServicesAsync(LanguageServices);
+    public void OnUiSettingsChanged()
+    {
+        Notify();
+        _ = PersistSettingsAsync();
+    }
 
-    public async Task SetLanguageServicesAsync(bool enabled)
+    public async Task LoadSettingsAsync()
+    {
+        try
+        {
+            var snapshot = await _settings.LoadAsync();
+            if (snapshot is not null)
+            {
+                ApplyUiSettings(snapshot);
+            }
+        }
+        finally
+        {
+            _settingsReady = true;
+        }
+
+        if (_languageInit is not null)
+        {
+            await SetLanguageServicesAsync(LanguageServices, persist: false);
+        }
+
+        Notify();
+    }
+
+    private void ApplyUiSettings(LabSettingsSnapshot snapshot)
+    {
+        if (snapshot.WordWrap is { } wordWrap)
+        {
+            WordWrap = wordWrap;
+        }
+
+        if (snapshot.UseVim is { } useVim)
+        {
+            UseVim = useVim;
+        }
+
+        if (snapshot.LanguageServices is { } languageServices)
+        {
+            LanguageServices = languageServices;
+        }
+
+        if (snapshot.DebugLogs is { } debugLogs)
+        {
+            DebugLogs = debugLogs;
+        }
+
+        if (snapshot.TraceLogs is { } traceLogs)
+        {
+            TraceLogs = traceLogs;
+        }
+
+        if (snapshot.MemoryUsageView is { } memoryUsageView)
+        {
+            MemoryUsageView = memoryUsageView;
+        }
+
+        if (snapshot.BackgroundWorker is { } backgroundWorker)
+        {
+            BackgroundWorker = backgroundWorker;
+        }
+
+        if (snapshot.EnableCaching is { } enableCaching)
+        {
+            EnableCaching = enableCaching;
+        }
+
+        if (snapshot.AutomaticCompilation is { } automaticCompilation)
+        {
+            AutomaticCompilation = automaticCompilation;
+        }
+
+        if (snapshot.DisableInputVirtualKeyboard is { } disableInputVirtualKeyboard)
+        {
+            DisableInputVirtualKeyboard = disableInputVirtualKeyboard;
+        }
+    }
+
+    private LabSettingsSnapshot CaptureSettings()
+        => new()
+        {
+            WordWrap = WordWrap,
+            UseVim = UseVim,
+            LanguageServices = LanguageServices,
+            DebugLogs = DebugLogs,
+            TraceLogs = TraceLogs,
+            MemoryUsageView = MemoryUsageView,
+            BackgroundWorker = BackgroundWorker,
+            EnableCaching = EnableCaching,
+            AutomaticCompilation = AutomaticCompilation,
+            DisableInputVirtualKeyboard = DisableInputVirtualKeyboard,
+            CompilationPreferences = EditingUserPreferences
+                ? GetPreferences()
+                : _settings.CompilationPreferences,
+        };
+
+    private Task PersistSettingsAsync()
+    {
+        if (!_settingsReady)
+        {
+            return Task.CompletedTask;
+        }
+
+        return _settings.SaveAsync(CaptureSettings());
+    }
+
+    public Task InitializeLanguageServicesAsync()
+        => _languageInit ??= SetLanguageServicesAsync(LanguageServices, persist: false);
+
+    public Task SetLanguageServicesAsync(bool enabled)
+        => SetLanguageServicesAsync(enabled, persist: true);
+
+    private async Task SetLanguageServicesAsync(bool enabled, bool persist)
     {
         LanguageServices = enabled;
         try
@@ -172,6 +289,10 @@ public sealed class LabWorkspaceState
         }
 
         Notify();
+        if (persist)
+        {
+            await PersistSettingsAsync();
+        }
     }
 
     public Task OnSourceModelContentChangedAsync(string modelUri, ModelContentChangedEvent args)
@@ -220,6 +341,10 @@ public sealed class LabWorkspaceState
         Stale = true;
         Notify();
         _ = PersistUrlAsync();
+        if (EditingUserPreferences)
+        {
+            _ = PersistSettingsAsync();
+        }
     }
 
     public void SetRazorToolchain(string value)
@@ -434,13 +559,13 @@ public sealed class LabWorkspaceState
     public void ToggleWordWrap()
     {
         WordWrap = !WordWrap;
-        Notify();
+        OnUiSettingsChanged();
     }
 
     public void ToggleVim()
     {
         UseVim = !UseVim;
-        Notify();
+        OnUiSettingsChanged();
     }
 
     public void SetStacked(bool stacked)
@@ -454,7 +579,7 @@ public sealed class LabWorkspaceState
     public void ToggleInputVirtualKeyboard()
     {
         DisableInputVirtualKeyboard = !DisableInputVirtualKeyboard;
-        Notify();
+        OnUiSettingsChanged();
     }
 
     public void SetSplit(double value, bool notify = true)
@@ -904,26 +1029,29 @@ public sealed class LabWorkspaceState
             RazorStrategy = this.RazorStrategy == "DesignTime"
                 ? global::DotNetLab.RazorStrategy.DesignTime
                 : global::DotNetLab.RazorStrategy.Runtime,
-            Preferences = new CompilationPreferences
-            {
-                ShowSymbolKinds = ShowSymbols switch
-                {
-                    "Public Symbols" => global::DotNetLab.SymbolDisplayKinds.Public,
-                    "Internal Symbols" => global::DotNetLab.SymbolDisplayKinds.Internal,
-                    "All Symbols" => global::DotNetLab.SymbolDisplayKinds.Both,
-                    _ => global::DotNetLab.SymbolDisplayKinds.None,
-                },
-                ShowOperations = ShowOperations,
-                ShowBoundNodes = ShowBoundNodes,
-                ShowDeclarationDocument = ShowDeclarationDocument,
-                DecodeCustomAttributeBlobs = DecodeCustomAttributeBlobs,
-                ShowSequencePoints = ShowSequencePoints,
-                FullIl = FullIl,
-                ExcludeSingleFileNameInDiagnostics = ExcludeSingleFileNameInDiagnostics,
-                IncludeHiddenDiagnostics = IncludeHiddenDiagnostics,
-            },
+            Preferences = GetPreferences(),
         };
     }
+
+    public CompilationPreferences GetPreferences()
+        => new()
+        {
+            ShowSymbolKinds = ShowSymbols switch
+            {
+                "Public Symbols" => global::DotNetLab.SymbolDisplayKinds.Public,
+                "Internal Symbols" => global::DotNetLab.SymbolDisplayKinds.Internal,
+                "All Symbols" => global::DotNetLab.SymbolDisplayKinds.Both,
+                _ => global::DotNetLab.SymbolDisplayKinds.None,
+            },
+            ShowOperations = ShowOperations,
+            ShowBoundNodes = ShowBoundNodes,
+            ShowDeclarationDocument = ShowDeclarationDocument,
+            DecodeCustomAttributeBlobs = DecodeCustomAttributeBlobs,
+            ShowSequencePoints = ShowSequencePoints,
+            FullIl = FullIl,
+            ExcludeSingleFileNameInDiagnostics = ExcludeSingleFileNameInDiagnostics,
+            IncludeHiddenDiagnostics = IncludeHiddenDiagnostics,
+        };
 
     public async Task CheckUpdatesAsync()
     {

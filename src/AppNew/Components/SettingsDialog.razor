@@ -23,11 +23,11 @@
             <div class="lab-setting-toggles">
                 <label class="lab-setting-chip">
                     <span>Alt+Z in the editors</span>
-                    <FluentSwitch @bind-Value="State.WordWrap" @bind-Value:after="State.Notify" AriaLabel="Word wrap" />
+                    <FluentSwitch @bind-Value="State.WordWrap" @bind-Value:after="State.OnUiSettingsChanged" AriaLabel="Word wrap" />
                 </label>
                 <label class="lab-setting-chip">
                     <span>VIM keybindings in the editors</span>
-                    <FluentSwitch @bind-Value="State.UseVim" @bind-Value:after="State.Notify" AriaLabel="Use VIM" />
+                    <FluentSwitch @bind-Value="State.UseVim" @bind-Value:after="State.OnUiSettingsChanged" AriaLabel="Use VIM" />
                 </label>
             </div>
 
@@ -38,16 +38,16 @@
                         <FluentSwitch Value="State.LanguageServices" ValueChanged="State.SetLanguageServicesAsync" AriaLabel="Language services" />
                     </SettingRow>
                     <SettingRow Title="Debug Logs" Hint="Debug logs in the browser console">
-                        <FluentSwitch @bind-Value="State.DebugLogs" @bind-Value:after="State.Notify" AriaLabel="Debug logs" />
+                        <FluentSwitch @bind-Value="State.DebugLogs" @bind-Value:after="State.OnUiSettingsChanged" AriaLabel="Debug logs" />
                     </SettingRow>
                     <SettingRow Title="Trace Logs" Hint="Trace logs in the browser console">
-                        <FluentSwitch @bind-Value="State.TraceLogs" @bind-Value:after="State.Notify" AriaLabel="Trace logs" />
+                        <FluentSwitch @bind-Value="State.TraceLogs" @bind-Value:after="State.OnUiSettingsChanged" AriaLabel="Trace logs" />
                     </SettingRow>
                     <SettingRow Title="Memory Usage View" Hint="Header memory widget and GC trace download (browser only)">
-                        <FluentSwitch @bind-Value="State.MemoryUsageView" @bind-Value:after="State.Notify" AriaLabel="Memory usage view" />
+                        <FluentSwitch @bind-Value="State.MemoryUsageView" @bind-Value:after="State.OnUiSettingsChanged" AriaLabel="Memory usage view" />
                     </SettingRow>
                     <SettingRow Title="Background worker" Hint="Compile in a background worker thread (requires restart)">
-                        <FluentSwitch @bind-Value="State.BackgroundWorker" @bind-Value:after="State.Notify" AriaLabel="Background worker" />
+                        <FluentSwitch @bind-Value="State.BackgroundWorker" @bind-Value:after="State.OnUiSettingsChanged" AriaLabel="Background worker" />
                     </SettingRow>
                     @if (State.BackgroundWorker)
                     {
@@ -56,10 +56,10 @@
                         </SettingRow>
                     }
                     <SettingRow Title="Enable Caching" Hint="Server cache for faster sharing">
-                        <FluentSwitch @bind-Value="State.EnableCaching" @bind-Value:after="State.Notify" AriaLabel="Enable caching" />
+                        <FluentSwitch @bind-Value="State.EnableCaching" @bind-Value:after="State.OnUiSettingsChanged" AriaLabel="Enable caching" />
                     </SettingRow>
                     <SettingRow Title="Automatic Compilation" Hint="Compile on start">
-                        <FluentSwitch @bind-Value="State.AutomaticCompilation" @bind-Value:after="State.Notify" AriaLabel="Automatic compilation" />
+                        <FluentSwitch @bind-Value="State.AutomaticCompilation" @bind-Value:after="State.OnUiSettingsChanged" AriaLabel="Automatic compilation" />
                     </SettingRow>
                     <SettingRow Title="Razor Toolchain">
                         <FluentSelect TOption="string" TValue="string" Items="LabWorkspaceState.RazorToolchains" @bind-Value="State.RazorToolchain" @bind-Value:after="State.OnSavedStateChanged" />

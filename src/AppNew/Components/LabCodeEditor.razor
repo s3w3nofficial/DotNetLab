@@ -213,17 +213,38 @@
     {
         _lastValue = Value;
         _lastLanguage = Language;
-        _lastReadOnly = ReadOnly;
-        _lastWordWrap = WordWrap;
         _lastModelUri = ModelUri;
         _ready = true;
         await AttachNamedModelAsync();
         await ApplyMonacoThemeAsync();
         await ApplyVirtualKeyboardAsync();
         await ApplyVimAsync();
+        await ApplyWrapAndReadOnlyAsync();
         await State.EnableSemanticHighlightingAsync();
         await State.InitializeLanguageServicesAsync();
         await State.OnEditorReadyAsync(_editorId, ModelUri, ReadOnly, fold: true);
+    }
+
+    private async Task ApplyWrapAndReadOnlyAsync()
+    {
+        if (_editor is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await _editor.UpdateOptions(new EditorUpdateOptions
+            {
+                ReadOnly = ReadOnly,
+                WordWrap = WordWrap ? "on" : "off"
+            });
+            _lastReadOnly = ReadOnly;
+            _lastWordWrap = WordWrap;
+        }
+        catch (JSException)
+        {
+        }
     }
 
     private async Task AttachNamedModelAsync()

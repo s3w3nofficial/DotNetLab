@@ -8,14 +8,16 @@ public sealed class LabUrlSync : IDisposable
 {
     private readonly NavigationManager _navigation;
     private readonly LabWorkspaceState _state;
+    private readonly LabSettings _settings;
     private readonly IJSRuntime _js;
     private bool _ignoreNextLocation;
     private bool _loaded;
 
-    public LabUrlSync(NavigationManager navigation, LabWorkspaceState state, IJSRuntime js)
+    public LabUrlSync(NavigationManager navigation, LabWorkspaceState state, LabSettings settings, IJSRuntime js)
     {
         _navigation = navigation;
         _state = state;
+        _settings = settings;
         _js = js;
         _state.UrlPersistRequested += SaveAsync;
         _navigation.LocationChanged += OnLocationChanged;
@@ -30,7 +32,8 @@ public sealed class LabUrlSync : IDisposable
         }
 
         _loaded = true;
-        await ApplySlugAsync(string.IsNullOrWhiteSpace(slug) ? "csharp" : slug);
+        var empty = string.IsNullOrWhiteSpace(slug);
+        await ApplySlugAsync(empty ? "csharp" : slug, loadPreferences: empty);
     }
 
     public Task SaveAsync()
@@ -79,10 +82,11 @@ public sealed class LabUrlSync : IDisposable
             slug = await ReadBrowserHashAsync();
         }
 
-        await ApplySlugAsync(string.IsNullOrWhiteSpace(slug) ? "csharp" : slug);
+        var empty = string.IsNullOrWhiteSpace(slug);
+        await ApplySlugAsync(empty ? "csharp" : slug, loadPreferences: empty);
     }
 
-    private async Task ApplySlugAsync(string slug)
+    private async Task ApplySlugAsync(string slug, bool loadPreferences = false)
     {
         SavedState state;
         if (WellKnownSlugs.ShorthandToState.TryGetValue(slug, out var wellKnown))
@@ -94,6 +98,12 @@ public sealed class LabUrlSync : IDisposable
             state = Compressor.Uncompress(slug);
         }
 
+        if (loadPreferences)
+        {
+            state = state.WithPreferences(_settings.CompilationPreferences);
+        }
+
+        _state.EditingUserPreferences = loadPreferences;
         await _state.ApplySavedStateAsync(state);
     }
 

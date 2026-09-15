@@ -17,6 +17,7 @@ public static class AppBuilder
         builder.Services.AddScoped<LabThemeService>();
         builder.Services.AddScoped<LabPlatform>();
         builder.Services.AddScoped<LabShare>();
+        builder.Services.AddScoped<LabSettings>();
         builder.Services.AddScoped<BlazorMonacoInterop>();
         builder.Services.AddScoped<LabLanguageServices>();
         builder.Services.AddScoped<LabCursorSync>();
