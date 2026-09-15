@@ -471,36 +471,6 @@ fluent-tooltip.lab-command-tooltip {
     padding: 4px 8px;
 }
 
-.lab-spacer {
-    flex: 1;
-}
-
-.lab-status-pill {
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-    font-family: var(--font-mono);
-    font-size: 10px;
-    color: var(--lab-muted);
-}
-
-.lab-dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--lab-success);
-    flex-shrink: 0;
-}
-
-.lab-dot.stale {
-    background: var(--lab-warning);
-}
-
-.lab-dot.busy {
-    background: var(--lab-brand-foreground);
-    animation: lab-pulse 1s ease-in-out infinite;
-}
-
 .lab-workspace {
     display: flex;
     flex: 1;
@@ -1002,71 +972,6 @@ fluent-tooltip.lab-command-tooltip {
     border-radius: 0;
 }
 
-.lab-statusbar {
-    display: flex;
-    align-items: center;
-    gap: 1rem;
-    height: 1.75rem;
-    min-height: 1.75rem;
-    min-width: 0;
-    padding: 0 0.75rem;
-    background: var(--lab-panel);
-    border-top: 1px solid var(--lab-hairline);
-    font-family: var(--font-mono);
-    font-size: 10px;
-    color: var(--lab-muted);
-    overflow-x: auto;
-    overflow-y: hidden;
-    white-space: nowrap;
-    scrollbar-width: thin;
-    scrollbar-color: var(--lab-hairline) transparent;
-}
-
-.lab-statusbar::-webkit-scrollbar {
-    height: 6px;
-}
-
-.lab-statusbar::-webkit-scrollbar-thumb {
-    background: var(--lab-hairline);
-}
-
-.lab-statusbar > span {
-    flex-shrink: 0;
-}
-
-.lab-statusbar .lab-spacer {
-    flex-shrink: 1;
-    min-width: 0;
-}
-
-.lab-statusbar .primary {
-    color: var(--lab-foreground);
-}
-
-.lab-memory-usage {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.15rem;
-    font-family: var(--font-mono);
-    font-size: 0.75rem;
-    color: var(--lab-muted);
-    flex-shrink: 0;
-}
-
-.lab-memory-usage-text {
-    margin: 0;
-    padding: 0 0.35rem;
-    border: 0;
-    background: transparent;
-    color: inherit;
-    font: inherit;
-    cursor: pointer;
-}
-
-.lab-memory-usage-text:hover {
-    color: var(--lab-foreground);
-}
-
 .lab-setting-title {
     font-size: 13px;
     font-weight: 600;
@@ -1238,10 +1143,6 @@ h2.lab-setting-section {
 
 .loading-progress-text:after {
     content: var(--blazor-load-percentage-text, "Loading");
-}
-
-@keyframes lab-pulse {
-    50% { opacity: 0.35; }
 }
 
 @media (max-width: 767px) {
