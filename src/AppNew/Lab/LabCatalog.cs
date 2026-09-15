@@ -146,7 +146,7 @@ public static class LabCatalog
 
         if (IsRazorLike(fileName))
         {
-            return "html";
+            return "razor";
         }
 
         return "plaintext";
