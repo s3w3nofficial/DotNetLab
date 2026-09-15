@@ -130,6 +130,27 @@ public sealed class LabLanguageServices(
     public Task<bool> UpdateDiagnosticsAfterCompilationAsync(string? activeModelUri)
         => UpdateDiagnosticsAsync(activeModelUri, afterCompilation: true);
 
+    public async Task<bool> OnCachedCompilationLoadedAsync(
+        CompilerConfiguration config,
+        CompiledAssembly output,
+        string? activeModelUri)
+    {
+        try
+        {
+            await _worker.SendAsync(new WorkerInputMessage.OnCachedCompilationLoaded(config, output)
+            {
+                Id = _worker.NextMessageId(),
+            });
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Informing language services about cached compilation failed");
+            return false;
+        }
+
+        return await UpdateDiagnosticsAfterCompilationAsync(activeModelUri);
+    }
+
     public async Task ApplyCompileDiagnosticsAsync(CompiledAssembly? compiled, IEnumerable<(string FileName, string Uri)> files)
     {
         foreach (var (fileName, uri) in files)

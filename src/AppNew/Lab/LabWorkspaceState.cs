@@ -10,23 +10,39 @@ public sealed class LabWorkspaceState
     private readonly LabLanguageServices _language;
     private readonly LabCursorSync _cursors;
     private readonly LabSettings _settings;
+    private readonly TemplateCache _templates;
+    private readonly InputOutputCache _cache;
+    private readonly ILogger<LabWorkspaceState> _logger;
     private readonly Dictionary<string, OutputSnapshot> _outputCache = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _outputModelUris = new(StringComparer.Ordinal);
     private readonly HashSet<string> _outputLoading = new(StringComparer.Ordinal);
     private string _activeOutput = "cs";
     private int _compileGeneration;
     private int _compilerGeneration;
+    private int _applyGeneration;
     private bool _sdkListLoaded;
     private bool _suppressUrlPersist;
     private bool _settingsReady;
+    private bool _storeInCache;
+    private CompilationInput? _liveCompiledInput;
     private Task? _languageInit;
 
-    public LabWorkspaceState(WorkerHost worker, LabLanguageServices language, LabCursorSync cursors, LabSettings settings)
+    public LabWorkspaceState(
+        WorkerHost worker,
+        LabLanguageServices language,
+        LabCursorSync cursors,
+        LabSettings settings,
+        TemplateCache templates,
+        InputOutputCache cache,
+        ILogger<LabWorkspaceState> logger)
     {
         _worker = worker;
         _language = language;
         _cursors = cursors;
         _settings = settings;
+        _templates = templates;
+        _cache = cache;
+        _logger = logger;
         Documents = new LabDocuments(this);
         Tabs = new OutputTabLayout(this);
     }
@@ -538,17 +554,26 @@ public sealed class LabWorkspaceState
         RoslynConfig = state.RoslynConfiguration == BuildConfiguration.Debug ? "Debug" : "Release";
         RazorConfig = state.RazorConfiguration == BuildConfiguration.Debug ? "Debug" : "Release";
         Stale = true;
+        _liveCompiledInput = null;
         BeginNewOutputGeneration();
         Notify();
 
+        var applyGeneration = ++_applyGeneration;
         var generation = ++_compilerGeneration;
-        await Task.WhenAll(
+        var compilers = Task.WhenAll(
             ApplyCompilerAsync(CompilerKind.Roslyn, DisplaySpecifier(state.RoslynVersion), RoslynConfig, generation),
             ApplyCompilerAsync(CompilerKind.Razor, DisplaySpecifier(state.RazorVersion), RazorConfig, generation));
 
+        if (!TryApplyTemplateCache(state) && EnableCaching)
+        {
+            _ = TryLoadServerCacheAsync(state, applyGeneration);
+        }
+
+        await compilers;
+
         if (AutomaticCompilation)
         {
-            await CompileAsync();
+            await CompileAsync(storeInCache: false);
         }
     }
 
@@ -951,7 +976,9 @@ public sealed class LabWorkspaceState
         _ = PersistUrlAsync();
     }
 
-    public async Task CompileAsync()
+    public Task CompileAsync() => CompileAsync(storeInCache: true);
+
+    public async Task CompileAsync(bool storeInCache)
     {
         if (Running || CompilerLoading)
         {
@@ -974,6 +1001,8 @@ public sealed class LabWorkspaceState
                 });
             var sameAssembly = ReferenceEquals(Compiled, compiled);
             Compiled = compiled;
+            _liveCompiledInput = input;
+            _storeInCache = storeInCache;
             Stale = false;
             // The worker reuses LastResult for identical input. Keep the output cache so
             // the editor is not forced through Compiling/Loading for an unchanged assembly.
@@ -981,10 +1010,16 @@ public sealed class LabWorkspaceState
             {
                 BeginNewOutputGeneration();
             }
+
+            if (storeInCache)
+            {
+                TryStoreInCache(CaptureSavedState(), compiled);
+            }
         }
         catch (Exception ex)
         {
             Compiled = CompiledAssembly.Fail(ex.ToString());
+            _liveCompiledInput = LastInput;
             BeginNewOutputGeneration();
         }
         finally
@@ -1184,6 +1219,10 @@ public sealed class LabWorkspaceState
             }
 
             _outputCache[key] = CreateSnapshot(tab, result.Text, output, result.Metadata ?? output.Metadata);
+            if (_storeInCache && Compiled is { } compiled)
+            {
+                TryStoreInCache(CaptureSavedState(), compiled);
+            }
         }
         finally
         {
@@ -1282,6 +1321,135 @@ public sealed class LabWorkspaceState
     {
         var uri = Documents.UriFor(ActiveSource);
         if (!_language.Enabled || !await _language.UpdateDiagnosticsAfterCompilationAsync(uri))
+        {
+            await _language.ApplyCompileDiagnosticsAsync(
+                Compiled,
+                Documents.SourceFiles.Select(file => (file, Documents.UriFor(file))));
+        }
+
+        if (_language.Enabled)
+        {
+            await SyncLanguageWorkspaceAsync(refresh: true);
+        }
+    }
+
+    private bool TryApplyTemplateCache(SavedState state)
+    {
+        try
+        {
+            var preferencesDiffer = state.GetPreferences() != CompilationPreferences.Default;
+            if (TryGetTemplateOutput(state, out var input, out var output))
+            {
+                ApplyCachedCompilation(input, output, stale: preferencesDiffer);
+                return true;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to apply template cache.");
+        }
+
+        return false;
+    }
+
+    private bool TryGetTemplateOutput(
+        SavedState state,
+        [NotNullWhen(true)] out CompilationInput? input,
+        [NotNullWhen(true)] out CompiledAssembly? output)
+    {
+        var lookup = state.WithPreferences(CompilationPreferences.Default);
+        if (_templates.TryGetOutput(lookup, out input, out output) && output is not null)
+        {
+            return true;
+        }
+
+        foreach (var wellKnown in (ReadOnlySpan<SavedState>)[SavedState.CSharp, SavedState.Razor, SavedState.Cshtml])
+        {
+            if (!SourcesEqual(lookup, wellKnown))
+            {
+                continue;
+            }
+
+            if (_templates.TryGetOutput(wellKnown, out input, out output) && output is not null)
+            {
+                return true;
+            }
+        }
+
+        input = null;
+        output = null;
+        return false;
+    }
+
+    private static bool SourcesEqual(SavedState left, SavedState right)
+    {
+        if (left.Inputs.IsDefault || right.Inputs.IsDefault || left.Inputs.Length != right.Inputs.Length)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < left.Inputs.Length; i++)
+        {
+            if (!string.Equals(left.Inputs[i].FileName, right.Inputs[i].FileName, StringComparison.Ordinal) ||
+                !string.Equals(left.Inputs[i].Text, right.Inputs[i].Text, StringComparison.Ordinal))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private async Task TryLoadServerCacheAsync(SavedState state, int applyGeneration)
+    {
+        var result = await _cache.LoadAsync(state);
+        if (applyGeneration != _applyGeneration || result is null)
+        {
+            return;
+        }
+
+        var (output, _) = result.Value;
+
+        var input = state.ToCompilationInput();
+        if (_liveCompiledInput is { } live && live.Equals(input))
+        {
+            return;
+        }
+
+        ApplyCachedCompilation(input, output, stale: false);
+    }
+
+    private void ApplyCachedCompilation(CompilationInput input, CompiledAssembly output, bool stale)
+    {
+        if (_liveCompiledInput is { } live && live.Equals(input))
+        {
+            return;
+        }
+
+        LastInput = input;
+        Compiled = output;
+        Stale = stale;
+        BeginNewOutputGeneration();
+        Notify();
+        _ = EnsureOutputLoadedAsync(ActiveOutput);
+        _ = RefreshLanguageServicesAfterCachedCompileAsync(output);
+    }
+
+    private void TryStoreInCache(SavedState state, CompiledAssembly output)
+    {
+        if (!EnableCaching || _templates.HasInput(state))
+        {
+            return;
+        }
+
+        _ = _cache.StoreAsync(state, output);
+    }
+
+    private async Task RefreshLanguageServicesAfterCachedCompileAsync(CompiledAssembly output)
+    {
+        var uri = Documents.UriFor(ActiveSource);
+        var config = CaptureSavedState().GetCompilerConfiguration();
+        if (!_language.Enabled || !await _language.OnCachedCompilationLoadedAsync(config, output, uri))
         {
             await _language.ApplyCompileDiagnosticsAsync(
                 Compiled,

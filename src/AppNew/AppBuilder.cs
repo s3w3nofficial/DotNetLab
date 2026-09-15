@@ -18,6 +18,8 @@ public static class AppBuilder
         builder.Services.AddScoped<LabPlatform>();
         builder.Services.AddScoped<LabShare>();
         builder.Services.AddScoped<LabSettings>();
+        builder.Services.AddScoped<TemplateCache>();
+        builder.Services.AddScoped<InputOutputCache>();
         builder.Services.AddScoped<BlazorMonacoInterop>();
         builder.Services.AddScoped<LabLanguageServices>();
         builder.Services.AddScoped<LabCursorSync>();
