@@ -96,7 +96,7 @@
                 <EditorGroups @ref="_outputGroups"
                               PaneId="output"
                               Items="State.CurrentOutputTabIds"
-                              Active="@State.ActiveOutput"
+                              Active="@State.DisplayOutputType"
                               ActiveChanged="OnOutputSelected"
                               ItemClosed="OnOutputClosed"
                               LockedItems="_lockedOutputTabs"

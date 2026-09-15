@@ -19,6 +19,7 @@ public sealed class LabWorkspaceState
     private readonly Dictionary<string, string> _outputModelUris = new(StringComparer.Ordinal);
     private readonly HashSet<string> _outputLoading = new(StringComparer.Ordinal);
     private string _activeOutput = "cs";
+    private bool _showErrorListIfOutputEmpty;
     private int _compileGeneration;
     private int _compilerGeneration;
     private int _applyGeneration;
@@ -83,8 +84,15 @@ public sealed class LabWorkspaceState
         get => _activeOutput;
         set
         {
+            var dismiss = _showErrorListIfOutputEmpty;
+            _showErrorListIfOutputEmpty = false;
             if (string.Equals(_activeOutput, value, StringComparison.Ordinal))
             {
+                if (dismiss)
+                {
+                    Notify();
+                }
+
                 return;
             }
 
@@ -93,6 +101,11 @@ public sealed class LabWorkspaceState
             _ = PersistUrlAsync();
         }
     }
+
+    public string DisplayOutputType
+        => _showErrorListIfOutputEmpty && HasEmptyOutputText(_activeOutput) == true
+            ? ErrorsOutputType
+            : _activeOutput;
     public string Sdk { get; private set; } = "built-in";
     public string Roslyn { get; private set; } = "built-in";
     public string RoslynConfig { get; set; } = "Release";
@@ -409,7 +422,7 @@ public sealed class LabWorkspaceState
             if (readOnly)
             {
                 await _cursors.AttachOutputAsync(editorId);
-                if (TryGetOutputSnapshot(ActiveOutput, out var snapshot) &&
+                if (TryGetOutputSnapshot(DisplayOutputType, out var snapshot) &&
                     string.Equals(snapshot.ModelUri, modelUri, StringComparison.Ordinal))
                 {
                     await _language.ApplyOutputEditorAsync(
@@ -1053,7 +1066,8 @@ public sealed class LabWorkspaceState
     {
         Documents.SetActiveSource(file);
         _ = SyncLanguageWorkspaceAsync();
-        _ = EnsureOutputLoadedAsync(ActiveOutput);
+        RefreshTemporaryErrorList();
+        _ = LoadDisplayedOutputAsync();
         _ = PersistUrlAsync();
     }
 
@@ -1109,7 +1123,8 @@ public sealed class LabWorkspaceState
             Notify();
         }
 
-        _ = EnsureOutputLoadedAsync(ActiveOutput);
+        RefreshTemporaryErrorList();
+        _ = LoadDisplayedOutputAsync();
         _ = RefreshLanguageServicesAfterCompileAsync();
     }
 
@@ -1312,6 +1327,43 @@ public sealed class LabWorkspaceState
         }
     }
 
+    private void RefreshTemporaryErrorList()
+    {
+        Tabs.EnsureActiveOutput();
+        _showErrorListIfOutputEmpty = Compiled is { NumErrors: > 0 };
+        Notify();
+    }
+
+    private async Task LoadDisplayedOutputAsync()
+    {
+        await EnsureOutputLoadedAsync(_activeOutput);
+        if (!string.Equals(DisplayOutputType, _activeOutput, StringComparison.Ordinal))
+        {
+            await EnsureOutputLoadedAsync(DisplayOutputType);
+        }
+    }
+
+    private bool? HasEmptyOutputText(string tab)
+    {
+        var output = FindOutput(tab);
+        if (output is null)
+        {
+            return null;
+        }
+
+        if (output.Text is { } eager)
+        {
+            return string.IsNullOrEmpty(eager);
+        }
+
+        if (_outputCache.TryGetValue(OutputCacheKey(tab), out var snapshot))
+        {
+            return string.IsNullOrEmpty(snapshot.Text);
+        }
+
+        return null;
+    }
+
     private async ValueTask<CompiledFileLazyResult> LoadOutputFromWorkerAsync(string? file, string tab)
     {
         return await _worker.SendAsync(
@@ -1511,8 +1563,9 @@ public sealed class LabWorkspaceState
         Compiled = output;
         Stale = stale;
         BeginNewOutputGeneration();
+        RefreshTemporaryErrorList();
         Notify();
-        _ = EnsureOutputLoadedAsync(ActiveOutput);
+        _ = LoadDisplayedOutputAsync();
         _ = RefreshLanguageServicesAfterCachedCompileAsync(output);
     }
 
