@@ -8,7 +8,9 @@ public sealed class LabWorkspaceState
 {
     private readonly WorkerHost _worker;
     private readonly LabLanguageServices _language;
-    private readonly Dictionary<string, string> _outputCache = new(StringComparer.Ordinal);
+    private readonly LabCursorSync _cursors;
+    private readonly Dictionary<string, OutputSnapshot> _outputCache = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, string> _outputModelUris = new(StringComparer.Ordinal);
     private readonly HashSet<string> _outputLoading = new(StringComparer.Ordinal);
     private string _activeOutput = "cs";
     private int _compileGeneration;
@@ -17,10 +19,11 @@ public sealed class LabWorkspaceState
     private bool _suppressUrlPersist;
     private Task? _languageInit;
 
-    public LabWorkspaceState(WorkerHost worker, LabLanguageServices language)
+    public LabWorkspaceState(WorkerHost worker, LabLanguageServices language, LabCursorSync cursors)
     {
         _worker = worker;
         _language = language;
+        _cursors = cursors;
         Documents = new LabDocuments(this);
         Tabs = new OutputTabLayout(this);
     }
@@ -175,6 +178,42 @@ public sealed class LabWorkspaceState
         => _language.OnDidChangeModelContentAsync(modelUri, args);
 
     public Task EnableSemanticHighlightingAsync() => _language.EnableSemanticHighlightingAsync();
+
+    public async Task OnEditorReadyAsync(string editorId, string? modelUri, bool readOnly, bool fold)
+    {
+        if (string.IsNullOrEmpty(modelUri))
+        {
+            return;
+        }
+
+        try
+        {
+            if (readOnly)
+            {
+                await _cursors.AttachOutputAsync(editorId);
+                if (TryGetOutputSnapshot(ActiveOutput, out var snapshot) &&
+                    string.Equals(snapshot.ModelUri, modelUri, StringComparison.Ordinal))
+                {
+                    await _language.ApplyOutputEditorAsync(
+                        editorId,
+                        snapshot.ModelUri,
+                        snapshot.Language,
+                        snapshot.Metadata,
+                        fold);
+                    _cursors.Enable(snapshot.Metadata);
+                }
+            }
+            else
+            {
+                await _cursors.AttachSourceAsync(editorId);
+            }
+        }
+        catch (JSException)
+        {
+        }
+    }
+
+    public void DetachEditor(string editorId) => _ = _cursors.DetachAsync(editorId);
 
     public void OnSavedStateChanged()
     {
@@ -895,7 +934,22 @@ public sealed class LabWorkspaceState
         Notify();
     }
 
-    public string OutputLanguage(string type) => LabCatalog.OutputLanguage(type);
+    public string OutputLanguage(string type)
+        => TryGetOutputSnapshot(type, out var snapshot)
+            ? snapshot.Language
+            : "plaintext";
+
+    public string OutputUriFor(string tab)
+    {
+        if (!_outputModelUris.TryGetValue(tab, out var uri))
+        {
+            uri = CompiledAssembly.GetOutputModelUri(OutputFileName(tab), tab);
+            _outputModelUris[tab] = uri;
+        }
+
+        return uri;
+    }
+
     public string LanguageFor(string fileName) => LabCatalog.LanguageFor(fileName);
 
     public string GetOutput(string tab)
@@ -903,7 +957,7 @@ public sealed class LabWorkspaceState
         var key = OutputCacheKey(tab);
         if (_outputCache.TryGetValue(key, out var cached))
         {
-            return cached;
+            return cached.Text;
         }
 
         if (Running)
@@ -937,7 +991,7 @@ public sealed class LabWorkspaceState
 
         if (output.Text is { } eager)
         {
-            _outputCache[key] = eager;
+            _outputCache[key] = CreateSnapshot(tab, eager, output, output.Metadata);
             return eager;
         }
 
@@ -972,13 +1026,13 @@ public sealed class LabWorkspaceState
             var output = FindOutput(tab);
             if (output is null)
             {
-                _outputCache[key] = $"(no {OutputLabel(tab)} output for this file)";
+                _outputCache[key] = Placeholder(tab, $"(no {OutputLabel(tab)} output for this file)");
                 return;
             }
 
             if (output.Text is { } eager)
             {
-                _outputCache[key] = eager;
+                _outputCache[key] = CreateSnapshot(tab, eager, output, output.Metadata);
                 return;
             }
 
@@ -993,7 +1047,7 @@ public sealed class LabWorkspaceState
             }
             catch (Exception ex)
             {
-                result = new() { Text = ex.ToString() };
+                result = new() { Text = ex.ToString(), Metadata = CompiledFileOutputMetadata.SpecialMessage };
             }
 
             if (generation != _compileGeneration)
@@ -1001,7 +1055,7 @@ public sealed class LabWorkspaceState
                 return;
             }
 
-            _outputCache[key] = result.Text;
+            _outputCache[key] = CreateSnapshot(tab, result.Text, output, result.Metadata ?? output.Metadata);
         }
         finally
         {
@@ -1043,6 +1097,30 @@ public sealed class LabWorkspaceState
             : null;
 
     private string OutputCacheKey(string tab) => $"{ActiveSource}\0{tab}";
+
+    private bool TryGetOutputSnapshot(string tab, out OutputSnapshot snapshot)
+        => _outputCache.TryGetValue(OutputCacheKey(tab), out snapshot!);
+
+    private OutputSnapshot Placeholder(string tab, string text)
+        => new(text, "plaintext", CompiledFileOutputMetadata.SpecialMessage, OutputUriFor(tab));
+
+    private OutputSnapshot CreateSnapshot(
+        string tab,
+        string text,
+        CompiledFileOutput? output,
+        CompiledFileOutputMetadata? metadata)
+    {
+        var language = metadata is { MessageKind: not MessageKind.Normal }
+            ? "plaintext"
+            : output?.Language ?? LabCatalog.OutputLanguage(tab);
+        return new(text, language, metadata, OutputUriFor(tab));
+    }
+
+    private sealed record OutputSnapshot(
+        string Text,
+        string Language,
+        CompiledFileOutputMetadata? Metadata,
+        string ModelUri);
 
     private async Task AfterDocumentsChangedAsync(IReadOnlyList<string> before)
     {

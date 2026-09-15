@@ -207,6 +207,7 @@
                             <LabCodeEditor @key="@($"output-{context}")"
                                            Value="@State.GetOutput(context)"
                                            Language="@State.OutputLanguage(context)"
+                                           ModelUri="@State.OutputUriFor(context)"
                                            ReadOnly="true"
                                            WordWrap="State.WordWrap" />
                         }

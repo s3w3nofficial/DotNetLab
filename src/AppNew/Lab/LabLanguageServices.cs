@@ -157,6 +157,45 @@ public sealed class LabLanguageServices(
         }
     }
 
+    public async Task ApplyOutputEditorAsync(
+        string editorId,
+        string modelUri,
+        string language,
+        CompiledFileOutputMetadata? metadata,
+        bool fold)
+    {
+        CurrentMetadata = (modelUri, metadata);
+        if (language != CompiledAssembly.OutputLanguageId)
+        {
+            return;
+        }
+
+        try
+        {
+            if (fold)
+            {
+                await blazorMonacoInterop.ExecuteActionAsync(editorId, "editor.foldAll");
+                await blazorMonacoInterop.ExecuteActionAsync(editorId, "editor.unfold");
+            }
+
+            if (metadata != null && TryGetOutputToOutputMapping(metadata, out var mapping))
+            {
+                var offsets = new int[mapping.Values.Count * 2];
+                var i = 0;
+                foreach (var (span, _) in mapping.Values)
+                {
+                    offsets[i++] = span.Start;
+                    offsets[i++] = span.End;
+                }
+
+                await blazorMonacoInterop.UnderlineLinksAsync(editorId, offsets);
+            }
+        }
+        catch (JSException)
+        {
+        }
+    }
+
     public async Task DisposeModelAsync(string? uri)
     {
         if (string.IsNullOrEmpty(uri))

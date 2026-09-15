@@ -1005,6 +1005,10 @@ fluent-tooltip.lab-command-tooltip {
     height: auto !important;
 }
 
+.lab-editor .underline {
+    text-decoration: underline;
+}
+
 .lab-vim-status {
     display: none;
     box-sizing: border-box;

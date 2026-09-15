@@ -29,6 +29,7 @@
     private string? _appliedMonacoTheme;
     private bool? _appliedKeyboardDisabled;
     private bool? _appliedVim;
+    private string? _lastModelUri;
 
     private string VimStatusId => $"{_editorId}-vim";
 
@@ -53,6 +54,7 @@
     {
         State.Changed -= OnWorkspaceChanged;
         State.SnapshotRequested -= FlushAsync;
+        State.DetachEditor(_editorId);
         _ = DisposeEditorChromeAsync();
     }
 
@@ -79,6 +81,7 @@
         => !_ready
            || !string.Equals(_lastValue, Value, StringComparison.Ordinal)
            || !string.Equals(_lastLanguage, Language, StringComparison.Ordinal)
+           || !string.Equals(_lastModelUri, ModelUri, StringComparison.Ordinal)
            || _lastReadOnly != ReadOnly
            || _lastWordWrap != WordWrap;
 
@@ -88,6 +91,7 @@
         _lastLanguage = Language;
         _lastReadOnly = ReadOnly;
         _lastWordWrap = WordWrap;
+        _lastModelUri = ModelUri;
         return new StandaloneEditorConstructionOptions
         {
             AutomaticLayout = true,
@@ -144,8 +148,16 @@
 
         try
         {
+            var modelUriChanged = !string.Equals(_lastModelUri, ModelUri, StringComparison.Ordinal);
+            if (modelUriChanged)
+            {
+                await AttachNamedModelAsync();
+                _lastModelUri = ModelUri;
+            }
+
             // SetValue is async. A cached recompile can push Compiling… then the real text
             // before the first SetValue finishes, which left Monaco stuck until a tab switch.
+            var valueChanged = false;
             while (!string.Equals(_lastValue, Value, StringComparison.Ordinal))
             {
                 var toSet = Value;
@@ -154,6 +166,7 @@
                 {
                     await _editor.SetValue(toSet);
                     _lastValue = toSet;
+                    valueChanged = true;
                 }
                 finally
                 {
@@ -161,7 +174,8 @@
                 }
             }
 
-            if (!string.Equals(_lastLanguage, Language, StringComparison.Ordinal))
+            var languageChanged = !string.Equals(_lastLanguage, Language, StringComparison.Ordinal);
+            if (languageChanged)
             {
                 var model = await _editor.GetModel();
                 if (model is not null)
@@ -182,6 +196,11 @@
                 _lastReadOnly = ReadOnly;
                 _lastWordWrap = WordWrap;
             }
+
+            if (modelUriChanged || valueChanged || languageChanged)
+            {
+                await State.OnEditorReadyAsync(_editorId, ModelUri, ReadOnly, fold: languageChanged);
+            }
         }
         catch (JSException)
         {
@@ -196,6 +215,7 @@
         _lastLanguage = Language;
         _lastReadOnly = ReadOnly;
         _lastWordWrap = WordWrap;
+        _lastModelUri = ModelUri;
         _ready = true;
         await AttachNamedModelAsync();
         await ApplyMonacoThemeAsync();
@@ -203,6 +223,7 @@
         await ApplyVimAsync();
         await State.EnableSemanticHighlightingAsync();
         await State.InitializeLanguageServicesAsync();
+        await State.OnEditorReadyAsync(_editorId, ModelUri, ReadOnly, fold: true);
     }
 
     private async Task AttachNamedModelAsync()
