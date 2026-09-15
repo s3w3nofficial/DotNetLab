@@ -1,5 +1,6 @@
 using System.Collections.Immutable;
 using BlazorMonaco.Editor;
+using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using Microsoft.JSInterop;
 
 namespace DotNetLab.Lab;
@@ -10,6 +11,7 @@ public sealed class LabWorkspaceState
     private readonly LabLanguageServices _language;
     private readonly LabCursorSync _cursors;
     private readonly LabSettings _settings;
+    private readonly LabLogging _logging;
     private readonly TemplateCache _templates;
     private readonly InputOutputCache _cache;
     private readonly ILogger<LabWorkspaceState> _logger;
@@ -32,17 +34,22 @@ public sealed class LabWorkspaceState
         LabLanguageServices language,
         LabCursorSync cursors,
         LabSettings settings,
+        LabLogging logging,
         TemplateCache templates,
         InputOutputCache cache,
+        IWebAssemblyHostEnvironment hostEnvironment,
         ILogger<LabWorkspaceState> logger)
     {
         _worker = worker;
         _language = language;
         _cursors = cursors;
         _settings = settings;
+        _logging = logging;
         _templates = templates;
         _cache = cache;
         _logger = logger;
+        DebugLogs = hostEnvironment.IsDevelopment();
+        ApplyLogLevel();
         Documents = new LabDocuments(this);
         Tabs = new OutputTabLayout(this);
     }
@@ -131,6 +138,37 @@ public sealed class LabWorkspaceState
     public int CursorColumn { get; set; } = 34;
     public string UpdateState { get; private set; } = "idle";
     public bool EditingUserPreferences { get; set; }
+    public int ErrorCount => Compiled?.NumErrors ?? 0;
+    public int WarningCount => Compiled?.NumWarnings ?? 0;
+    public bool HasDiagnosticCounts => ErrorCount > 0 || WarningCount > 0;
+    public string[] SourceStatusLeft => [.. SourceStatusCore, .. DiagnosticStatusParts];
+    public string[] OutputStatusLeft => [DisplayName(ActiveSource), .. DiagnosticStatusParts];
+    public string SourceStatusRight => Stale ? "Modified · Ctrl+S to compile" : "Ready · Ctrl+S to compile";
+    public string OutputStatusRight => $".NET {ResolvedSdk.Value} · Roslyn {Roslyn}";
+
+    private string[] SourceStatusCore =>
+    [
+        $"Ln {CursorLine}, Col {CursorColumn}",
+        "Spaces: 4",
+        "UTF-8",
+        Template
+    ];
+
+    private IEnumerable<string> DiagnosticStatusParts
+    {
+        get
+        {
+            if (ErrorCount > 0)
+            {
+                yield return ErrorCount == 1 ? "1 error" : $"{ErrorCount} errors";
+            }
+
+            if (WarningCount > 0)
+            {
+                yield return WarningCount == 1 ? "1 warning" : $"{WarningCount} warnings";
+            }
+        }
+    }
 
     public Dictionary<string, string> Sources => Documents.Sources;
     public List<string> SourceFiles => Documents.SourceFiles;
@@ -169,6 +207,7 @@ public sealed class LabWorkspaceState
 
     public void OnUiSettingsChanged()
     {
+        ApplyLogLevel();
         Notify();
         _ = PersistSettingsAsync();
     }
@@ -186,6 +225,7 @@ public sealed class LabWorkspaceState
         finally
         {
             _settingsReady = true;
+            ApplyLogLevel();
         }
 
         if (_languageInit is not null)
@@ -247,6 +287,47 @@ public sealed class LabWorkspaceState
         {
             DisableInputVirtualKeyboard = disableInputVirtualKeyboard;
         }
+
+        ApplyLogLevel();
+    }
+
+    private void ApplyLogLevel()
+    {
+        if (!DebugLogs)
+        {
+            TraceLogs = false;
+        }
+        else if (TraceLogs)
+        {
+            DebugLogs = true;
+        }
+
+        _logging.LogLevel = TraceLogs
+            ? LogLevel.Trace
+            : DebugLogs
+                ? LogLevel.Debug
+                : LogLevel.Information;
+    }
+
+    public async Task ReloadWorkerAsync()
+    {
+        await _worker.RecreateAsync();
+        _sdkListLoaded = false;
+        _languageInit = null;
+
+        if (ToSpecifier(Sdk) is null)
+        {
+            var generation = ++_compilerGeneration;
+            await Task.WhenAll(
+                ApplyCompilerAsync(CompilerKind.Roslyn, Roslyn, RoslynConfig, generation),
+                ApplyCompilerAsync(CompilerKind.Razor, Razor, RazorConfig, generation));
+        }
+        else
+        {
+            await ApplySdk(Sdk);
+        }
+
+        await InitializeLanguageServicesAsync();
     }
 
     private LabSettingsSnapshot CaptureSettings()

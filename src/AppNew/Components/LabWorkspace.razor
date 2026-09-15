@@ -87,8 +87,8 @@
                                        OnFocused="@(() => OnSourceSelected(context))" />
                     </ItemContent>
                 </EditorGroups>
-                <StatusBar Left="@(new[] { $"Ln {State.CursorLine}, Col {State.CursorColumn}", "Spaces: 4", "UTF-8", State.Template })"
-                           Right="@(State.Stale ? "Modified · Ctrl+S to compile" : "Ready · Ctrl+S to compile")"
+                <StatusBar Left="@State.SourceStatusLeft"
+                           Right="@State.SourceStatusRight"
                            Ready="@(!State.Stale && !State.Running)" />
             }
             else
@@ -144,7 +144,13 @@
                         {
                             <span title="@State.OutputTabTitle(context)" style="display:inline-flex;align-items:center;gap:6px;">
                                 Error List
-                                <FluentBadge Appearance="BadgeAppearance.Filled" Color="BadgeColor.Danger" Size="BadgeSize.Tiny" Content="1" />
+                                @if (State.HasDiagnosticCounts)
+                                {
+                                    <FluentBadge Appearance="BadgeAppearance.Filled"
+                                                 Color="@(State.ErrorCount > 0 ? BadgeColor.Danger : BadgeColor.Warning)"
+                                                 Size="BadgeSize.Tiny"
+                                                 Content="@((State.ErrorCount > 0 ? State.ErrorCount : State.WarningCount).ToString())" />
+                                }
                             </span>
                         }
                         else
@@ -213,8 +219,8 @@
                         }
                     </ItemContent>
                 </EditorGroups>
-                <StatusBar Left="@(new[] { LabWorkspaceState.DisplayName(State.ActiveSource) })"
-                           Right="@($".NET {State.ResolvedSdk.Value} · Roslyn {State.Roslyn}")"
+                <StatusBar Left="@State.OutputStatusLeft"
+                           Right="@State.OutputStatusRight"
                            Ready="@(!State.Running)" />
             }
         </section>

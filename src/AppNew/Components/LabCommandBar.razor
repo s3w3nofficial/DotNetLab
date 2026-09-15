@@ -106,7 +106,11 @@
     </div>
 
     <span class="lab-spacer"></span>
-    <span class="lab-vsep" aria-hidden="true"></span>
+    @if (State.MemoryUsageView)
+    {
+        <MemoryUsageView />
+        <span class="lab-vsep" aria-hidden="true"></span>
+    }
 
     <div aria-label="Workspace commands" style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
         <FluentButton Id="lab-cmd-palette"

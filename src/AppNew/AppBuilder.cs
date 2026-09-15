@@ -23,13 +23,17 @@ public static class AppBuilder
         builder.Services.AddScoped<BlazorMonacoInterop>();
         builder.Services.AddScoped<LabLanguageServices>();
         builder.Services.AddScoped<LabCursorSync>();
+        builder.Services.AddSingleton<LabLogging>();
+        builder.Services.AddOptions<LoggerFilterOptions>().Configure<LabLogging>((options, logging) =>
+        {
+            options.AddFilter("DotNetLab.*", logLevel => logLevel >= logging.LogLevel);
+        });
 
         // Compiler stack lives in its own container (NuGet/SDK downloads, Roslyn load).
         // Do not register that IServiceProvider into Blazor DI — it would replace the UI host.
-        builder.Services.AddSingleton(new WorkerHost(
-            WorkerServices.Create(
-                baseUrl: builder.HostEnvironment.BaseAddress,
-                logLevel: LogLevel.Information)));
+        builder.Services.AddSingleton(sp => new WorkerHost(
+            builder.HostEnvironment.BaseAddress,
+            () => sp.GetRequiredService<LabLogging>().LogLevel));
 
         builder.RootComponents.Add<App>("#app");
         builder.RootComponents.Add<HeadOutlet>("head::after");

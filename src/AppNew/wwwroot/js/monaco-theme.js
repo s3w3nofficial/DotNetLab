@@ -260,6 +260,28 @@ window.netLabPrefs = {
     }
 };
 
+window.netLabMemory = {
+    collectAndDownloadGcDump: async function () {
+        const runtime = globalThis.getDotnetRuntime?.(0);
+        if (!runtime?.collectGcDump) {
+            return;
+        }
+
+        const result = await runtime.collectGcDump({ skipDownload: true });
+        const blob = new Blob(result, { type: "application/octet-stream" });
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.download = `app.trace.${Date.now()}.nettrace`;
+        link.href = blobUrl;
+        document.body.appendChild(link);
+        link.dispatchEvent(new MouseEvent("click", {
+            bubbles: true, cancelable: true, view: window,
+        }));
+        link.remove();
+        URL.revokeObjectURL(blobUrl);
+    }
+};
+
 window.netLabUrl = {
     hash: function () {
         return (window.location.hash || "").replace(/^#/, "");
