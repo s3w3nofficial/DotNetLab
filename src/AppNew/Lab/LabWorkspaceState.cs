@@ -193,16 +193,13 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     public int ErrorCount => Compiled?.NumErrors ?? 0;
     public int WarningCount => Compiled?.NumWarnings ?? 0;
     public bool HasDiagnosticCounts => ErrorCount > 0 || WarningCount > 0;
-    public string[] SourceStatusLeft => [.. SourceStatusCore, .. DiagnosticStatusParts];
-    public string[] OutputStatusLeft => [DisplayName(ActiveSource), .. DiagnosticStatusParts];
-
-    private string[] SourceStatusCore =>
+    public string[] SourceCursor =>
     [
         $"Ln {CursorLine}, Col {CursorColumn}",
         "Spaces: 4",
         "UTF-8",
-        Template
     ];
+    public string[] Diagnostics => [.. DiagnosticStatusParts];
 
     private IEnumerable<string> DiagnosticStatusParts
     {
@@ -263,11 +260,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
 
     private void OnCompilationChanged(object? sender, EventArgs e) => Notify();
 
-    private void OnDocumentsChanged(object? sender, EventArgs e)
-    {
-        Notify();
-        NotifyStatus();
-    }
+    private void OnDocumentsChanged(object? sender, EventArgs e) => Notify();
 
     private void OnCompilerStoreChanged(object? sender, EventArgs e)
     {

@@ -29,7 +29,7 @@ Keep the current chrome folders until feature stores exist, then move into
 - [x] Fluxor `Features/Preferences` with `PreferenceSettings`; persist in effects, language-services apply on the workspace
 - [x] `CompilationStore` under `Lab/` (`CompilationState`; worker compile and `CompiledAssembly` stay on the workspace)
 - [x] Fluxor `Features/Compilation` (`Running` / `Stale`; worker compile stays on the workspace)
-- [x] `StatusSelectors` (`CompilationState` + `CompilerState` → right pill / ready; left stays on `ILabStatus`)
+- [x] `StatusSelectors` (`CompilationState` + `CompilerState` → right pill / ready; `DocumentsState` → template / active file; cursor and diagnostics stay on `ILabStatus`)
 - [x] `DocumentsStore` under `Lab/` (`DocumentsState`; file contents stay on `LabDocuments`; Monaco stays source of truth)
 - [x] Fluxor `Features/Documents` (template / active file / file list / URIs; file contents stay on `LabDocuments`)
 
@@ -85,9 +85,9 @@ Monaco stays the source of truth for buffer text. Compile / share / URL persist
 read the editor; do not dispatch on every keystroke. Document state is file
 list, active file, and URIs.
 
-Status is derived (`Compilation` + `Compiler` → selector), not a writable
-`ILabStatus` store. Keep `ILabStatus` for the left (cursor, template, active
-file, diagnostics) until a Documents store exists.
+Status is derived (`Compilation` + `Compiler` + `Documents` → selector), not a
+writable `ILabStatus` store. Keep `ILabStatus` for cursor and diagnostics until
+those have stores.
 
 Do **not** replace `LabWorkspaceState` with one `AppState` record. Do **not**
 delete the facade in one pass.
@@ -164,9 +164,9 @@ Three kinds of code:
 `SettingsDialog` composes `<CompilerSettings />`, `<ThemeSettings />`, etc. It
 does not own every setting. `CompilerPicker` lives with Compiler even if the
 header renders it. Status is
-`CompilationState` + `CompilerState` → `StatusBar/StatusSelectors.cs`
-(pure function; move with `Shell/StatusBar/` later). Left stays on
-`ILabStatus` until Documents exists.
+`CompilationState` + `CompilerState` + `DocumentsState` → `StatusBar/StatusSelectors.cs`
+(pure function; move with `Shell/StatusBar/` later). Cursor and diagnostics
+stay on `ILabStatus`.
 
 Keep feature files flat (`CompilerState.cs`, `CompilerActions.cs`, … plus
 `Components/` / `Services/` when needed). Do not add `State/` / `Actions/` /

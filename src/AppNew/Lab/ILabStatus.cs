@@ -4,7 +4,7 @@ public interface ILabStatus
 {
     event Action? Changed;
 
-    string[] SourceStatusLeft { get; }
+    string[] SourceCursor { get; }
 
-    string[] OutputStatusLeft { get; }
+    string[] Diagnostics { get; }
 }

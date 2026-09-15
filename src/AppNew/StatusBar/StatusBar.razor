@@ -2,6 +2,7 @@
 @inject ILabStatus Status
 @inject IState<CompilationState> Compilation
 @inject IState<CompilerState> Compiler
+@inject IState<DocumentsState> Documents
 
 <div class="lab-statusbar">
     @foreach (var (item, index) in Left.Select((value, i) => (value, i)))
@@ -18,7 +19,11 @@
 @code {
     [Parameter] public string Side { get; set; } = "source";
 
-    private IReadOnlyList<string> Left => Side == "output" ? Status.OutputStatusLeft : Status.SourceStatusLeft;
+    private IReadOnlyList<string> Left => StatusSelectors.Left(
+        Side,
+        Documents.Value,
+        Status.SourceCursor,
+        Status.Diagnostics);
     private string Right => StatusSelectors.Right(Side, Compilation.Value, Compiler.Value);
     private bool Ready => StatusSelectors.Ready(Side, Compilation.Value);
 

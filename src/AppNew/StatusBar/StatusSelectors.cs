@@ -1,5 +1,7 @@
 using DotNetLab.Features.Compilation;
 using DotNetLab.Features.Compiler;
+using DotNetLab.Features.Documents;
+using DotNetLab.Lab;
 
 namespace DotNetLab.StatusBar;
 
@@ -22,6 +24,15 @@ public static class StatusSelectors
 
     public static bool Ready(string side, CompilationState compilation)
         => IsOutput(side) ? OutputReady(compilation) : SourceReady(compilation);
+
+    public static IReadOnlyList<string> Left(
+        string side,
+        DocumentsState documents,
+        IReadOnlyList<string> cursor,
+        IReadOnlyList<string> diagnostics)
+        => IsOutput(side)
+            ? [LabDocuments.DisplayName(documents.ActiveSource), .. diagnostics]
+            : [.. cursor, documents.Template, .. diagnostics];
 
     private static bool IsOutput(string side)
         => string.Equals(side, "output", StringComparison.Ordinal);
