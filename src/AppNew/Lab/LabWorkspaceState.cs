@@ -28,6 +28,7 @@ public sealed class LabWorkspaceState
     private bool _settingsReady;
     private bool _storeInCache;
     private CompilationInput? _liveCompiledInput;
+    private string? _compiledCompilerKey;
     private Task? _languageInit;
 
     public LabWorkspaceState(
@@ -332,6 +333,9 @@ public sealed class LabWorkspaceState
     public async Task ReloadWorkerAsync()
     {
         WorkerError = null;
+        LastInput = null;
+        _liveCompiledInput = null;
+        _compiledCompilerKey = null;
         Notify();
         await _worker.RecreateAsync();
         _sdkListLoaded = false;
@@ -683,7 +687,9 @@ public sealed class LabWorkspaceState
 
         if (AutomaticCompilation)
         {
-            await CompileAsync(storeInCache: false);
+            // Do not block URL/state application on the compile itself — editors should
+            // mount with the loaded sources rather than waiting for the worker.
+            _ = CompileAsync(storeInCache: false);
         }
     }
 
@@ -1102,6 +1108,25 @@ public sealed class LabWorkspaceState
             return;
         }
 
+        var input = CreateCompilationInput();
+        if (CanReuseLastCompile(input))
+        {
+            Stale = false;
+            Notify();
+            await PersistUrlAsync(snapshot: true);
+            if (storeInCache && Compiled is { } reused)
+            {
+                TryStoreInCache(CaptureSavedState(), reused);
+            }
+
+            if (_outputCache.Count == 0)
+            {
+                _ = LoadDisplayedOutputAsync();
+            }
+
+            return;
+        }
+
         Running = true;
         Notify();
         // Cached same-input compiles can finish synchronously; yield so Busy UI can paint.
@@ -1109,7 +1134,6 @@ public sealed class LabWorkspaceState
         try
         {
             await PersistUrlAsync(snapshot: true);
-            var input = CreateCompilationInput();
             LastInput = input;
             var compiled = await _worker.SendAsync(
                 new WorkerInputMessage.Compile(input, LanguageServicesEnabled: LanguageServices)
@@ -1119,6 +1143,7 @@ public sealed class LabWorkspaceState
             var sameAssembly = ReferenceEquals(Compiled, compiled);
             Compiled = compiled;
             _liveCompiledInput = input;
+            _compiledCompilerKey = CompilerKey();
             _storeInCache = storeInCache;
             Stale = false;
             // The worker reuses LastResult for identical input. Keep the output cache so
@@ -1136,7 +1161,9 @@ public sealed class LabWorkspaceState
         catch (Exception ex)
         {
             Compiled = CompiledAssembly.Fail(ex.ToString());
-            _liveCompiledInput = LastInput;
+            LastInput = input;
+            _liveCompiledInput = input;
+            _compiledCompilerKey = CompilerKey();
             BeginNewOutputGeneration();
         }
         finally
@@ -1149,6 +1176,15 @@ public sealed class LabWorkspaceState
         _ = LoadDisplayedOutputAsync();
         _ = RefreshLanguageServicesAfterCompileAsync();
     }
+
+    private bool CanReuseLastCompile(CompilationInput input)
+        => Compiled is not null
+           && LastInput is { } last
+           && last.Equals(input)
+           && string.Equals(_compiledCompilerKey, CompilerKey(), StringComparison.Ordinal);
+
+    private string CompilerKey()
+        => $"{Sdk}\n{Roslyn}\n{RoslynConfig}\n{Razor}\n{RazorConfig}";
 
     private void BeginNewOutputGeneration()
     {
@@ -1574,6 +1610,7 @@ public sealed class LabWorkspaceState
 
         LastInput = input;
         Compiled = output;
+        _compiledCompilerKey = CompilerKey();
         Stale = stale;
         BeginNewOutputGeneration();
         RefreshTemporaryErrorList();

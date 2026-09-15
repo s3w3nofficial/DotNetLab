@@ -9,14 +9,17 @@
 
 <div class="lab-shell">
     <div class="lab-app">
-        <header aria-label="Application commands">
-            <LabBrandBar />
-            <LabCommandBar />
-        </header>
-        @Body
-        <SettingsDialog @ref="_settings" />
-        <CommandPalette @ref="_palette" />
-        <PasteUrlDialog @ref="_paste" />
+        @if (_ready)
+        {
+            <header aria-label="Application commands">
+                <LabBrandBar />
+                <LabCommandBar />
+            </header>
+            @Body
+            <SettingsDialog @ref="_settings" />
+            <CommandPalette @ref="_palette" />
+            <PasteUrlDialog @ref="_paste" />
+        }
     </div>
 </div>
 
@@ -26,6 +29,7 @@
     private SettingsDialog? _settings;
     private CommandPalette? _palette;
     private PasteUrlDialog? _paste;
+    private bool _ready;
 
     protected override void OnInitialized()
     {
@@ -52,6 +56,7 @@
         catch (JSException)
         {
         }
+
         await State.LoadSettingsAsync();
         try
         {
@@ -63,6 +68,7 @@
         }
 
         await Urls.LoadFromUriAsync();
+        _ready = true;
         StateHasChanged();
     }
 

@@ -12,6 +12,7 @@ public sealed class LabUrlSync : IDisposable
     private readonly IJSRuntime _js;
     private bool _ignoreNextLocation;
     private bool _loaded;
+    private string? _appliedSlug;
 
     public LabUrlSync(NavigationManager navigation, LabWorkspaceState state, LabSettings settings, IJSRuntime js)
     {
@@ -51,6 +52,7 @@ public sealed class LabUrlSync : IDisposable
         }
 
         _ignoreNextLocation = true;
+        _appliedSlug = slug;
         _navigation.NavigateTo(_navigation.BaseUri + "#" + slug,
             new NavigationOptions { ReplaceHistoryEntry = true });
         return Task.CompletedTask;
@@ -88,6 +90,12 @@ public sealed class LabUrlSync : IDisposable
 
     private async Task ApplySlugAsync(string slug, bool loadPreferences = false)
     {
+        if (string.Equals(_appliedSlug, slug, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        _appliedSlug = slug;
         SavedState state;
         if (WellKnownSlugs.ShorthandToState.TryGetValue(slug, out var wellKnown))
         {
