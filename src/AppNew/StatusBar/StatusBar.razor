@@ -1,5 +1,7 @@
+@inherits FluxorComponent
 @inject ILabStatus Status
-@implements IDisposable
+@inject IState<CompilationState> Compilation
+@inject IState<CompilerState> Compiler
 
 <div class="lab-statusbar">
     @foreach (var (item, index) in Left.Select((value, i) => (value, i)))
@@ -17,12 +19,24 @@
     [Parameter] public string Side { get; set; } = "source";
 
     private IReadOnlyList<string> Left => Side == "output" ? Status.OutputStatusLeft : Status.SourceStatusLeft;
-    private string Right => Side == "output" ? Status.OutputStatusRight : Status.SourceStatusRight;
-    private bool Ready => Side == "output" ? Status.OutputReady : Status.SourceReady;
+    private string Right => StatusSelectors.Right(Side, Compilation.Value, Compiler.Value);
+    private bool Ready => StatusSelectors.Ready(Side, Compilation.Value);
 
-    protected override void OnInitialized() => Status.Changed += OnChanged;
-
-    public void Dispose() => Status.Changed -= OnChanged;
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        Status.Changed += OnChanged;
+    }
 
     private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    protected override ValueTask DisposeAsyncCore(bool disposing)
+    {
+        if (disposing)
+        {
+            Status.Changed -= OnChanged;
+        }
+
+        return base.DisposeAsyncCore(disposing);
+    }
 }

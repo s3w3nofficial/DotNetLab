@@ -6,13 +6,5 @@ public interface ILabStatus
 
     string[] SourceStatusLeft { get; }
 
-    string SourceStatusRight { get; }
-
     string[] OutputStatusLeft { get; }
-
-    string OutputStatusRight { get; }
-
-    bool SourceReady { get; }
-
-    bool OutputReady { get; }
 }

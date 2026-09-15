@@ -186,10 +186,6 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     public bool HasDiagnosticCounts => ErrorCount > 0 || WarningCount > 0;
     public string[] SourceStatusLeft => [.. SourceStatusCore, .. DiagnosticStatusParts];
     public string[] OutputStatusLeft => [DisplayName(ActiveSource), .. DiagnosticStatusParts];
-    public string SourceStatusRight => Stale ? "Modified · Ctrl+S to compile" : "Ready · Ctrl+S to compile";
-    public string OutputStatusRight => $".NET {ResolvedSdk.Value} · Roslyn {Roslyn}";
-    bool ILabStatus.SourceReady => !Stale && !Running;
-    bool ILabStatus.OutputReady => !Running;
 
     private string[] SourceStatusCore =>
     [
@@ -218,7 +214,6 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     public IReadOnlyDictionary<string, string> Sources => Documents.Sources;
     public IReadOnlyList<string> SourceFiles => Documents.SourceFiles;
     public string UriFor(string fileName) => Documents.UriFor(fileName);
-    public SdkOption ResolvedSdk => Compiler.Resolved;
     public int OutputLayoutRevision => Tabs.Revision;
 
     public IReadOnlyList<string> CurrentOutputTabIds => Tabs.CurrentOutputTabIds;
@@ -256,11 +251,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
 
     private void OnPreferencesChanged(object? sender, EventArgs e) => Notify();
 
-    private void OnCompilationChanged(object? sender, EventArgs e)
-    {
-        Notify();
-        NotifyStatus();
-    }
+    private void OnCompilationChanged(object? sender, EventArgs e) => Notify();
 
     private void OnCompilerStoreChanged(object? sender, EventArgs e)
     {
