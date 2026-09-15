@@ -16,12 +16,13 @@
             <FluentButton Appearance="ButtonAppearance.Primary" Disabled="@string.IsNullOrWhiteSpace(_text)" OnClick="LoadAsync">Load</FluentButton>
         </ActionTemplate>
         <ChildContent>
-            <p class="lab-setting-hint">Paste a .NET Lab link.</p>
-            <FluentTextArea @bind-Value="_text"
-                            Rows="3"
-                            AriaLabel="URL"
-                            Placeholder="https://…#…"
-                            Style="width:100%" />
+            <div class="lab-paste-body">
+                <p class="lab-setting-hint">Paste a .NET Lab link.</p>
+                <FluentTextArea @bind-Value="_text"
+                                Rows="3"
+                                AriaLabel="URL"
+                                Placeholder="https://…#…" />
+            </div>
         </ChildContent>
     </FluentDialogBody>
 </FluentDialog>
