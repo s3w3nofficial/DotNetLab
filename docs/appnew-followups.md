@@ -1,0 +1,183 @@
+# AppNew follow-ups
+
+Track remaining work after the UI folder split and the first ISP cuts
+(`ILabStatus`, `ILabBrand`, `ILabCommands`). AppNew stays a WASM rewrite behind
+`WebAssemblyNew` until host-neutral `src/App` replacement is an explicit goal.
+
+Keep the current chrome folders until feature stores exist, then move into
+[Target folders](#target-folders). Leave `LabWorkspace` injecting
+`LabWorkspaceState` until chrome leaves are done. Do not Fluxor the current
+god object; see [State direction](#state-direction).
+
+## Done
+
+- [x] Folder-split chrome and editor shell (Header, Settings, Dialogs, StatusBar, Workspace)
+- [x] `StatusBar` injects `ILabStatus`
+- [x] `LabBrandBar` injects `ILabBrand`
+- [x] `LabCommandBar` injects `ILabCommands`
+
+## P0
+
+- [ ] Render the shell even if restore fails
+  - Wrap theme / platform / settings / URL load in `MainLayout`
+  - Set `_ready` in `finally` so a throw cannot leave a blank page
+  - Assign `_appliedSlug` only after a successful apply
+- [ ] Sandbox the HTML preview iframe (`sandbox=""` on `srcdoc`)
+
+## P1
+
+- [ ] Replace `EditorGroups` static drag fields with a scoped `EditorDragState`
+- [ ] Fix `LabLanguageServices` `_outputRegistered` so a failed JS register can retry
+- [ ] Continue ISP: `CommandPalette` off `LabWorkspaceState`
+- [ ] Continue ISP: `SettingsDialog` off `LabWorkspaceState`
+- [ ] Continue ISP: `MainLayout` off `LabWorkspaceState`
+
+## P2
+
+- [ ] Introduce `ILabEnvironment` and drop `IWebAssemblyHostEnvironment` from `LabWorkspaceState`
+- [ ] Make `WorkerHost` `IAsyncDisposable` and protect recreate vs in-flight work
+- [ ] Expose `Sources` / `SourceFiles` as `IReadOnly*` and mutate through commands
+- [ ] Move output-tab persistence out of Razor (`MainLayout`, `LabWorkspace`, `SettingsDialog`)
+
+## P3
+
+- [ ] Generate commit / date instead of hardcoded Settings identity (`3f19ab2`)
+- [ ] Move splitter pointer-move hot path to JS; persist final `Split` only
+- [ ] Make `LabCodeEditor` `IAsyncDisposable` so teardown cannot race subscriptions
+
+## State direction
+
+`ILab*` on `LabWorkspaceState` is a facade, not ownership. The goal is
+feature-owned immutable state, with runtime resources kept as ordinary services.
+
+```
+DocumentsStore     CompilerStore     LayoutStore     PreferencesStore
+        \                |                 |                /
+         \               |                 |               /
+          v              v                 v              v
+                    (selectors: status, etc.)
+                              |
+                    Razor components
+```
+
+Runtime, not state: `WorkerHost`, Monaco instances / models / subscriptions,
+`CancellationTokenSource`, `JSObjectReference`, timers, Roslyn objects,
+`CompiledAssembly`.
+
+Monaco stays the source of truth for buffer text. Compile / share / URL persist
+read the editor; do not dispatch on every keystroke. Document state is file
+list, active file, and URIs.
+
+Status is derived (`Compilation` + `Compiler` → selector), not a writable
+`ILabStatus` store. Keep `ILabStatus` until those stores exist.
+
+Do **not** replace `LabWorkspaceState` with one `AppState` record. Do **not**
+delete the facade in one pass.
+
+### Sequence
+
+1. Finish P0/P1 chrome ISP (`CommandPalette`, `SettingsDialog`, `MainLayout`).
+2. Extract small scoped stores (`CompilationStore`, `CompilerStore`,
+   `PreferencesStore`, …) next to the current types in `Lab/`.
+   `StateStore<T>` / immutable records / generation checks are enough here.
+3. When a store is real, colocate its UI with it (e.g. `CompilerPicker` +
+   `CompilerSection` move with `CompilerStore`, not before).
+4. Optional Fluxor **per feature** inside those folders. Shrink
+   `LabWorkspaceState` / `Lab/` until both disappear.
+5. Cosmetic leftover: `Header/` → `Shell/Header/` for brand / command / memory
+   only.
+
+Fluxor constraints if/when adopted: no keystrokes, no Monaco handles, no worker
+handles, no `CompiledAssembly` in the store. Effects for async; reducers for
+`{ Running, Stale, SelectedSdk, … }`. Do not create empty
+`Features/*/…Actions.cs` ahead of a store.
+
+## Target folders
+
+Adopt a feature-oriented layout. Current Header / Settings / Dialogs /
+StatusBar / Workspace / Monaco / Lab match *where things render*. The target
+matches *what changes together*.
+
+```
+AppNew/
+├── Pages/                    Home, NotFound
+├── Layout/                   MainLayout only (LayoutComponentBase)
+├── Features/
+│   ├── Documents/            state, documents UI, templates/fixtures
+│   ├── Compiler/             state, CompilerPicker, CompilerSettings, catalog
+│   ├── Compilation/          compile session state (not WorkerHost)
+│   ├── Outputs/              output tabs/view, OutputTabLayout
+│   ├── Workspace/            LabWorkspace, EditorGroups, splitter
+│   ├── Preferences/          SettingsDialog as composer, SettingRow
+│   ├── Sharing/              URL/gist, PasteUrlDialog, LabShare, LabUrlSync
+│   ├── Theme/
+│   └── Updates/
+├── Shell/
+│   ├── Header/               LabBrandBar, LabCommandBar, MemoryUsageView
+│   ├── StatusBar/            StatusBar + StatusSelectors
+│   └── CommandPalette/
+├── Editor/
+│   ├── Components/           LabCodeEditor
+│   ├── Monaco/               interop, markers, language providers
+│   └── LanguageServices/     LabLanguageServices, cursor sync
+├── Infrastructure/
+│   ├── Worker/               WorkerHost
+│   ├── Browser/              LabPlatform, IScreenInfo
+│   ├── Persistence/          InputOutputCache, TemplateCache
+│   └── Logging/              LabLogging
+├── Shared/
+└── wwwroot/
+```
+
+Three kinds of code:
+
+| Kind | Owns | Examples |
+|---|---|---|
+| `Features/` | What the lab does | compiler selection, documents, outputs, sharing |
+| `Infrastructure/` | How the runtime does it | worker, caches, platform, logging |
+| `Editor/` | Monaco adapter | models, providers, `LabCodeEditor` |
+
+`SettingsDialog` composes `<CompilerSettings />`, `<ThemeSettings />`, etc. It
+does not own every setting. `CompilerPicker` lives with Compiler even if the
+header renders it. Status is
+`CompilationState` + `CompilerState` → `Shell/StatusBar/StatusSelectors.cs`
+(pure function, no `ILabStatus` store once those states exist).
+
+Keep feature files flat (`CompilerState.cs`, `CompilerActions.cs`, … plus
+`Components/` / `Services/` when needed). Do not add `State/` / `Actions/` /
+`Reducers/` subfolders until a feature has ~30 files. Do not add root
+`Services/` / `Managers/` / `Helpers/` / `Interfaces/` / `State/`.
+
+`Lab/` mapping (shrink until gone):
+
+| Current | Target |
+|---|---|
+| `LabWorkspaceState.cs` | delete eventually (facade) |
+| `LabDocuments.cs` | `Features/Documents/` |
+| `OutputTabLayout.cs` | `Features/Outputs/` or `Features/Workspace/` |
+| `LabSettings.cs` | `Features/Preferences/` |
+| `LabTheme*.cs` | `Features/Theme/` |
+| `LabUrlSync.cs`, `LabShare.cs` | `Features/Sharing/` |
+| `LabLanguageServices.cs`, `LabCursorSync.cs` | `Editor/` |
+| `WorkerHost.cs` | `Infrastructure/Worker/` |
+| `InputOutputCache.cs`, `TemplateCache.cs` | `Infrastructure/Persistence/` |
+| `LabPlatform.cs` | `Infrastructure/Browser/` |
+| `LabLogging.cs` | `Infrastructure/Logging/` |
+| `LabCatalog.cs` | `Features/Compiler/Services/` |
+| `LabFixtures.cs` | `Features/Documents/` |
+| `ILabStatus.cs`, `ILabBrand.cs`, `ILabCommands.cs` | delete once selectors/stores replace them |
+
+Drop the `Lab` type prefix as files move (`DocumentsState`, not `LabDocuments`).
+Namespaces carry the rest (`DotNetLab.Features.Documents`).
+
+## Later (not now)
+
+- [ ] Small scoped feature stores (before Fluxor), still under `Lab/` until a store is real
+- [ ] Move each store + its UI into `Features/` / `Shell/` / `Editor/` / `Infrastructure/`
+- [ ] Optional Fluxor hybrid once stores exist (separate features, not one store)
+- [ ] `LabWorkspace` injecting a narrow workspace surface instead of `LabWorkspaceState`
+- [ ] `Lab/` empty; `ILab*` gone
+- Host-neutral `AddDotNetLabApp()` and a true Server vs WASM split
+- `IWorkerTransport` (do not invent a new worker protocol)
+- Tests for URL state, documents, tabs, and compile generations
+- Extract `Editor/Monaco` to `DotNetLab.Editor.Monaco` only after it has no workspace inject
