@@ -444,77 +444,6 @@ h1:focus {
     min-width: 0;
 }
 
-.lab-brand-bar,
-.lab-command-bar {
-    display: flex;
-    align-items: center;
-    flex-wrap: nowrap;
-    gap: 0.5rem;
-    padding: 0 0.75rem;
-    min-height: 2.5rem;
-    min-width: 0;
-    flex-shrink: 0;
-    overflow-x: auto;
-    overflow-y: hidden;
-    white-space: nowrap;
-    scrollbar-width: thin;
-    scrollbar-color: var(--lab-hairline) transparent;
-}
-
-.lab-brand-bar::-webkit-scrollbar,
-.lab-command-bar::-webkit-scrollbar {
-    height: 6px;
-}
-
-.lab-brand-bar::-webkit-scrollbar-thumb,
-.lab-command-bar::-webkit-scrollbar-thumb {
-    background: var(--lab-hairline);
-}
-
-.lab-brand-bar > *,
-.lab-command-bar > * {
-    flex-shrink: 0;
-}
-
-.lab-brand-bar .lab-spacer,
-.lab-command-bar .lab-spacer {
-    flex: 1 1 auto;
-    min-width: 0;
-}
-
-.lab-brand-bar {
-    height: 2.5rem;
-    background: var(--lab-brand);
-    color: var(--lab-brand-foreground);
-    border-bottom: 1px solid color-mix(in srgb, var(--lab-brand-foreground) 18%, transparent);
-    scrollbar-color: color-mix(in srgb, var(--lab-brand-foreground) 42%, transparent) transparent;
-}
-
-.lab-brand-bar::-webkit-scrollbar-thumb {
-    background: color-mix(in srgb, var(--lab-brand-foreground) 42%, transparent);
-}
-
-.lab-command-bar {
-    height: 2.75rem;
-    background: var(--lab-panel-raised);
-    border-bottom: 1px solid var(--lab-hairline);
-}
-
-.lab-brand-mark {
-    display: grid;
-    place-items: center;
-    width: 1.25rem;
-    height: 1.25rem;
-    flex-shrink: 0;
-}
-
-.lab-brand-mark img {
-    width: 1.25rem;
-    height: 1.25rem;
-    display: block;
-    object-fit: contain;
-}
-
 .lab-brand-title {
     margin: 0;
     font-family: var(--font-display);
@@ -522,30 +451,6 @@ h1:focus {
     font-weight: 600;
     letter-spacing: 0.01em;
     line-height: 1.2;
-}
-
-.lab-vsep {
-    width: 1px;
-    height: 1rem;
-    background: color-mix(in srgb, var(--lab-brand-foreground) 25%, transparent);
-    flex-shrink: 0;
-}
-
-.lab-command-bar .lab-vsep {
-    height: 1.5rem;
-    margin: 0 0.25rem;
-    background: var(--lab-hairline);
-}
-
-.lab-compiler-picker {
-    display: flex;
-    align-items: center;
-    flex-shrink: 0;
-}
-
-.lab-command-bar fluent-button.lab-toolbar-toggle-on {
-    background-color: var(--lab-hairline) !important;
-    color: var(--lab-foreground);
 }
 
 fluent-tooltip.lab-command-tooltip {
@@ -567,12 +472,6 @@ fluent-tooltip.lab-command-tooltip {
 
 .lab-spacer {
     flex: 1;
-}
-
-.lab-brand-share {
-    display: flex;
-    align-items: center;
-    gap: 0.15rem;
 }
 
 .lab-status-pill {
@@ -599,10 +498,6 @@ fluent-tooltip.lab-command-tooltip {
 .lab-dot.busy {
     background: var(--lab-brand-foreground);
     animation: lab-pulse 1s ease-in-out infinite;
-}
-
-.lab-compile {
-    color: var(--lab-success) !important;
 }
 
 .lab-workspace {
