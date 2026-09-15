@@ -86,5 +86,5 @@ public interface ILabSettings
 
     void ResetOutputTabs(OutputFileKind kind);
 
-    string SerializeOutputTabs();
+    Task PersistOutputTabsAsync();
 }

@@ -23,6 +23,8 @@ public static class AppBuilder
                 options.UseReduxDevTools();
             }
         });
+        builder.Services.AddSingleton<ILabEnvironment>(
+            new LabEnvironment(builder.HostEnvironment.IsDevelopment(), builder.HostEnvironment.BaseAddress));
         builder.Services.AddScoped<LabWorkspaceState>();
         builder.Services.AddScoped<ILabStatus>(sp => sp.GetRequiredService<LabWorkspaceState>());
         builder.Services.AddScoped<ILabBrand>(sp => sp.GetRequiredService<LabWorkspaceState>());
@@ -55,7 +57,10 @@ public static class AppBuilder
         builder.RootComponents.Add<App>("#app");
         builder.RootComponents.Add<HeadOutlet>("head::after");
 
-        builder.Services.AddScoped(sp => new HttpClient {BaseAddress = new Uri(builder.HostEnvironment.BaseAddress)});
+        builder.Services.AddScoped(sp => new HttpClient
+        {
+            BaseAddress = new Uri(sp.GetRequiredService<ILabEnvironment>().BaseAddress)
+        });
         
         return builder;
     }

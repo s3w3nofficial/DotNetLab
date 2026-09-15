@@ -4,7 +4,6 @@
 @inject LabUrlSync Urls
 @inject LabPlatform Platform
 @inject IDispatcher Dispatcher
-@inject IJSRuntime JS
 @implements IDisposable
 
 <div class="lab-shell">
@@ -51,15 +50,6 @@
             await Platform.InitializeAsync();
             Dispatcher.Dispatch(new InitializeUpdatesAction());
             await Shell.LoadSettingsAsync();
-            try
-            {
-                var json = await JS.InvokeAsync<string>("netLabPrefs.readOutputTabs");
-                Shell.ApplySavedOutputTabs(json);
-            }
-            catch (JSException)
-            {
-            }
-
             await Urls.LoadFromUriAsync();
         }
         finally

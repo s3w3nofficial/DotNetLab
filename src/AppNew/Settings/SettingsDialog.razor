@@ -4,7 +4,6 @@
 @inject IUpdateChecker Updates
 @inject IState<UpdateState> UpdateStore
 @inject IDispatcher Dispatcher
-@inject IJSRuntime JS
 
 <FluentDialog @ref="_dialog" Class="lab-settings-dialog" Modal="false" OnStateChange="OnDialogStateChange">
     <FluentDialogBody>
@@ -468,13 +467,7 @@
 
     private async Task PersistOutputTabsAsync()
     {
-        try
-        {
-            await JS.InvokeVoidAsync("netLabPrefs.persistOutputTabs", Settings.SerializeOutputTabs());
-        }
-        catch (JSException)
-        {
-        }
+        await Settings.PersistOutputTabsAsync();
     }
 
     private void CheckForUpdates() => Dispatcher.Dispatch(new CheckUpdatesAction());

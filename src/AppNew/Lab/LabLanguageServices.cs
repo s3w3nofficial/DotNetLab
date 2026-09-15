@@ -13,6 +13,7 @@ public sealed class LabLanguageServices(
     BlazorMonacoInterop blazorMonacoInterop)
     : IAsyncDisposable
 {
+    [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "CA2213", Justification = "WorkerHost is a scoped DI service owned by the container.")]
     private readonly WorkerHost _worker = worker;
     private readonly LanguageSelector _cSharpLanguageSelector = new(CompiledAssembly.CSharpLanguageId);
     private readonly LanguageSelector _outputLanguageSelector = new(CompiledAssembly.OutputLanguageId);

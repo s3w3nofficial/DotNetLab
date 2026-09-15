@@ -316,13 +316,7 @@
     {
         CaptureOutputStrip();
         State.SaveOpenOutputTabsAsSettings();
-        try
-        {
-            await JS.InvokeVoidAsync("netLabPrefs.persistOutputTabs", State.SerializeOutputTabs());
-        }
-        catch (JSException)
-        {
-        }
+        await State.PersistOutputTabsAsync();
     }
 
     private void OnSourceRenamed(TabRename rename)

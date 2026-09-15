@@ -3,7 +3,6 @@ using System.Runtime.InteropServices.JavaScript;
 using System.Runtime.Versioning;
 using System.Text;
 using System.Text.Json;
-using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using Timer = System.Timers.Timer;
 
 namespace DotNetLab.Lab;
@@ -14,7 +13,7 @@ namespace DotNetLab.Lab;
 /// <c>src/App</c> <c>WorkerController</c>. Background-worker vs in-process is
 /// chosen on first use and requires a page reload to change.
 /// </summary>
-public sealed class WorkerHost
+public sealed class WorkerHost : IAsyncDisposable
 {
     private readonly string _baseUrl;
     private readonly LabLogging _logging;
@@ -31,14 +30,16 @@ public sealed class WorkerHost
     private WorkerInstance? _worker;
     private bool? _useWorker;
     private int _messageId;
+    private int _epoch;
+    private bool _disposed;
 
     public WorkerHost(
-        IWebAssemblyHostEnvironment hostEnvironment,
+        ILabEnvironment environment,
         LabLogging logging,
         LabSettings settings,
         ILogger<WorkerHost> logger)
     {
-        _baseUrl = hostEnvironment.BaseAddress;
+        _baseUrl = environment.BaseAddress;
         _logging = logging;
         _settings = settings;
         _logger = logger;
@@ -50,11 +51,36 @@ public sealed class WorkerHost
 
     public int NextMessageId() => Interlocked.Increment(ref _messageId);
 
+    public async ValueTask DisposeAsync()
+    {
+        await _startLock.WaitAsync();
+        try
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            Interlocked.Increment(ref _epoch);
+            await DisposeCurrentNoLockAsync();
+        }
+        finally
+        {
+            _startLock.Release();
+        }
+
+        _startLock.Dispose();
+        _inProcessGate.Dispose();
+    }
+
     public async Task RecreateAsync()
     {
         await _startLock.WaitAsync();
         try
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            Interlocked.Increment(ref _epoch);
             await DisposeCurrentNoLockAsync();
             _useWorker ??= await LoadUseWorkerAsync();
             await StartNoLockAsync();
@@ -122,6 +148,12 @@ public sealed class WorkerHost
     private async Task<WorkerOutputMessage> PostAsync(IWorkerInputMessage message)
     {
         await EnsureStartedAsync();
+        var epoch = Volatile.Read(ref _epoch);
+        if (_disposed || epoch != Volatile.Read(ref _epoch))
+        {
+            return DisposedFailure(message);
+        }
+
         if (_useWorker != true)
         {
             var executor = _services!.GetRequiredService<WorkerInputMessage.IExecutor>();
@@ -132,7 +164,14 @@ public sealed class WorkerHost
                 "=> {Id}: {Type} (fg)",
                 message.Id,
                 message.GetType().Name);
-            return await message.HandleAndGetOutputAsync(executor);
+            var incoming = await message.HandleAndGetOutputAsync(executor);
+            return epoch == Volatile.Read(ref _epoch) ? incoming : DisposedFailure(message);
+        }
+
+        var worker = _worker;
+        if (worker is null)
+        {
+            return DisposedFailure(message);
         }
 
         var tcs = new TaskCompletionSource<WorkerOutputMessage>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -152,7 +191,13 @@ public sealed class WorkerHost
         try
         {
             Debug.Assert(OperatingSystem.IsBrowser());
-            WorkerHostInterop.PostMessage(_worker!.Handle, serialized);
+            if (epoch != Volatile.Read(ref _epoch) || !ReferenceEquals(worker, _worker))
+            {
+                _pending.TryRemove(message.Id, out _);
+                return DisposedFailure(message);
+            }
+
+            WorkerHostInterop.PostMessage(worker.Handle, serialized);
         }
         catch (Exception ex)
         {
@@ -172,6 +217,7 @@ public sealed class WorkerHost
 
     private async Task EnsureStartedAsync()
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         if (IsStarted)
         {
             return;
@@ -180,6 +226,7 @@ public sealed class WorkerHost
         await _startLock.WaitAsync();
         try
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
             if (IsStarted)
             {
                 return;
@@ -358,6 +405,13 @@ public sealed class WorkerHost
             ErrorHandler = errorHandler,
         };
     }
+
+    private static WorkerOutputMessage DisposedFailure(IWorkerInputMessage message)
+        => new WorkerOutputMessage.Failure("Worker disposed")
+        {
+            Id = message.Id,
+            InputType = message.GetType().Name,
+        };
 
     private void DiscardPending(string message, string? fullString = null)
     {

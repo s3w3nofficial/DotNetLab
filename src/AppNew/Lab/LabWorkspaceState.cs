@@ -1,6 +1,5 @@
 using System.Collections.Immutable;
 using BlazorMonaco.Editor;
-using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using Microsoft.JSInterop;
 
 namespace DotNetLab.Lab;
@@ -39,7 +38,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
         LabLogging logging,
         TemplateCache templates,
         InputOutputCache cache,
-        IWebAssemblyHostEnvironment hostEnvironment,
+        ILabEnvironment environment,
         ILogger<LabWorkspaceState> logger)
     {
         _worker = worker;
@@ -50,7 +49,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
         _templates = templates;
         _cache = cache;
         _logger = logger;
-        DebugLogs = hostEnvironment.IsDevelopment();
+        DebugLogs = environment.IsDevelopment;
         ApplyLogLevel();
         Documents = new LabDocuments(this);
         Tabs = new OutputTabLayout(this);
@@ -203,8 +202,8 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
         }
     }
 
-    public Dictionary<string, string> Sources => Documents.Sources;
-    public List<string> SourceFiles => Documents.SourceFiles;
+    public IReadOnlyDictionary<string, string> Sources => Documents.Sources;
+    public IReadOnlyList<string> SourceFiles => Documents.SourceFiles;
     public string UriFor(string fileName) => Documents.UriFor(fileName);
     public SdkOption ResolvedSdk =>
         AvailableSdks.FirstOrDefault(item => item.Value == Sdk)
@@ -268,6 +267,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
             await SetLanguageServicesAsync(LanguageServices, persist: false);
         }
 
+        ApplySavedOutputTabs(await _settings.ReadOutputTabsAsync());
         Notify();
     }
 
@@ -537,6 +537,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     public void ResetOutputTabs(OutputFileKind kind) => Tabs.ResetOutputTabs(kind);
     public string SerializeOutputTabs() => Tabs.SerializeOutputTabs();
     public void ApplySavedOutputTabs(string? json) => Tabs.ApplySavedOutputTabs(json);
+    public Task PersistOutputTabsAsync() => _settings.PersistOutputTabsAsync(Tabs.SerializeOutputTabs());
     public void CaptureOpenOutputTabs(IReadOnlyList<string> ids) => Tabs.CaptureOpenOutputTabs(ids);
     public IReadOnlyList<OutputTab> AddableOutputTabsFor(IReadOnlyList<string> open) => Tabs.AddableOutputTabsFor(open);
     public bool HasClosedOutputTabs(IReadOnlyList<string> open) => Tabs.HasClosedOutputTabs(open);

@@ -9,6 +9,4 @@ public interface ILabShell
     event Func<Task>? PasteUrlRequested;
 
     Task LoadSettingsAsync();
-
-    void ApplySavedOutputTabs(string? json);
 }

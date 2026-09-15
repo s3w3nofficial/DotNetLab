@@ -52,6 +52,29 @@ public sealed class LabSettings(IJSRuntime js)
         {
         }
     }
+
+    public async Task<string> ReadOutputTabsAsync()
+    {
+        try
+        {
+            return await js.InvokeAsync<string>("netLabPrefs.readOutputTabs") ?? "";
+        }
+        catch (JSException)
+        {
+            return "";
+        }
+    }
+
+    public async Task PersistOutputTabsAsync(string json)
+    {
+        try
+        {
+            await js.InvokeVoidAsync("netLabPrefs.persistOutputTabs", json);
+        }
+        catch (JSException)
+        {
+        }
+    }
 }
 
 public sealed class LabSettingsSnapshot

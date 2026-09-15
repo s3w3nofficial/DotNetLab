@@ -20,6 +20,7 @@ Keep the current chrome folders until feature stores exist, then move into
 - [x] `CommandPalette` injects `ILabPalette`
 - [x] `SettingsDialog` injects `ILabSettings`
 - [x] `MainLayout` injects `ILabShell`
+- [x] `ILabEnvironment` instead of `IWebAssemblyHostEnvironment` on workspace / worker
 
 ## P0
 
@@ -39,10 +40,10 @@ Keep the current chrome folders until feature stores exist, then move into
 
 ## P2
 
-- [ ] Introduce `ILabEnvironment` and drop `IWebAssemblyHostEnvironment` from `LabWorkspaceState`
-- [ ] Make `WorkerHost` `IAsyncDisposable` and protect recreate vs in-flight work
-- [ ] Expose `Sources` / `SourceFiles` as `IReadOnly*` and mutate through commands
-- [ ] Move output-tab persistence out of Razor (`MainLayout`, `LabWorkspace`, `SettingsDialog`)
+- [x] Introduce `ILabEnvironment` and drop `IWebAssemblyHostEnvironment` from `LabWorkspaceState`
+- [x] Make `WorkerHost` `IAsyncDisposable` and protect recreate vs in-flight work
+- [x] Expose `Sources` / `SourceFiles` as `IReadOnly*` and mutate through commands
+- [x] Move output-tab persistence out of Razor (`MainLayout`, `LabWorkspace`, `SettingsDialog`)
 
 ## P3
 

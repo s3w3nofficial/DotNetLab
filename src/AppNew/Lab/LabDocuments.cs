@@ -14,12 +14,15 @@ public sealed class LabDocuments
     public string Template { get; private set; } = "C#";
     public string ActiveSource { get; set; } = "Program.cs";
 
-    public Dictionary<string, string> Sources { get; } = new(StringComparer.Ordinal)
+    public IReadOnlyDictionary<string, string> Sources => _sources;
+    public IReadOnlyList<string> SourceFiles => _sourceFiles;
+
+    private readonly Dictionary<string, string> _sources = new(StringComparer.Ordinal)
     {
         [InitialCode.CSharp.SuggestedFileName] = InitialCode.CSharp.TextTemplate,
     };
 
-    public List<string> SourceFiles { get; } = ["Program.cs"];
+    private readonly List<string> _sourceFiles = ["Program.cs"];
 
     public string UriFor(string fileName)
     {
@@ -51,7 +54,7 @@ public sealed class LabDocuments
         => SourceFiles
             .Select(file => new ModelInfo(UriFor(file), file)
             {
-                NewContent = Sources.GetValueOrDefault(file) ?? "",
+                NewContent = _sources.GetValueOrDefault(file) ?? "",
                 IsConfiguration = file == LabFixtures.ConfigurationFileName,
             })
             .ToImmutableArray();
@@ -73,17 +76,17 @@ public sealed class LabDocuments
     {
         Template = template;
 
-        foreach (var file in SourceFiles.Where(name => !IsSpecialSource(name)).ToArray())
+        foreach (var file in _sourceFiles.Where(name => !IsSpecialSource(name)).ToArray())
         {
-            SourceFiles.Remove(file);
-            Sources.Remove(file);
+            _sourceFiles.Remove(file);
+            _sources.Remove(file);
             RemoveUri(file);
         }
 
         foreach (var (name, contents) in FilesFor(template))
         {
             InsertUserFile(name);
-            Sources[name] = contents;
+            _sources[name] = contents;
             EnsureUri(name);
         }
 
@@ -128,7 +131,7 @@ public sealed class LabDocuments
 
     public void SetSource(string file, string contents)
     {
-        Sources[file] = contents;
+        _sources[file] = contents;
         if (_state.Stale)
         {
             return;
@@ -145,16 +148,16 @@ public sealed class LabDocuments
             return;
         }
 
-        var index = SourceFiles.IndexOf(oldName);
+        var index = _sourceFiles.IndexOf(oldName);
         if (index < 0)
         {
             return;
         }
 
-        SourceFiles[index] = normalized;
-        if (Sources.Remove(oldName, out var contents))
+        _sourceFiles[index] = normalized;
+        if (_sources.Remove(oldName, out var contents))
         {
-            Sources[normalized] = contents;
+            _sources[normalized] = contents;
         }
 
         RemoveUri(oldName);
@@ -180,8 +183,8 @@ public sealed class LabDocuments
             normalized is "." or ".." ||
             normalized.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0 ||
             !string.Equals(Path.GetFileName(normalized), normalized, StringComparison.Ordinal) ||
-            !SourceFiles.Contains(oldName) ||
-            SourceFiles.Contains(normalized))
+            !_sourceFiles.Contains(oldName) ||
+            _sourceFiles.Contains(normalized))
         {
             normalized = "";
             return false;
@@ -192,16 +195,16 @@ public sealed class LabDocuments
 
     public void CloseFile(string file)
     {
-        if (SourceFiles.Count <= 1 || !SourceFiles.Remove(file))
+        if (_sourceFiles.Count <= 1 || !_sourceFiles.Remove(file))
         {
             return;
         }
 
-        Sources.Remove(file);
+        _sources.Remove(file);
         RemoveUri(file);
         if (ActiveSource == file)
         {
-            ActiveSource = SourceFiles.FirstOrDefault(name => !IsSpecialSource(name)) ?? SourceFiles[0];
+            ActiveSource = _sourceFiles.FirstOrDefault(name => !IsSpecialSource(name)) ?? _sourceFiles[0];
             _state.Tabs.EnsureActiveOutput();
         }
 
@@ -222,7 +225,7 @@ public sealed class LabDocuments
                 _ => $"File{index}.cs"
             };
             index++;
-        } while (SourceFiles.Contains(name));
+        } while (_sourceFiles.Contains(name));
 
         var contents = extension switch
         {
@@ -232,7 +235,7 @@ public sealed class LabDocuments
         };
 
         InsertUserFile(name);
-        Sources[name] = contents;
+        _sources[name] = contents;
         EnsureUri(name);
         ActiveSource = name;
         _state.Tabs.EnsureActiveOutput();
@@ -249,10 +252,10 @@ public sealed class LabDocuments
 
     private void OpenSpecialSource(string fileName, string contents)
     {
-        if (!SourceFiles.Contains(fileName))
+        if (!_sourceFiles.Contains(fileName))
         {
             InsertSpecialFile(fileName);
-            Sources[fileName] = contents;
+            _sources[fileName] = contents;
             EnsureUri(fileName);
             _state.Stale = true;
         }
@@ -264,35 +267,35 @@ public sealed class LabDocuments
 
     private void InsertUserFile(string name)
     {
-        var at = SourceFiles.FindIndex(IsSpecialSource);
+        var at = _sourceFiles.FindIndex(IsSpecialSource);
         if (at < 0)
         {
-            SourceFiles.Add(name);
+            _sourceFiles.Add(name);
             return;
         }
 
-        SourceFiles.Insert(at, name);
+        _sourceFiles.Insert(at, name);
     }
 
     private void InsertSpecialFile(string fileName)
     {
-        var userCount = SourceFiles.FindIndex(IsSpecialSource);
+        var userCount = _sourceFiles.FindIndex(IsSpecialSource);
         if (userCount < 0)
         {
-            userCount = SourceFiles.Count;
+            userCount = _sourceFiles.Count;
         }
 
         var slot = Array.IndexOf(LabFixtures.SpecialSourceOrder, fileName);
         var at = userCount;
         for (var i = 0; i < slot; i++)
         {
-            if (SourceFiles.Contains(LabFixtures.SpecialSourceOrder[i]))
+            if (_sourceFiles.Contains(LabFixtures.SpecialSourceOrder[i]))
             {
                 at++;
             }
         }
 
-        SourceFiles.Insert(at, fileName);
+        _sourceFiles.Insert(at, fileName);
     }
 
     public void LoadImportedFiles(IReadOnlyDictionary<string, string> files)
@@ -312,10 +315,10 @@ public sealed class LabDocuments
             return;
         }
 
-        foreach (var file in SourceFiles.Where(name => !IsSpecialSource(name)).ToArray())
+        foreach (var file in _sourceFiles.Where(name => !IsSpecialSource(name)).ToArray())
         {
-            SourceFiles.Remove(file);
-            Sources.Remove(file);
+            _sourceFiles.Remove(file);
+            _sources.Remove(file);
             RemoveUri(file);
         }
 
@@ -323,22 +326,22 @@ public sealed class LabDocuments
         {
             if (IsSpecialSource(name))
             {
-                if (!SourceFiles.Contains(name))
+                if (!_sourceFiles.Contains(name))
                 {
                     InsertSpecialFile(name);
                 }
 
-                Sources[name] = contents;
+                _sources[name] = contents;
                 EnsureUri(name);
                 continue;
             }
 
             InsertUserFile(name);
-            Sources[name] = contents;
+            _sources[name] = contents;
             EnsureUri(name);
         }
 
-        ActiveSource = SourceFiles.FirstOrDefault(name => !IsSpecialSource(name)) ?? SourceFiles[0];
+        ActiveSource = _sourceFiles.FirstOrDefault(name => !IsSpecialSource(name)) ?? _sourceFiles[0];
         _state.Tabs.EnsureActiveOutput();
         _state.Stale = true;
         _state.Notify();
@@ -389,8 +392,8 @@ public sealed class LabDocuments
             specialFiles[LabFixtures.ConfigurationFileName] = configuration;
         }
 
-        SourceFiles.Clear();
-        Sources.Clear();
+        _sourceFiles.Clear();
+        _sources.Clear();
         ResetUris();
 
         if (userFiles.Count == 0)
@@ -400,12 +403,12 @@ public sealed class LabDocuments
 
         foreach (var (name, contents) in userFiles)
         {
-            if (!SourceFiles.Contains(name))
+            if (!_sourceFiles.Contains(name))
             {
                 InsertUserFile(name);
             }
 
-            Sources[name] = contents;
+            _sources[name] = contents;
         }
 
         foreach (var fileName in LabFixtures.SpecialSourceOrder)
@@ -413,14 +416,14 @@ public sealed class LabDocuments
             if (specialFiles.TryGetValue(fileName, out var contents))
             {
                 InsertSpecialFile(fileName);
-                Sources[fileName] = contents;
+                _sources[fileName] = contents;
             }
         }
 
-        var selectable = SourceFiles.Where(name => name != LabFixtures.ConfigurationFileName).ToList();
+        var selectable = _sourceFiles.Where(name => name != LabFixtures.ConfigurationFileName).ToList();
         if (selectable.Count == 0)
         {
-            selectable = SourceFiles.ToList();
+            selectable = _sourceFiles.ToList();
         }
 
         ActiveSource = state.SelectedInputIndex >= 0 && state.SelectedInputIndex < selectable.Count
