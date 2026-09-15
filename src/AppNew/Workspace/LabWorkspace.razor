@@ -243,7 +243,6 @@
                  aria-orientation="@(State.Stacked ? "horizontal" : "vertical")"
                  @onpointerdown="OnSplitterPointerDown"
                  @onpointerdown:preventDefault
-                 @onpointermove="OnSplitterPointerMove"
                  @onpointerup="OnSplitterPointerUp"
                  @onpointercancel="OnSplitterPointerUp"
                  @onlostpointercapture="OnSplitterPointerUp"
@@ -259,11 +258,18 @@
     private ElementReference _workspace;
     private ElementReference _splitter;
     private bool _resizing;
-    private long _pointerId;
 
     protected override void OnInitialized() => State.Changed += OnChanged;
 
-    private void OnChanged() => InvokeAsync(StateHasChanged);
+    protected override bool ShouldRender() => !_resizing;
+
+    private void OnChanged()
+    {
+        if (!_resizing)
+        {
+            InvokeAsync(StateHasChanged);
+        }
+    }
 
     private void OnSourceSelected(string file)
     {
@@ -350,26 +356,20 @@
         }
 
         _resizing = true;
-        _pointerId = args.PointerId;
         try
         {
-            await JS.InvokeVoidAsync("netLabLayout.capturePointer", _splitter, args.PointerId);
+            await JS.InvokeVoidAsync(
+                "netLabLayout.beginSplit",
+                _workspace,
+                _splitter,
+                args.PointerId,
+                args.ClientX,
+                args.ClientY);
         }
         catch (JSException)
         {
+            _resizing = false;
         }
-
-        await ResizeAsync(args.ClientX, args.ClientY, notify: false);
-    }
-
-    private async Task OnSplitterPointerMove(PointerEventArgs args)
-    {
-        if (!_resizing || (args.Buttons & 1) == 0)
-        {
-            return;
-        }
-
-        await ResizeAsync(args.ClientX, args.ClientY, notify: false);
     }
 
     private async Task OnSplitterPointerUp(PointerEventArgs args)
@@ -380,16 +380,21 @@
         }
 
         _resizing = false;
+        double? percent = null;
         try
         {
-            await JS.InvokeVoidAsync("netLabLayout.releasePointer", _splitter, _pointerId);
-            await JS.InvokeVoidAsync("netLabLayout.endSplit", _workspace);
+            percent = await JS.InvokeAsync<double?>("netLabLayout.endSplit", _workspace, _splitter);
         }
         catch (JSException)
         {
         }
 
-        State.Notify();
+        if (percent is { } value)
+        {
+            State.SetSplit(value);
+        }
+
+        await InvokeAsync(StateHasChanged);
     }
 
     private void OnSplitterKeyDown(KeyboardEventArgs args)
@@ -398,36 +403,6 @@
         if (delta != 0)
         {
             State.SetSplit(State.Split + delta);
-        }
-    }
-
-    private async Task ResizeAsync(double clientX, double clientY, bool notify)
-    {
-        ElementRect rect;
-        try
-        {
-            rect = await JS.InvokeAsync<ElementRect>("netLabLayout.getRect", _workspace);
-        }
-        catch (JSException)
-        {
-            return;
-        }
-
-        if (rect.Width <= 0 || rect.Height <= 0)
-        {
-            return;
-        }
-
-        var next = State.Stacked
-            ? (clientY - rect.Top) / rect.Height * 100
-            : (clientX - rect.Left) / rect.Width * 100;
-        State.SetSplit(next, notify);
-        try
-        {
-            await JS.InvokeVoidAsync("netLabLayout.setSplit", _workspace, State.Split);
-        }
-        catch (JSException)
-        {
         }
     }
 

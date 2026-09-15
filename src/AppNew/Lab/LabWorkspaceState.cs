@@ -494,7 +494,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
         }
     }
 
-    public void DetachEditor(string editorId) => _ = _cursors.DetachAsync(editorId);
+    public Task DetachEditorAsync(string editorId) => _cursors.DetachAsync(editorId);
 
     public void OnSavedStateChanged()
     {

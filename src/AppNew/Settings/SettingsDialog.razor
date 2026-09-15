@@ -231,10 +231,19 @@
             </div>
 
             <p class="lab-settings-identity">
-                <span class="lab-sdk-summary-versions">3f19ab2</span>
-                <span aria-hidden="true"> · </span>
-                <span>2026.9.11</span>
-                <span aria-hidden="true"> · </span>
+                @if (!string.IsNullOrEmpty(LabIdentity.Commit))
+                {
+                    <a class="lab-sdk-summary-versions"
+                       href="@($"{LabLinks.Repository}/commit/{LabIdentity.Commit}")"
+                       target="_blank"
+                       rel="noopener noreferrer">@LabIdentity.Commit</a>
+                    <span aria-hidden="true"> · </span>
+                }
+                @if (!string.IsNullOrEmpty(LabIdentity.Date))
+                {
+                    <span>@LabIdentity.Date</span>
+                    <span aria-hidden="true"> · </span>
+                }
                 <a href="@LabLinks.Repository" target="_blank" rel="noopener noreferrer">GitHub</a>
                 @if (UpdateStore.Value.Enabled && !UpdateStore.Value.Checking)
                 {

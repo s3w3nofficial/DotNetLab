@@ -21,6 +21,8 @@ Keep the current chrome folders until feature stores exist, then move into
 - [x] `SettingsDialog` injects `ILabSettings`
 - [x] `MainLayout` injects `ILabShell`
 - [x] `ILabEnvironment` instead of `IWebAssemblyHostEnvironment` on workspace / worker
+- [x] Settings identity from git commit / date
+- [x] Splitter pointer-move in JS; `LabCodeEditor` `IAsyncDisposable`
 
 ## P0
 
@@ -47,9 +49,9 @@ Keep the current chrome folders until feature stores exist, then move into
 
 ## P3
 
-- [ ] Generate commit / date instead of hardcoded Settings identity (`3f19ab2`)
-- [ ] Move splitter pointer-move hot path to JS; persist final `Split` only
-- [ ] Make `LabCodeEditor` `IAsyncDisposable` so teardown cannot race subscriptions
+- [x] Generate commit / date instead of hardcoded Settings identity (`3f19ab2`)
+- [x] Move splitter pointer-move hot path to JS; persist final `Split` only
+- [x] Make `LabCodeEditor` `IAsyncDisposable` so teardown cannot race subscriptions
 
 ## State direction
 

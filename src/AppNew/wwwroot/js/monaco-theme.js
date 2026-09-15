@@ -15,8 +15,65 @@ window.netLabLayout = {
         el.style.setProperty("--pane-split", `${percent}%`);
         el.classList.toggle("resizing", true);
     },
-    endSplit: function (el) {
-        el.classList.remove("resizing");
+    beginSplit: function (workspace, splitter, pointerId, clientX, clientY) {
+        if (!workspace || !splitter) {
+            return;
+        }
+
+        const apply = (x, y) => {
+            const rect = workspace.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) {
+                return;
+            }
+
+            const stacked = workspace.classList.contains("stacked");
+            let percent = stacked
+                ? ((y - rect.top) / rect.height) * 100
+                : ((x - rect.left) / rect.width) * 100;
+            percent = Math.min(75, Math.max(25, percent));
+            workspace.style.setProperty("--pane-split", `${percent}%`);
+            workspace.classList.add("resizing");
+            workspace._labSplit = percent;
+        };
+
+        const onMove = (e) => {
+            if ((e.buttons & 1) === 0) {
+                return;
+            }
+
+            apply(e.clientX, e.clientY);
+        };
+
+        splitter._labSplitMove = onMove;
+        splitter._labSplitPointerId = pointerId;
+        try {
+            splitter.setPointerCapture(pointerId);
+        } catch {
+        }
+
+        splitter.addEventListener("pointermove", onMove);
+        apply(clientX, clientY);
+    },
+    endSplit: function (workspace, splitter) {
+        if (splitter && splitter._labSplitMove) {
+            splitter.removeEventListener("pointermove", splitter._labSplitMove);
+            const pointerId = splitter._labSplitPointerId;
+            splitter._labSplitMove = null;
+            splitter._labSplitPointerId = null;
+            try {
+                if (pointerId != null && splitter.hasPointerCapture(pointerId)) {
+                    splitter.releasePointerCapture(pointerId);
+                }
+            } catch {
+            }
+        }
+
+        if (workspace) {
+            workspace.classList.remove("resizing");
+            return typeof workspace._labSplit === "number" ? workspace._labSplit : null;
+        }
+
+        return null;
     },
     zoneFromPoint: function (el, clientX, clientY) {
         if (!el) {

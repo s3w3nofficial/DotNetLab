@@ -1,5 +1,5 @@
 @inject IJSRuntime JS
-@implements IDisposable
+@implements IAsyncDisposable
 
 <div class="lab-editor">
     <StandaloneCodeEditor @ref="_editor"
@@ -24,7 +24,9 @@
     private int _lastCursorLine;
     private int _lastCursorColumn;
     private bool _ready;
+    private bool _disposed;
     private bool _suppressChange;
+    private Task _init = Task.CompletedTask;
     private Task _applyQueue = Task.CompletedTask;
     private string? _appliedMonacoTheme;
     private bool? _appliedKeyboardDisabled;
@@ -51,12 +53,34 @@
         State.SnapshotRequested += FlushAsync;
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
         State.Changed -= OnWorkspaceChanged;
         State.SnapshotRequested -= FlushAsync;
-        State.DetachEditor(_editorId);
-        _ = DisposeEditorChromeAsync();
+        try
+        {
+            await _init;
+        }
+        catch (JSException)
+        {
+        }
+
+        try
+        {
+            await _applyQueue;
+        }
+        catch (JSException)
+        {
+        }
+
+        await DisposeEditorChromeAsync();
+        await State.DetachEditorAsync(_editorId);
     }
 
     private async Task DisposeEditorChromeAsync()
@@ -123,7 +147,7 @@
 
     protected override Task OnParametersSetAsync()
     {
-        if (!_ready || _editor is null)
+        if (_disposed || !_ready || _editor is null)
         {
             return Task.CompletedTask;
         }
@@ -142,7 +166,7 @@
         {
         }
 
-        if (!_ready || _editor is null)
+        if (_disposed || !_ready || _editor is null)
         {
             return;
         }
@@ -159,7 +183,7 @@
             // SetValue is async. A cached recompile can push Compiling… then the real text
             // before the first SetValue finishes, which left Monaco stuck until a tab switch.
             var valueChanged = false;
-            while (!string.Equals(_lastValue, Value, StringComparison.Ordinal))
+            while (!_disposed && !string.Equals(_lastValue, Value, StringComparison.Ordinal))
             {
                 var toSet = Value;
                 _suppressChange = true;
@@ -198,7 +222,7 @@
                 _lastWordWrap = WordWrap;
             }
 
-            if (modelUriChanged || valueChanged || languageChanged)
+            if (!_disposed && (modelUriChanged || valueChanged || languageChanged))
             {
                 await State.OnEditorReadyAsync(_editorId, ModelUri, ReadOnly, fold: languageChanged);
             }
@@ -210,19 +234,45 @@
         }
     }
 
-    private async Task OnInitAsync()
+    private Task OnInitAsync()
     {
+        _init = InitializeEditorAsync();
+        return _init;
+    }
+
+    private async Task InitializeEditorAsync()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
         _lastValue = Value;
         _lastLanguage = Language;
         _lastModelUri = ModelUri;
         _ready = true;
         await AttachNamedModelAsync();
+        if (_disposed)
+        {
+            return;
+        }
+
         await ApplyMonacoThemeAsync();
         await ApplyVirtualKeyboardAsync();
         await ApplyVimAsync();
         await ApplyWrapAndReadOnlyAsync();
+        if (_disposed)
+        {
+            return;
+        }
+
         await State.EnableSemanticHighlightingAsync();
         await State.InitializeLanguageServicesAsync();
+        if (_disposed)
+        {
+            return;
+        }
+
         await State.OnEditorReadyAsync(_editorId, ModelUri, ReadOnly, fold: true);
     }
 
@@ -291,7 +341,7 @@
 
     private void OnWorkspaceChanged()
     {
-        if (!_ready)
+        if (_disposed || !_ready)
         {
             return;
         }
@@ -375,7 +425,7 @@
 
     private Task OnModelChangedAsync(ModelContentChangedEvent args)
     {
-        if (_suppressChange || !_ready || _editor is null || ReadOnly)
+        if (_disposed || _suppressChange || !_ready || _editor is null || ReadOnly)
         {
             return Task.CompletedTask;
         }
@@ -454,7 +504,7 @@
 
     private async Task FlushAsync()
     {
-        if (ReadOnly || !_ready || _editor is null)
+        if (_disposed || ReadOnly || !_ready || _editor is null)
         {
             return;
         }
