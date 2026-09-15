@@ -27,6 +27,9 @@ public static class AppBuilder
         builder.Services.AddScoped<ILabStatus>(sp => sp.GetRequiredService<LabWorkspaceState>());
         builder.Services.AddScoped<ILabBrand>(sp => sp.GetRequiredService<LabWorkspaceState>());
         builder.Services.AddScoped<ILabCommands>(sp => sp.GetRequiredService<LabWorkspaceState>());
+        builder.Services.AddScoped<ILabPalette>(sp => sp.GetRequiredService<LabWorkspaceState>());
+        builder.Services.AddScoped<ILabSettings>(sp => sp.GetRequiredService<LabWorkspaceState>());
+        builder.Services.AddScoped<ILabShell>(sp => sp.GetRequiredService<LabWorkspaceState>());
         builder.Services.AddScoped<LabUrlSync>();
         builder.Services.AddScoped<LabThemeService>();
         builder.Services.AddScoped<LabPlatform>();

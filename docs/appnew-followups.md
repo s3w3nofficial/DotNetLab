@@ -1,13 +1,14 @@
 # AppNew follow-ups
 
 Track remaining work after the UI folder split and the first ISP cuts
-(`ILabStatus`, `ILabBrand`, `ILabCommands`). AppNew stays a WASM rewrite behind
-`WebAssemblyNew` until host-neutral `src/App` replacement is an explicit goal.
+(`ILabStatus`, `ILabBrand`, `ILabCommands`, `ILabPalette`, `ILabSettings`,
+`ILabShell`). AppNew stays a WASM rewrite behind `WebAssemblyNew` until
+host-neutral `src/App` replacement is an explicit goal.
 
 Keep the current chrome folders until feature stores exist, then move into
-[Target folders](#target-folders). Leave `LabWorkspace` injecting
-`LabWorkspaceState` until chrome leaves are done. Do not Fluxor the current
-god object; see [State direction](#state-direction).
+[Target folders](#target-folders). `LabWorkspace` still injects
+`LabWorkspaceState`. Do not Fluxor the current god object; see
+[State direction](#state-direction).
 
 ## Done
 
@@ -16,6 +17,9 @@ god object; see [State direction](#state-direction).
 - [x] `LabBrandBar` injects `ILabBrand`
 - [x] `LabCommandBar` injects `ILabCommands`
 - [x] Fluxor store + first feature (`Features/Updates`), not wrapping `LabWorkspaceState`
+- [x] `CommandPalette` injects `ILabPalette`
+- [x] `SettingsDialog` injects `ILabSettings`
+- [x] `MainLayout` injects `ILabShell`
 
 ## P0
 
@@ -29,9 +33,9 @@ god object; see [State direction](#state-direction).
 
 - [x] Replace `EditorGroups` static drag fields with a scoped `EditorDragState`
 - [x] Fix `LabLanguageServices` `_outputRegistered` so a failed JS register can retry
-- [ ] Continue ISP: `CommandPalette` off `LabWorkspaceState`
-- [ ] Continue ISP: `SettingsDialog` off `LabWorkspaceState`
-- [ ] Continue ISP: `MainLayout` off `LabWorkspaceState`
+- [x] Continue ISP: `CommandPalette` off `LabWorkspaceState`
+- [x] Continue ISP: `SettingsDialog` off `LabWorkspaceState`
+- [x] Continue ISP: `MainLayout` off `LabWorkspaceState`
 
 ## P2
 

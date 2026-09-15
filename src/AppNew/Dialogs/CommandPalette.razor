@@ -1,4 +1,4 @@
-@inject LabWorkspaceState State
+@inject ILabPalette Palette
 @inject LabThemeService Theme
 @inject LabShare Share
 @inject LabPlatform Platform
@@ -79,7 +79,7 @@
 
     protected override void OnInitialized()
     {
-        State.Changed += OnStateChanged;
+        Palette.Changed += OnStateChanged;
         Rebuild();
     }
 
@@ -169,7 +169,7 @@
     public Task ToggleWordWrapFromKeyboard()
         => InvokeAsync(() =>
         {
-            State.ToggleWordWrap();
+            Palette.ToggleWordWrap();
             return Task.CompletedTask;
         });
 
@@ -257,48 +257,48 @@
 
     private IEnumerable<CommandItem> Commands()
     {
-        yield return new("Compile", "compile run build", Platform.SaveChord, () => State.CompileAsync());
-        yield return new("Format document", "format indent", "", () => State.FormatActiveSource());
+        yield return new("Compile", "compile run build", Platform.SaveChord, () => Palette.CompileAsync());
+        yield return new("Format document", "format indent", "", () => Palette.FormatActiveSource());
         yield return new("Copy link", "copy share url link", "", Share.CopyLinkAsync);
         yield return new("Create gist", "gist github share", "", Share.CreateGistAsync);
-        yield return new("Load from URL", "paste gist url load", "", () => State.ShowPasteUrlAsync());
-        yield return new("Settings", "settings preferences options", "", () => State.ShowSettingsAsync());
+        yield return new("Load from URL", "paste gist url load", "", () => Palette.ShowPasteUrlAsync());
+        yield return new("Settings", "settings preferences options", "", () => Palette.ShowSettingsAsync());
         yield return new("Toggle word wrap", "wrap word-wrap", "Alt+Z", () =>
         {
-            State.ToggleWordWrap();
+            Palette.ToggleWordWrap();
             return Task.CompletedTask;
         });
         yield return new("Toggle VIM keybindings", "vim vi keybindings", "", () =>
         {
-            State.ToggleVim();
+            Palette.ToggleVim();
             return Task.CompletedTask;
         });
         yield return new("Toggle hint squiggles", "squiggly hint hidden diagnostic decoration", "", () =>
         {
-            State.ToggleHintSquiggles();
+            Palette.ToggleHintSquiggles();
             return Task.CompletedTask;
         });
         yield return new(
-            State.Stacked ? "Show panes side by side" : "Stack panes vertically",
+            Palette.Stacked ? "Show panes side by side" : "Stack panes vertically",
             "stack layout panes split",
             "",
             () =>
             {
-                State.ToggleStacked();
+                Palette.ToggleStacked();
                 return Task.CompletedTask;
             });
         yield return new(
-            State.ResolvedDark ? "Switch to light theme" : "Switch to dark theme",
+            Palette.ResolvedDark ? "Switch to light theme" : "Switch to dark theme",
             "theme dark light appearance",
             "",
-            () => Theme.SetPreferenceAsync(State.ResolvedDark ? "light" : "dark"));
+            () => Theme.SetPreferenceAsync(Palette.ResolvedDark ? "light" : "dark"));
     }
 
     private static string OptionId(int index) => $"lab-palette-option-{index}";
 
     public async ValueTask DisposeAsync()
     {
-        State.Changed -= OnStateChanged;
+        Palette.Changed -= OnStateChanged;
         if (_bound)
         {
             try

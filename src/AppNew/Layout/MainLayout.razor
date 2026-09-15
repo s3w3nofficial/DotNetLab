@@ -1,6 +1,6 @@
 ﻿@inherits LayoutComponentBase
 @inject LabThemeService Theme
-@inject LabWorkspaceState State
+@inject ILabShell Shell
 @inject LabUrlSync Urls
 @inject LabPlatform Platform
 @inject IDispatcher Dispatcher
@@ -33,9 +33,9 @@
 
     protected override void OnInitialized()
     {
-        State.SettingsRequested += OpenSettingsAsync;
-        State.PaletteRequested += TogglePaletteAsync;
-        State.PasteUrlRequested += OpenPasteAsync;
+        Shell.SettingsRequested += OpenSettingsAsync;
+        Shell.PaletteRequested += TogglePaletteAsync;
+        Shell.PasteUrlRequested += OpenPasteAsync;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -50,11 +50,11 @@
             await Theme.InitializeAsync();
             await Platform.InitializeAsync();
             Dispatcher.Dispatch(new InitializeUpdatesAction());
-            await State.LoadSettingsAsync();
+            await Shell.LoadSettingsAsync();
             try
             {
                 var json = await JS.InvokeAsync<string>("netLabPrefs.readOutputTabs");
-                State.ApplySavedOutputTabs(json);
+                Shell.ApplySavedOutputTabs(json);
             }
             catch (JSException)
             {
@@ -77,8 +77,8 @@
 
     public void Dispose()
     {
-        State.SettingsRequested -= OpenSettingsAsync;
-        State.PaletteRequested -= TogglePaletteAsync;
-        State.PasteUrlRequested -= OpenPasteAsync;
+        Shell.SettingsRequested -= OpenSettingsAsync;
+        Shell.PaletteRequested -= TogglePaletteAsync;
+        Shell.PasteUrlRequested -= OpenPasteAsync;
     }
 }
