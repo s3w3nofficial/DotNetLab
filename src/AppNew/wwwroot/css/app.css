@@ -537,6 +537,12 @@ h1:focus {
     background: var(--lab-hairline);
 }
 
+.lab-compiler-picker {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
 .lab-command-bar fluent-button.lab-toolbar-toggle-on {
     background-color: var(--lab-hairline) !important;
     color: var(--lab-foreground);
