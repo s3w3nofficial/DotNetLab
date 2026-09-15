@@ -5,7 +5,7 @@ using Microsoft.JSInterop;
 
 namespace DotNetLab.Lab;
 
-public sealed class LabWorkspaceState
+public sealed class LabWorkspaceState : ILabStatus
 {
     private readonly WorkerHost _worker;
     private readonly LabLanguageServices _language;
@@ -64,6 +64,20 @@ public sealed class LabWorkspaceState
 
     public event Action? Changed;
     public event Action? StatusChanged;
+
+    event Action? ILabStatus.Changed
+    {
+        add
+        {
+            Changed += value;
+            StatusChanged += value;
+        }
+        remove
+        {
+            Changed -= value;
+            StatusChanged -= value;
+        }
+    }
     public event Func<Task>? SettingsRequested;
     public event Func<Task>? PaletteRequested;
     public event Func<Task>? PasteUrlRequested;
@@ -162,6 +176,8 @@ public sealed class LabWorkspaceState
     public string[] OutputStatusLeft => [DisplayName(ActiveSource), .. DiagnosticStatusParts];
     public string SourceStatusRight => Stale ? "Modified · Ctrl+S to compile" : "Ready · Ctrl+S to compile";
     public string OutputStatusRight => $".NET {ResolvedSdk.Value} · Roslyn {Roslyn}";
+    bool ILabStatus.SourceReady => !Stale && !Running;
+    bool ILabStatus.OutputReady => !Running;
 
     private string[] SourceStatusCore =>
     [
