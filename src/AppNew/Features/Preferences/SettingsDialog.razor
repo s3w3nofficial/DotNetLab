@@ -1,5 +1,6 @@
 @inherits FluxorComponent
-@inject ILabSettings Settings
+@inject ILabWorkspace Workspace
+@inject ILabEditor Editor
 @inject LabThemeService Theme
 @inject IUpdateChecker Updates
 @inject IState<UpdateState> UpdateStore
@@ -25,10 +26,10 @@
         <div class="lab-settings-top">
             <PreferenceSettings>
                     <SettingRow Title="Razor Toolchain">
-                        <FluentSelect TOption="string" TValue="string" Items="LabCatalog.RazorToolchains" @bind-Value="Settings.RazorToolchain" @bind-Value:after="Settings.OnSavedStateChanged" />
+                        <FluentSelect TOption="string" TValue="string" Items="LabCatalog.RazorToolchains" @bind-Value="Workspace.RazorToolchain" @bind-Value:after="Workspace.OnSavedStateChanged" />
                     </SettingRow>
                     <SettingRow Title="Razor Strategy">
-                        <FluentSelect TOption="string" TValue="string" Items="LabCatalog.RazorStrategies" @bind-Value="Settings.RazorStrategy" @bind-Value:after="Settings.OnSavedStateChanged" />
+                        <FluentSelect TOption="string" TValue="string" Items="LabCatalog.RazorStrategies" @bind-Value="Workspace.RazorStrategy" @bind-Value:after="Workspace.OnSavedStateChanged" />
                     </SettingRow>
             </PreferenceSettings>
 
@@ -50,9 +51,9 @@
                         }
                     </div>
                     <div class="lab-output-tab-list">
-                        @foreach (var tab in Settings.SettingsRowsFor(_outputKind))
+                        @foreach (var tab in Workspace.SettingsRowsFor(_outputKind))
                         {
-                            var visible = Settings.IsOutputTabVisible(_outputKind, tab.Type);
+                            var visible = Workspace.IsOutputTabVisible(_outputKind, tab.Type);
                             var locked = LabCatalog.IsOutputTabLocked(tab.Type);
                             <div @key="@($"{tab.Type}:{visible}")" class="lab-output-tab-row @(visible ? null : "is-hidden")">
                                 <div>
@@ -65,7 +66,7 @@
                                                   IconOnly="true"
                                                   Title="Move up"
                                                   AriaLabel="@($"Move {tab.Label} up")"
-                                                  Disabled="@(!Settings.CanMoveOutputTab(_outputKind, tab.Type, -1))"
+                                                  Disabled="@(!Workspace.CanMoveOutputTab(_outputKind, tab.Type, -1))"
                                                   IconStart="@(new Icons.Regular.Size16.ChevronUp())"
                                                   OnClick="@(() => MoveOutputTabAsync(tab.Type, -1))" />
                                     <FluentButton Appearance="ButtonAppearance.Subtle"
@@ -73,7 +74,7 @@
                                                   IconOnly="true"
                                                   Title="Move down"
                                                   AriaLabel="@($"Move {tab.Label} down")"
-                                                  Disabled="@(!Settings.CanMoveOutputTab(_outputKind, tab.Type, 1))"
+                                                  Disabled="@(!Workspace.CanMoveOutputTab(_outputKind, tab.Type, 1))"
                                                   IconStart="@(new Icons.Regular.Size16.ChevronDown())"
                                                   OnClick="@(() => MoveOutputTabAsync(tab.Type, 1))" />
                                     <FluentSwitch Value="@visible"
@@ -188,7 +189,7 @@
     protected override void OnInitialized()
     {
         base.OnInitialized();
-        Settings.Changed += OnStateChanged;
+        Workspace.Changed += OnStateChanged;
     }
 
     private void OnStateChanged() => InvokeAsync(StateHasChanged);
@@ -197,7 +198,7 @@
     {
         if (disposing)
         {
-            Settings.Changed -= OnStateChanged;
+            Workspace.Changed -= OnStateChanged;
         }
 
         return base.DisposeAsyncCore(disposing);
@@ -210,7 +211,7 @@
             return;
         }
 
-        _outputKind = LabCatalog.OutputKindFor(Settings.ActiveSource);
+        _outputKind = LabCatalog.OutputKindFor(Workspace.ActiveSource);
         Dispatcher.Dispatch(new EnsureSdkVersionsAction());
         try
         {
@@ -251,32 +252,32 @@
 
     private async Task SetOutputTabVisibleAsync(string type, bool visible)
     {
-        Settings.SetOutputTabVisible(_outputKind, type, visible);
+        Workspace.SetOutputTabVisible(_outputKind, type, visible);
         await PersistOutputTabsAsync();
     }
 
     private async Task MoveOutputTabAsync(string type, int delta)
     {
-        Settings.MoveOutputTab(_outputKind, type, delta);
+        Workspace.MoveOutputTab(_outputKind, type, delta);
         await PersistOutputTabsAsync();
     }
 
     private async Task ResetOutputTabsAsync()
     {
-        Settings.ResetOutputTabs(_outputKind);
+        Workspace.ResetOutputTabs(_outputKind);
         await PersistOutputTabsAsync();
     }
 
     private async Task PersistOutputTabsAsync()
     {
-        await Settings.PersistOutputTabsAsync();
+        await Workspace.PersistOutputTabsAsync();
     }
 
     private void CheckForUpdates() => Dispatcher.Dispatch(new CheckUpdatesAction());
 
     private async Task LoadUpdateAsync(Action loadUpdate)
     {
-        await Settings.PersistUrlAsync();
+        await Editor.PersistUrlAsync();
         loadUpdate();
     }
 }

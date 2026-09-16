@@ -7,7 +7,7 @@ host-neutral `src/App` replacement is an explicit goal.
 
 Keep the current chrome folders until feature stores exist, then move into
 [Target folders](#target-folders). `Lab/` is empty. `LabWorkspaceState` lives in
-`Features/Workspace/` and still implements the `ILab*` facades. Do not Fluxor
+`Features/Workspace/` and still implements the remaining `ILab*` facades (`ILabStatus`, `ILabBrand`, `ILabCommands`, `ILabPalette`, and `ILabSettings` are gone). Do not Fluxor
 the current god object; see [State direction](#state-direction).
 
 ## Done
@@ -65,6 +65,11 @@ the current god object; see [State direction](#state-direction).
 - [x] `LabDocuments` uses `ILabDocumentHost` (`OutputTabLayout` still takes `LabWorkspaceState`)
 - [x] `OutputTabLayout` uses `ILabOutputHost` (`LabWorkspaceState` still constructs it)
 - [x] Move `LabWorkspaceState` into `Features/Workspace/` (`Lab/` empty; `ILab*` still implemented)
+- [x] `LabBrandBar` drops `ILabBrand` (`LabDocuments.SetTemplate`; paste / settings on `ILabShell`)
+- [x] `LabCommandBar` drops `ILabCommands` (compile on `ILabEditor`; SDK pickers on Fluxor; razor toolchain on `ILabSettings`; settings / palette on `ILabShell`)
+- [x] `CommandPalette` drops `ILabPalette` (compile / format on `ILabEditor`; paste / settings on `ILabShell`; share / theme / prefs already local)
+- [x] `SettingsDialog` drops `ILabSettings` (composer stays; razor / tabs / language services / worker on `ILabWorkspace`; URL persist on `ILabEditor`)
+- [x] `StatusBar` drops `ILabStatus` (cursor line/col and diagnostic counts on `ILabWorkspace`; `StatusSelectors` formats them; no cursor Fluxor store)
 
 ## P0
 
@@ -119,8 +124,9 @@ read the editor; do not dispatch on every keystroke. Document state is file
 list, active file, and URIs.
 
 Status is derived (`Compilation` + `Compiler` + `Documents` → selector), not a
-writable `ILabStatus` store. Keep `ILabStatus` for cursor and diagnostics until
-those have stores.
+writable status store. Cursor line/col and diagnostic counts stay on
+`ILabWorkspace` (`NotifyStatus` / `StatusChanged`); `StatusSelectors` formats
+them. Do not Fluxor cursor or keystrokes.
 
 Do **not** replace `LabWorkspaceState` with one `AppState` record. Do **not**
 delete the facade in one pass.
@@ -199,7 +205,7 @@ Three kinds of code:
 does not own every setting. `CompilerPicker` lives with Compiler even if the
 header renders it. Status is
 `CompilationState` + `CompilerState` + `DocumentsState` → `Shell/StatusBar/StatusSelectors.cs`
-(pure function). Cursor and diagnostics stay on `ILabStatus`.
+(pure function). Cursor line/col and diagnostic counts come from `ILabWorkspace`.
 
 Keep feature files flat (`CompilerState.cs`, `CompilerActions.cs`, … plus
 `Components/` / `Services/` when needed). Do not add `State/` / `Actions/` /
@@ -224,7 +230,11 @@ Keep feature files flat (`CompilerState.cs`, `CompilerActions.cs`, … plus
 | `LabLogging.cs` | `Infrastructure/Logging/` |
 | `LabCatalog.cs` | `Features/Compiler/Services/` |
 | `LabFixtures.cs` | `Features/Documents/` |
-| `ILabStatus.cs`, `ILabBrand.cs`, `ILabCommands.cs` | delete once selectors/stores replace them (files now sit with Shell chrome; workspace still implements) |
+| `ILabStatus.cs` | deleted (`StatusBar` uses `ILabWorkspace` + `StatusSelectors`; no cursor Fluxor store) |
+| `ILabCommands.cs` | deleted (`LabCommandBar` uses `ILabEditor` + Fluxor + `ILabWorkspace` + `ILabShell`) |
+| `ILabPalette.cs` | deleted (`CommandPalette` uses `ILabEditor` + `ILabShell`) |
+| `ILabSettings.cs` | deleted (`SettingsDialog` / `PreferenceSettings` / `LabCommandBar` use `ILabWorkspace`; URL persist on `ILabEditor`) |
+| `ILabBrand.cs` | deleted (`LabBrandBar` uses `LabDocuments` + `ILabShell`) |
 | `ILabWorkspace.cs` | `Features/Workspace/` (pane surface; `LabWorkspaceState` still implements) |
 | `ILabEditor.cs` | `Editor/` (`LabCodeEditor` injects it; razor lives in `Editor/` too; no new project yet) |
 | `ILabSharing.cs` | `Features/Sharing/` (`LabShare` / `LabUrlSync` / `LabLinks`; workspace still implements) |
@@ -246,7 +256,12 @@ Namespaces carry the rest (`DotNetLab.Features.Documents`).
 - [x] `LabDocuments` using a narrow host instead of `LabWorkspaceState`
 - [x] `OutputTabLayout` using a narrow host instead of `LabWorkspaceState`
 - [x] `Lab/` empty (`LabWorkspaceState` in `Features/Workspace/`)
-- [ ] `ILab*` gone
+- [x] `ILabBrand` gone (`LabBrandBar` uses `LabDocuments` + `ILabShell`)
+- [x] `ILabCommands` gone (`LabCommandBar` uses `ILabEditor` + Fluxor + `ILabWorkspace` + `ILabShell`)
+- [x] `ILabPalette` gone (`CommandPalette` uses `ILabEditor` + `ILabShell`)
+- [x] `ILabSettings` gone (`SettingsDialog` stays a composer; razor / tabs / LS / worker on `ILabWorkspace`)
+- [x] `ILabStatus` gone (`StatusBar` uses `ILabWorkspace` + `StatusSelectors`; cursor/diagnostics not Fluxor)
+- [ ] remaining `ILab*` gone
 - Host-neutral `AddDotNetLabApp()` and a true Server vs WASM split
 - `IWorkerTransport` (do not invent a new worker protocol)
 - Tests for URL state, documents, tabs, and compile generations

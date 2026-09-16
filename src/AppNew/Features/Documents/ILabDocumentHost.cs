@@ -11,4 +11,8 @@ public interface ILabDocumentHost
     void Notify();
 
     void NotifyStatus();
+
+    Task AfterDocumentsChangedAsync(IReadOnlyList<string> before);
+
+    Task PersistUrlAsync(bool snapshot = false);
 }

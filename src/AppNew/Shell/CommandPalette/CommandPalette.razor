@@ -1,12 +1,14 @@
-@inject ILabPalette Palette
+@inherits FluxorComponent
+@inject ILabEditor Editor
+@inject ILabShell Shell
 @inject LabThemeService Theme
 @inject LabShare Share
 @inject LabPlatform Platform
 @inject IJSRuntime JS
 @inject IState<PreferencesState> Prefs
 @inject IDispatcher Dispatcher
-@implements IAsyncDisposable
 
+@{ Rebuild(); }
 <div @ref="_host"
      id="lab-palette-host"
      popover="manual"
@@ -81,7 +83,7 @@
 
     protected override void OnInitialized()
     {
-        Palette.Changed += OnStateChanged;
+        base.OnInitialized();
         Rebuild();
     }
 
@@ -176,12 +178,6 @@
             return Task.CompletedTask;
         });
 
-    private void OnStateChanged() => InvokeAsync(() =>
-    {
-        Rebuild();
-        StateHasChanged();
-    });
-
     private void OnQueryInput(ChangeEventArgs args)
     {
         _query = args.Value as string ?? "";
@@ -260,12 +256,12 @@
 
     private IEnumerable<CommandItem> Commands()
     {
-        yield return new("Compile", "compile run build", Platform.SaveChord, () => Palette.CompileAsync());
-        yield return new("Format document", "format indent", "", () => Palette.FormatActiveSource());
+        yield return new("Compile", "compile run build", Platform.SaveChord, () => Editor.CompileAsync());
+        yield return new("Format document", "format indent", "", () => Editor.FormatActiveSource());
         yield return new("Copy link", "copy share url link", "", Share.CopyLinkAsync);
         yield return new("Create gist", "gist github share", "", Share.CreateGistAsync);
-        yield return new("Load from URL", "paste gist url load", "", () => Palette.ShowPasteUrlAsync());
-        yield return new("Settings", "settings preferences options", "", () => Palette.ShowSettingsAsync());
+        yield return new("Load from URL", "paste gist url load", "", () => Shell.ShowPasteUrlAsync());
+        yield return new("Settings", "settings preferences options", "", () => Shell.ShowSettingsAsync());
         yield return new("Toggle word wrap", "wrap word-wrap", "Alt+Z", () =>
         {
             Dispatcher.Dispatch(new ToggleWordWrapAction());
@@ -302,24 +298,28 @@
 
     private static string OptionId(int index) => $"lab-palette-option-{index}";
 
-    public async ValueTask DisposeAsync()
+    protected override async ValueTask DisposeAsyncCore(bool disposing)
     {
-        Palette.Changed -= OnStateChanged;
-        if (_bound)
+        if (disposing)
         {
-            try
+            if (_bound)
             {
-                await JS.InvokeVoidAsync("netLabPalette.unbind");
-            }
-            catch (JSException)
-            {
+                try
+                {
+                    await JS.InvokeVoidAsync("netLabPalette.unbind");
+                }
+                catch (JSException)
+                {
+                }
+
+                _bound = false;
             }
 
-            _bound = false;
+            _self?.Dispose();
+            _self = null;
         }
 
-        _self?.Dispose();
-        _self = null;
+        await base.DisposeAsyncCore(disposing);
     }
 
     private sealed record CommandItem(string Label, string Aliases, string Shortcut, Func<Task> Run);

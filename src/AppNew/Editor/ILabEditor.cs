@@ -31,4 +31,6 @@ public interface ILabEditor
     Task PersistUrlAsync(bool snapshot = false);
 
     Task CompileAsync();
+
+    Task FormatActiveSource();
 }

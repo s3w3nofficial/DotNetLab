@@ -1,5 +1,7 @@
 @inherits FluxorComponent
-@inject ILabCommands Commands
+@inject ILabShell Shell
+@inject ILabWorkspace Workspace
+@inject ILabEditor Editor
 @inject LabPlatform Platform
 @inject IState<CompilerState> Compiler
 @inject IState<CompilationState> Compilation
@@ -26,7 +28,7 @@
                       Color="@Success"
                       IconStart="@(new Icons.Filled.Size20.Play())"
                       Label="Compile"
-                      OnClick="Commands.CompileAsync" />
+                      OnClick="Editor.CompileAsync" />
     }
 
     <span class="lab-vsep" aria-hidden="true"></span>
@@ -39,7 +41,7 @@
                         Options="@SdkOptions"
                         Selected="SelectSdk">
             <Trailing>
-                <FluentMenuItem Label="More SDK versions…" OnClick="Commands.ShowSettingsAsync" />
+                <FluentMenuItem Label="More SDK versions…" OnClick="Shell.ShowSettingsAsync" />
             </Trailing>
         </CompilerPicker>
 
@@ -50,7 +52,7 @@
                         Options="@CompilerRefOptions"
                         Selected="SelectRoslyn">
             <Trailing>
-                <FluentMenuItem Label="Version, PR, branch or build…" OnClick="Commands.ShowSettingsAsync" />
+                <FluentMenuItem Label="Version, PR, branch or build…" OnClick="Shell.ShowSettingsAsync" />
             </Trailing>
         </CompilerPicker>
 
@@ -63,12 +65,12 @@
             <Trailing>
                 @foreach (var item in LabCatalog.RazorToolchains)
                 {
-                    <FluentMenuItem Label="@($"Toolchain: {item}")" OnClick="@(() => Commands.SetRazorToolchain(item))" />
+                    <FluentMenuItem Label="@($"Toolchain: {item}")" OnClick="@(() => Workspace.SetRazorToolchain(item))" />
                 }
                 <FluentDivider />
                 @foreach (var item in LabCatalog.RazorStrategies)
                 {
-                    <FluentMenuItem Label="@($"Strategy: {item}")" OnClick="@(() => Commands.SetRazorStrategy(item))" />
+                    <FluentMenuItem Label="@($"Strategy: {item}")" OnClick="@(() => Workspace.SetRazorStrategy(item))" />
                 }
             </Trailing>
         </CompilerPicker>
@@ -89,7 +91,7 @@
                       Title="@Platform.PaletteLabel"
                       AriaLabel="@Platform.PaletteLabel"
                       IconStart="@(new Icons.Regular.Size20.KeyCommand())"
-                      OnClick="Commands.ShowPaletteAsync" />
+                      OnClick="Shell.ShowPaletteAsync" />
         <FluentTooltip Anchor="lab-cmd-palette"
                        Class="lab-command-tooltip"
                        Positioning="Positioning.Below"
@@ -155,11 +157,8 @@
     protected override void OnInitialized()
     {
         base.OnInitialized();
-        Commands.Changed += OnStateChanged;
         Dispatcher.Dispatch(new EnsureSdkVersionsAction());
     }
-
-    private void OnStateChanged() => InvokeAsync(StateHasChanged);
 
     private Task SelectSdk(string value)
     {
@@ -186,14 +185,4 @@
     }
 
     private void ToggleStacked() => Dispatcher.Dispatch(new ToggleStackedAction());
-
-    protected override ValueTask DisposeAsyncCore(bool disposing)
-    {
-        if (disposing)
-        {
-            Commands.Changed -= OnStateChanged;
-        }
-
-        return base.DisposeAsyncCore(disposing);
-    }
 }

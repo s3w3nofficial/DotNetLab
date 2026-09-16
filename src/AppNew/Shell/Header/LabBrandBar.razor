@@ -1,5 +1,6 @@
 @inherits FluxorComponent
-@inject ILabBrand Brand
+@inject ILabShell Shell
+@inject LabDocuments Docs
 @inject LabThemeService Theme
 @inject LabShare Share
 @inject IState<UpdateState> Updates
@@ -23,7 +24,7 @@
         <FluentMenuList>
             @foreach (var template in LabCatalog.Templates)
             {
-                <FluentMenuItem Label="@template" OnClick="@(() => Brand.SetTemplate(template))" />
+                <FluentMenuItem Label="@template" OnClick="@(() => Docs.SetTemplate(template))" />
             }
         </FluentMenuList>
     </FluentMenu>
@@ -46,7 +47,7 @@
                       Color="@BrandForeground"
                       AriaLabel="Paste"
                       IconStart="@(new Icons.Regular.Size20.ClipboardPaste())"
-                      OnClick="Brand.ShowPasteUrlAsync">
+                      OnClick="Shell.ShowPasteUrlAsync">
             Paste
         </FluentButton>
     </div>
@@ -87,7 +88,7 @@
                   Size="ButtonSize.Small"
                   Color="@BrandForeground"
                   IconStart="@(new Icons.Regular.Size20.Settings())"
-                  OnClick="Brand.ShowSettingsAsync">
+                  OnClick="Shell.ShowSettingsAsync">
         Settings
         @if (Updates.Value.Available)
         {
@@ -103,24 +104,6 @@
 @code {
     private const string BrandForeground = "#f7f1fc";
 
-    protected override void OnInitialized()
-    {
-        base.OnInitialized();
-        Brand.Changed += OnStateChanged;
-    }
-
-    private void OnStateChanged() => InvokeAsync(StateHasChanged);
-
     private Task ToggleThemeAsync()
         => Theme.SetPreferenceAsync(Prefs.Value.ResolvedDark ? "light" : "dark");
-
-    protected override ValueTask DisposeAsyncCore(bool disposing)
-    {
-        if (disposing)
-        {
-            Brand.Changed -= OnStateChanged;
-        }
-
-        return base.DisposeAsyncCore(disposing);
-    }
 }

@@ -6,6 +6,8 @@ public interface ILabWorkspace
 {
     event Action? Changed;
 
+    event Action? StatusChanged;
+
     bool Stacked { get; }
 
     double Split { get; }
@@ -112,9 +114,31 @@ public interface ILabWorkspace
 
     void OnSavedStateChanged();
 
+    string RazorToolchain { get; set; }
+
+    string RazorStrategy { get; set; }
+
+    void SetRazorToolchain(string value);
+
+    void SetRazorStrategy(string value);
+
+    Task SetLanguageServicesAsync(bool enabled);
+
     Task FormatActiveSource();
 
     Task ReloadWorkerAsync();
+
+    IReadOnlyList<OutputTab> SettingsRowsFor(OutputFileKind kind);
+
+    bool IsOutputTabVisible(OutputFileKind kind, string type);
+
+    bool CanMoveOutputTab(OutputFileKind kind, string type, int delta);
+
+    void SetOutputTabVisible(OutputFileKind kind, string type, bool visible);
+
+    void MoveOutputTab(OutputFileKind kind, string type, int delta);
+
+    void ResetOutputTabs(OutputFileKind kind);
 
     Task PersistOutputTabsAsync();
 }

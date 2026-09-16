@@ -1,5 +1,5 @@
 @inherits FluxorComponent
-@inject ILabStatus Status
+@inject ILabWorkspace Workspace
 @inject IState<CompilationState> Compilation
 @inject IState<CompilerState> Compiler
 @inject IState<DocumentsState> Documents
@@ -22,15 +22,18 @@
     private IReadOnlyList<string> Left => StatusSelectors.Left(
         Side,
         Documents.Value,
-        Status.SourceCursor,
-        Status.Diagnostics);
+        Workspace.CursorLine,
+        Workspace.CursorColumn,
+        Workspace.ErrorCount,
+        Workspace.WarningCount);
     private string Right => StatusSelectors.Right(Side, Compilation.Value, Compiler.Value);
     private bool Ready => StatusSelectors.Ready(Side, Compilation.Value);
 
     protected override void OnInitialized()
     {
         base.OnInitialized();
-        Status.Changed += OnChanged;
+        Workspace.Changed += OnChanged;
+        Workspace.StatusChanged += OnChanged;
     }
 
     private void OnChanged() => InvokeAsync(StateHasChanged);
@@ -39,7 +42,8 @@
     {
         if (disposing)
         {
-            Status.Changed -= OnChanged;
+            Workspace.Changed -= OnChanged;
+            Workspace.StatusChanged -= OnChanged;
         }
 
         return base.DisposeAsyncCore(disposing);

@@ -27,11 +27,38 @@ public static class StatusSelectors
     public static IReadOnlyList<string> Left(
         string side,
         DocumentsState documents,
-        IReadOnlyList<string> cursor,
-        IReadOnlyList<string> diagnostics)
-        => IsOutput(side)
+        int cursorLine,
+        int cursorColumn,
+        int errorCount,
+        int warningCount)
+    {
+        IReadOnlyList<string> cursor =
+        [
+            $"Ln {cursorLine}, Col {cursorColumn}",
+            "Spaces: 4",
+            "UTF-8",
+        ];
+        var diagnostics = DiagnosticParts(errorCount, warningCount);
+        return IsOutput(side)
             ? [LabDocuments.DisplayName(documents.ActiveSource), .. diagnostics]
             : [.. cursor, documents.Template, .. diagnostics];
+    }
+
+    private static IReadOnlyList<string> DiagnosticParts(int errorCount, int warningCount)
+    {
+        List<string> parts = [];
+        if (errorCount > 0)
+        {
+            parts.Add(errorCount == 1 ? "1 error" : $"{errorCount} errors");
+        }
+
+        if (warningCount > 0)
+        {
+            parts.Add(warningCount == 1 ? "1 warning" : $"{warningCount} warnings");
+        }
+
+        return parts;
+    }
 
     private static bool IsOutput(string side)
         => string.Equals(side, "output", StringComparison.Ordinal);

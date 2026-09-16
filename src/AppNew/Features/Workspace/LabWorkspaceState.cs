@@ -12,15 +12,12 @@ using DotNetLab.Infrastructure.Persistence;
 using DotNetLab.Infrastructure.Worker;
 using DotNetLab.Lab;
 using DotNetLab.Layout;
-using DotNetLab.Shell.CommandPalette;
-using DotNetLab.Shell.Header;
-using DotNetLab.Shell.StatusBar;
 using Fluxor;
 using Microsoft.JSInterop;
 
 namespace DotNetLab.Features.Workspace;
 
-public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILabPalette, ILabSettings, ILabShell, ILabWorkspace, ILabEditor, ILabSharing, ILabDocumentHost, ILabOutputHost, IDisposable
+public sealed class LabWorkspaceState : ILabShell, ILabWorkspace, ILabEditor, ILabSharing, ILabDocumentHost, ILabOutputHost, IDisposable
 {
     private readonly WorkerHost _worker;
     private readonly LabLanguageServices _language;
@@ -101,20 +98,6 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
 
     public event Action? Changed;
     public event Action? StatusChanged;
-
-    event Action? ILabStatus.Changed
-    {
-        add
-        {
-            Changed += value;
-            StatusChanged += value;
-        }
-        remove
-        {
-            Changed -= value;
-            StatusChanged -= value;
-        }
-    }
     public event Func<Task>? SettingsRequested;
     public event Func<Task>? PaletteRequested;
     public event Func<Task>? PasteUrlRequested;
@@ -212,29 +195,6 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     public int ErrorCount => Compiled?.NumErrors ?? 0;
     public int WarningCount => Compiled?.NumWarnings ?? 0;
     public bool HasDiagnosticCounts => ErrorCount > 0 || WarningCount > 0;
-    public string[] SourceCursor =>
-    [
-        $"Ln {CursorLine}, Col {CursorColumn}",
-        "Spaces: 4",
-        "UTF-8",
-    ];
-    public string[] Diagnostics => [.. DiagnosticStatusParts];
-
-    private IEnumerable<string> DiagnosticStatusParts
-    {
-        get
-        {
-            if (ErrorCount > 0)
-            {
-                yield return ErrorCount == 1 ? "1 error" : $"{ErrorCount} errors";
-            }
-
-            if (WarningCount > 0)
-            {
-                yield return WarningCount == 1 ? "1 warning" : $"{WarningCount} warnings";
-            }
-        }
-    }
 
     public IReadOnlyDictionary<string, string> Sources => Documents.Sources;
     public IReadOnlyList<string> SourceFiles => DocumentsSnapshot.SourceFiles;
@@ -721,13 +681,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
         }
     }
 
-    public void SetTemplate(string template)
-    {
-        var before = Documents.ModelUris;
-        Documents.SetTemplate(template);
-        _ = AfterDocumentsChangedAsync(before);
-        _ = PersistUrlAsync();
-    }
+    public void SetTemplate(string template) => Documents.SetTemplate(template);
 
     public void MarkStale()
     {
@@ -1256,7 +1210,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
         CompiledFileOutputMetadata? Metadata,
         string ModelUri);
 
-    private async Task AfterDocumentsChangedAsync(IReadOnlyList<string> before)
+    public async Task AfterDocumentsChangedAsync(IReadOnlyList<string> before)
     {
         var removed = before.Except(Documents.ModelUris).ToArray();
         await SyncLanguageWorkspaceAsync(refresh: true, removed);

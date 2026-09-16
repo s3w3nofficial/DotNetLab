@@ -81,6 +81,7 @@ public sealed class LabDocuments
 
     public void SetTemplate(string template)
     {
+        var before = ModelUris;
         Template = template;
 
         foreach (var file in _sourceFiles.Where(name => !IsSpecialSource(name)).ToArray())
@@ -115,6 +116,8 @@ public sealed class LabDocuments
         _state.Stale = true;
         _state.EnsureActiveOutput();
         _state.Notify();
+        _ = _state.AfterDocumentsChangedAsync(before);
+        _ = _state.PersistUrlAsync();
     }
 
     private static (string Name, string Contents)[] FilesFor(string template)

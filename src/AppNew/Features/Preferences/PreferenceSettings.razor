@@ -1,6 +1,6 @@
 @inherits FluxorComponent
 @inject IState<PreferencesState> Prefs
-@inject ILabSettings Settings
+@inject ILabWorkspace Workspace
 @inject IDispatcher Dispatcher
 
 <div class="lab-preference-settings">
@@ -24,7 +24,7 @@
         <div class="lab-settings-fold-body">
             <SettingRow Title="Language Services" Hint="Completions and live diagnostics">
                 <FluentSwitch Value="Prefs.Value.LanguageServices"
-                              ValueChanged="Settings.SetLanguageServicesAsync"
+                              ValueChanged="Workspace.SetLanguageServicesAsync"
                               AriaLabel="Language services" />
             </SettingRow>
             <SettingRow Title="Debug Logs" Hint="Debug logs in the browser console">
@@ -50,7 +50,7 @@
             <SettingRow Title="Worker stuck?" Hint="Restart the compilation worker">
                 <FluentButton Size="ButtonSize.Small"
                               IconStart="@(new Icons.Regular.Size20.ArrowSync())"
-                              OnClick="Settings.ReloadWorkerAsync">Restart the worker</FluentButton>
+                              OnClick="Workspace.ReloadWorkerAsync">Restart the worker</FluentButton>
             </SettingRow>
             <SettingRow Title="Enable Caching" Hint="Server cache for faster sharing">
                 <FluentSwitch Value="Prefs.Value.EnableCaching"
