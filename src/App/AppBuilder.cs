@@ -12,6 +12,7 @@ using DotNetLab.Infrastructure.Caching;
 using DotNetLab.Infrastructure.Logging;
 using DotNetLab.Infrastructure.Persistence;
 using DotNetLab.Infrastructure.Worker;
+using DotNetLab.Shell;
 using Fluxor;
 using Fluxor.Blazor.Web.ReduxDevTools;
 using Microsoft.AspNetCore.Components.Web;
@@ -46,6 +47,7 @@ public static class AppBuilder
             }
         });
         services.AddScoped<LabWorkspaceState>();
+        services.AddScoped<LabDialogs>();
         services.AddScoped(sp => sp.GetRequiredService<LabWorkspaceState>().Documents);
         services.AddScoped(sp => sp.GetRequiredService<LabWorkspaceState>().Compilation);
         services.AddScoped<LabUrlSync>();

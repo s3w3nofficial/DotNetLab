@@ -5,6 +5,7 @@ using DotNetLab.Features.Updates;
 using DotNetLab.Features.Workspace;
 using DotNetLab.Infrastructure.Browser;
 using DotNetLab.Infrastructure.Worker;
+using DotNetLab.Shell;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -23,6 +24,7 @@ public sealed class AddDotNetLabAppTests
 
         HasSingleton<ILabEnvironment>(services).Should().BeTrue();
         HasScoped<LabWorkspaceState>(services).Should().BeTrue();
+        HasScoped<LabDialogs>(services).Should().BeTrue();
         HasScoped<BlazorMonacoInterop>(services).Should().BeTrue();
         HasScoped<WorkerHost>(services).Should().BeTrue();
         HasScoped<HttpClient>(services).Should().BeTrue();

@@ -1,6 +1,7 @@
 ﻿@inherits LayoutComponentBase
 @inject LabThemeService Theme
 @inject LabWorkspaceState Workspace
+@inject LabDialogs Dialogs
 @inject LabUrlSync Urls
 @inject LabPlatform Platform
 @inject ILabEnvironment Environment
@@ -46,9 +47,9 @@
 
     protected override void OnInitialized()
     {
-        Workspace.SettingsRequested += OpenSettingsAsync;
-        Workspace.PaletteRequested += TogglePaletteAsync;
-        Workspace.PasteUrlRequested += OpenPasteAsync;
+        Dialogs.SettingsRequested += OpenSettingsAsync;
+        Dialogs.PaletteRequested += TogglePaletteAsync;
+        Dialogs.PasteUrlRequested += OpenPasteAsync;
         Urls.InvalidShareUrl += OnInvalidShareUrl;
     }
 
@@ -106,9 +107,9 @@
 
     public void Dispose()
     {
-        Workspace.SettingsRequested -= OpenSettingsAsync;
-        Workspace.PaletteRequested -= TogglePaletteAsync;
-        Workspace.PasteUrlRequested -= OpenPasteAsync;
+        Dialogs.SettingsRequested -= OpenSettingsAsync;
+        Dialogs.PaletteRequested -= TogglePaletteAsync;
+        Dialogs.PasteUrlRequested -= OpenPasteAsync;
         Urls.InvalidShareUrl -= OnInvalidShareUrl;
     }
 }

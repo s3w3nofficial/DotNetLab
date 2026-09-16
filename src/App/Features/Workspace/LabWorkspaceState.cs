@@ -24,7 +24,6 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
     private readonly IState<PreferencesState> _preferences;
     private readonly IState<CompilationState> _compilation;
     private readonly IState<CompilationOptionsState> _options;
-    private readonly IState<WorkspaceState> _workspace;
     private readonly IState<OutputState> _output;
     private readonly IDispatcher _dispatcher;
     private readonly PersistenceQueue _persistence;
@@ -44,7 +43,6 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
         IState<PreferencesState> preferences,
         IState<CompilationState> compilation,
         IState<CompilationOptionsState> options,
-        IState<WorkspaceState> workspace,
         IState<OutputState> output,
         IDispatcher dispatcher,
         ILogger<LabWorkspaceState> logger)
@@ -57,7 +55,6 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
         _preferences = preferences;
         _compilation = compilation;
         _options = options;
-        _workspace = workspace;
         _output = output;
         _dispatcher = dispatcher;
         Documents = new LabDocuments(this);
@@ -86,18 +83,8 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
     public CompilationSession Compilation { get; }
 
     public event Action? Changed;
-    public event Func<Task>? SettingsRequested;
-    public event Func<Task>? PaletteRequested;
-    public event Func<Task>? PasteUrlRequested;
     public event Func<Task>? SnapshotRequested;
     public event Func<Task>? UrlPersistRequested;
-
-    public bool Running => _compilation.Value.Running;
-    public bool Stale
-    {
-        get => _compilation.Value.Stale;
-        set => _dispatcher.Dispatch(new SetStaleAction(value));
-    }
 
     public string ActiveSource => Documents.ActiveSource;
 
@@ -122,7 +109,6 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
         }
     }
 
-    public bool ShowRenderedHtml { get; set; }
     public string? WorkerError { get; private set; }
     public bool EditingUserPreferences { get; set; }
 
@@ -372,7 +358,7 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
 
     public Task PersistOutputTabsAsync() => _persistence.EnqueueAsync(PersistKind.OutputTabs);
 
-    public void EnsureActiveOutput() => Tabs.EnsureActiveOutput();
+    void IDocumentWorkspace.EnsureActiveOutput() => Tabs.EnsureActiveOutput();
 
     public Task SnapshotEditorsAsync() => InvokeHandlersAsync(SnapshotRequested);
 
@@ -482,31 +468,6 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
         }
     }
 
-    public Task ShowSettingsAsync() => SettingsRequested?.Invoke() ?? Task.CompletedTask;
-    public Task ShowPaletteAsync() => PaletteRequested?.Invoke() ?? Task.CompletedTask;
-    public Task ShowPasteUrlAsync() => PasteUrlRequested?.Invoke() ?? Task.CompletedTask;
-
-    public void SetSplit(double value, bool notify = true)
-    {
-        var next = Math.Clamp(value, 25, 75);
-        if (Math.Abs(next - WorkspaceSnapshot.Split) < 0.05)
-        {
-            return;
-        }
-
-        _dispatcher.Dispatch(new SetSplitAction(next));
-        if (notify)
-        {
-            Notify();
-        }
-    }
-
-    public void MarkStale()
-    {
-        Stale = true;
-        Notify();
-    }
-
     public async Task FormatActiveSource()
     {
         var fileName = ActiveSource;
@@ -548,7 +509,13 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
 
     private PreferencesState Preferences => _preferences.Value;
 
-    private WorkspaceState WorkspaceSnapshot => _workspace.Value;
+    bool IDocumentWorkspace.Stale
+    {
+        get => _compilation.Value.Stale;
+        set => _dispatcher.Dispatch(new SetStaleAction(value));
+    }
+
+    bool IOutputSessionHost.Running => _compilation.Value.Running;
 
     public CompilationInput CreateCompilationInput()
     {

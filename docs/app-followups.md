@@ -246,10 +246,10 @@ URL / settings / output-tab writes go through `PersistenceQueue` (bounded 1 /
 `DropOldest` + 50ms debounce). Snapshots are captured at execute time.
 `_suppressUrlPersist` still skips URL writes during `ApplySavedState`.
 
-After options + ActiveOutput left the facade, `LabWorkspaceState` mostly
-applies/captures `SavedState` and wires persist / settings / palette.
-Whether that leftover coordinator should exist is a later question. Do not
-delete it as a line-count goal.
+After options + ActiveOutput left the facade, `LabWorkspaceState` still
+applies/captures `SavedState` and wires persist / language / worker. Dialogs,
+pane split, and rendered-HTML are not session. Do not delete the facade as a
+line-count goal.
 
 ### 7. Language-service baseline — done
 
@@ -360,6 +360,13 @@ switch), not IndexedDB/HTTP. It is `OutputSession`; the workspace property is
 are not cancelled; dispose waits until that execute returns. Compile dispose
 still cancels the in-flight CTS, then waits until execute returns.
 `LabWorkspaceState` / `CompilationSession` are `IAsyncDisposable` so DI waits.
+
+### 17. More facade shrink — done
+
+Settings / palette / paste URL live on `LabDialogs`. Pane split dispatches
+`SetSplitAction` from `LabWorkspace`. Rendered HTML is a field on that
+component. Dead `MarkStale` / public `Running` / `Stale` wrappers are gone;
+those facts stay on `CompilationState` (host interfaces still read them).
 
 ## Later (not now)
 

@@ -1,8 +1,8 @@
 @inherits FluxorComponent
-@inject LabWorkspaceState Workspace
 @inject LabDocuments Docs
 @inject LabThemeService Theme
 @inject LabShare Share
+@inject LabDialogs Dialogs
 @inject IState<UpdateState> Updates
 @inject IState<PreferencesState> Prefs
 @inject IState<DocumentMetadataState> DocumentsUi
@@ -47,7 +47,7 @@
                       Color="@BrandForeground"
                       AriaLabel="Paste"
                       IconStart="@(new Icons.Regular.Size20.ClipboardPaste())"
-                      OnClick="Workspace.ShowPasteUrlAsync">
+                      OnClick="Dialogs.ShowPasteUrlAsync">
             Paste
         </FluentButton>
     </div>
@@ -88,7 +88,7 @@
                   Size="ButtonSize.Small"
                   Color="@BrandForeground"
                   IconStart="@(new Icons.Regular.Size20.Settings())"
-                  OnClick="Workspace.ShowSettingsAsync">
+                  OnClick="Dialogs.ShowSettingsAsync">
         Settings
         @if (Updates.Value.Available)
         {

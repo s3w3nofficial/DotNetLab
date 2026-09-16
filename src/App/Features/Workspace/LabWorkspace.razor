@@ -198,7 +198,7 @@
                         else if (context == "html")
                         {
                             <div class="lab-toolbar">
-                                <FluentCheckbox Label="Rendered" @bind-Value="State.ShowRenderedHtml" @bind-Value:after="State.Notify" />
+                                <FluentCheckbox Label="Rendered" @bind-Value="_showRenderedHtml" />
                             </div>
                         }
                         else if (context == "il")
@@ -218,7 +218,7 @@
                         }
                     </Toolbar>
                     <ItemContent>
-                        @if (context == "html" && State.ShowRenderedHtml && !DocumentsUi.Value.ActiveDocument.EndsWith(".cshtml", StringComparison.OrdinalIgnoreCase))
+                        @if (context == "html" && _showRenderedHtml && !DocumentsUi.Value.ActiveDocument.EndsWith(".cshtml", StringComparison.OrdinalIgnoreCase))
                         {
                             <iframe @key="@("html-preview")"
                                     class="lab-html-preview"
@@ -266,6 +266,7 @@
     private ElementReference _workspace;
     private ElementReference _splitter;
     private bool _resizing;
+    private bool _showRenderedHtml;
 
     protected override void OnInitialized()
     {
@@ -419,7 +420,7 @@
 
         if (percent is { } value)
         {
-            State.SetSplit(value);
+            SetSplit(value);
         }
 
         await InvokeAsync(StateHasChanged);
@@ -430,8 +431,18 @@
         var delta = args.Key is "ArrowLeft" or "ArrowUp" ? -2 : args.Key is "ArrowRight" or "ArrowDown" ? 2 : 0;
         if (delta != 0)
         {
-            State.SetSplit(Layout.Value.Split + delta);
+            SetSplit(Layout.Value.Split + delta);
         }
+    }
+
+    private void SetSplit(double value)
+    {
+        if (Math.Abs(value - Layout.Value.Split) < 0.05)
+        {
+            return;
+        }
+
+        Dispatcher.Dispatch(new SetSplitAction(value));
     }
 
     protected override ValueTask DisposeAsyncCore(bool disposing)
