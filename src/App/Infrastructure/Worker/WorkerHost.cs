@@ -112,19 +112,7 @@ public sealed class WorkerHost : IAsyncDisposable
         try
         {
             var incoming = await PostAsync(message);
-            return incoming switch
-            {
-                WorkerOutputMessage.Success success => success.Result switch
-                {
-                    null => default!,
-                    JsonElement json => json.Deserialize<T>(WorkerJsonContext.Default.Options)!,
-                    T result => result,
-                    var other => throw new InvalidOperationException(
-                        $"Expected result of type '{typeof(T)}', got '{other.GetType()}': {other}"),
-                },
-                WorkerOutputMessage.Failure failure => throw new InvalidOperationException(failure.FullString),
-                _ => throw new InvalidOperationException($"Unexpected message type: {incoming}"),
-            };
+            return ReadResult<T>(incoming);
         }
         finally
         {
@@ -390,6 +378,24 @@ public sealed class WorkerHost : IAsyncDisposable
             ErrorHandler = errorHandler,
         };
     }
+
+    internal static T ReadResult<T>(WorkerOutputMessage incoming)
+        => incoming switch
+        {
+            WorkerOutputMessage.Success success => success.Result switch
+            {
+                null => default!,
+                JsonElement json => json.Deserialize<T>(WorkerJsonContext.Default.Options)!,
+                T result => result,
+                var other => throw new InvalidOperationException(
+                    $"Expected result of type '{typeof(T)}', got '{other.GetType()}': {other}"),
+            },
+            WorkerOutputMessage.Failure failure => throw new InvalidOperationException(failure.FullString),
+            // NoOutput handlers (cached compilation, document/workspace mutations, cancel)
+            // complete with Empty rather than Success(null).
+            WorkerOutputMessage.Empty => default!,
+            _ => throw new InvalidOperationException($"Unexpected message type: {incoming}"),
+        };
 
     private static WorkerOutputMessage DisposedFailure(IWorkerInputMessage message)
         => new WorkerOutputMessage.Failure("Worker disposed")

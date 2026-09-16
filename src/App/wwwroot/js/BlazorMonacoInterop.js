@@ -54,7 +54,7 @@ export function registerCompletionProvider(language, triggerCharacters, completi
                     completionItemProvider, decodeURI(model.uri.toString()), JSON.stringify(position), JSON.stringify(context), tokenRef));
 
                 if (versionId != model.getAlternativeVersionId()) {
-                    throw new Error('busy');
+                    ignoredProviderRequest();
                 }
 
                 for (const item of result.suggestions) {
@@ -69,8 +69,7 @@ export function registerCompletionProvider(language, triggerCharacters, completi
 
                 return result;
             } catch (e) {
-                console.error(e);
-                throw e;
+                rethrowProviderError(e);
             } finally {
                 DotNet.disposeJSObjectReference(tokenRef);
             }
@@ -89,8 +88,7 @@ export function registerCompletionProvider(language, triggerCharacters, completi
 
                 return completionItem;
             } catch (e) {
-                console.error(e);
-                throw e;
+                rethrowProviderError(e);
             } finally {
                 DotNet.disposeJSObjectReference(tokenRef);
             }
@@ -131,8 +129,7 @@ export function registerSemanticTokensProvider(language, legend, provider, regis
                     provider, decodeURI(model.uri.toString()), null, debugSemanticTokens, tokenRef);
                 return decodeResult(result, legendParsed);
             } catch (e) {
-                console.error(e);
-                throw e;
+                rethrowProviderError(e);
             } finally {
                 DotNet.disposeJSObjectReference(tokenRef);
             }
@@ -153,8 +150,7 @@ export function registerSemanticTokensProvider(language, legend, provider, regis
                         provider, decodeURI(model.uri.toString()), JSON.stringify(range), debugSemanticTokens, tokenRef);
                     return decodeResult(result, legendParsed);
                 } catch (e) {
-                    console.error(e);
-                    throw e;
+                    rethrowProviderError(e);
                 } finally {
                     DotNet.disposeJSObjectReference(tokenRef);
                 }
@@ -166,10 +162,9 @@ export function registerSemanticTokensProvider(language, legend, provider, regis
 
     function decodeResult(result, legend) {
         if (result === null) {
-            // If null result is returned, it means the request should be ignored, so we need to throw
-            // (otherwise current tokens would be cleared which we don't want).
-            // The text 'busy' is recommended for this purpose (e.g., it avoids sending telemetry).
-            throw new Error('busy');
+            // Null means ignore this request so current tokens stay.
+            // Monaco treats Error name/message "Canceled" as cancellation, not a failure.
+            ignoredProviderRequest();
         }
 
         // Result is Base64-encoded int32 array we want to convert to Uint32Array.
@@ -204,7 +199,7 @@ export function registerCodeActionProvider(language, codeActionProvider) {
                     // If null result is returned, it means the request should be ignored, so we need to throw
                     // (as opposed to returning no code actions).
                     // The text 'busy' is recommended for this purpose (e.g., it avoids sending telemetry).
-                    throw new Error('busy');
+                    ignoredProviderRequest();
                 }
 
                 for (const action of result) {
@@ -218,8 +213,7 @@ export function registerCodeActionProvider(language, codeActionProvider) {
                     dispose: () => { }, // Currently not used.
                 };
             } catch (e) {
-                console.error(e);
-                throw e;
+                rethrowProviderError(e);
             } finally {
                 DotNet.disposeJSObjectReference(tokenRef);
             }
@@ -273,13 +267,12 @@ export function registerHoverProvider(language, hoverProvider) {
                     // If null result is returned, it means the request should be ignored, so we need to throw
                     // (as opposed to returning no code actions).
                     // The text 'busy' is recommended for this purpose (e.g., it avoids sending telemetry).
-                    throw new Error('busy');
+                    ignoredProviderRequest();
                 }
 
                 return { contents: [{ value: result }] };
             } catch (e) {
-                console.error(e);
-                throw e;
+                rethrowProviderError(e);
             } finally {
                 DotNet.disposeJSObjectReference(tokenRef);
             }
@@ -307,7 +300,7 @@ export function registerSignatureHelpProvider(language, hoverProvider) {
                     // If null result is returned, it means the request should be ignored, so we need to throw
                     // (as opposed to returning no code actions).
                     // The text 'busy' is recommended for this purpose (e.g., it avoids sending telemetry).
-                    throw new Error('busy');
+                    ignoredProviderRequest();
                 }
 
                 const parsed = JSON.parse(result);
@@ -321,8 +314,7 @@ export function registerSignatureHelpProvider(language, hoverProvider) {
                     dispose: () => { }, // Currently not used.
                 };
             } catch (e) {
-                console.error(e);
-                throw e;
+                rethrowProviderError(e);
             } finally {
                 DotNet.disposeJSObjectReference(tokenRef);
             }
@@ -378,6 +370,20 @@ function wrapToken(token) {
             });
         },
     });
+}
+
+function ignoredProviderRequest() {
+    const error = new Error('Canceled');
+    error.name = 'Canceled';
+    throw error;
+}
+
+function rethrowProviderError(e) {
+    if (e instanceof Error && (e.message === 'busy' || e.name === 'Canceled')) {
+        throw e;
+    }
+    console.error(e);
+    throw e;
 }
 
 class DisposableList {
