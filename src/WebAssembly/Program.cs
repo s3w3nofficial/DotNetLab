@@ -9,7 +9,8 @@ var builder = WebAssemblyHostBuilder.CreateDefault(args);
 AppBuilder.RegisterRootComponents(builder.RootComponents.Add);
 var environment = new LabEnvironment(
     builder.HostEnvironment.IsDevelopment(),
-    builder.HostEnvironment.BaseAddress);
+    builder.HostEnvironment.BaseAddress,
+    SupportsThreads: false);
 builder.Services.AddDotNetLabApp(environment, useReduxDevTools: environment.IsDevelopment);
 builder.Services.AddScoped<IWorkerTransport, BrowserWorkerTransport>();
 builder.Services.AddScoped<IUpdateChecker, WebAssemblyUpdateChecker>();

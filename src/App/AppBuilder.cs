@@ -15,6 +15,7 @@ using DotNetLab.Shell;
 using Fluxor;
 using Fluxor.Blazor.Web.ReduxDevTools;
 using Microsoft.AspNetCore.Components.Web;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.FluentUI.AspNetCore.Components;
 
 namespace DotNetLab;
@@ -64,7 +65,7 @@ public static class AppBuilder
         services.AddScoped<EditorCursor>();
         services.AddScoped<EditorDragState>();
         services.AddScoped<IUpdateChecker, DisabledUpdateChecker>();
-        services.AddScoped<IWorkerTransport, UnsupportedWorkerTransport>();
+        services.TryAddScoped<IWorkerTransport, UnsupportedWorkerTransport>();
         services.AddSingleton<LabLogging>();
         services.AddOptions<LoggerFilterOptions>().Configure<LabLogging>((options, logging) =>
         {

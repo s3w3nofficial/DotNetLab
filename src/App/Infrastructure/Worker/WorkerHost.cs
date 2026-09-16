@@ -22,6 +22,7 @@ namespace DotNetLab.Infrastructure.Worker;
 public sealed class WorkerHost : IAsyncDisposable
 {
     private readonly string _baseUrl;
+    private readonly bool _supportsThreads;
     private readonly LabLogging _logging;
     private readonly LabSettings _settings;
     private readonly IWorkerTransport _transport;
@@ -45,6 +46,7 @@ public sealed class WorkerHost : IAsyncDisposable
         ILogger<WorkerHost> logger)
     {
         _baseUrl = environment.BaseAddress;
+        _supportsThreads = environment.SupportsThreads;
         _logging = logging;
         _settings = settings;
         _transport = transport;
@@ -171,13 +173,24 @@ public sealed class WorkerHost : IAsyncDisposable
             // Do not serialize in-process messages: Cancel must overlap the request it aborts,
             // matching src/App WorkerController (ungated HandleAndGetOutputAsync / Task.Run).
             // Recreate waits for _inProcessRequests to drain before disposing this provider.
+            if (_supportsThreads)
+            {
+                _logger.Log(
+                    message is WorkerInputMessage.Ping ? LogLevel.Trace : LogLevel.Debug,
+                    "=> {Id}: {Type} (bg)",
+                    message.Id,
+                    message.GetType().Name);
+                var background = await Task.Run(() => message.HandleAndGetOutputAsync(executor));
+                return epoch == Volatile.Read(ref _epoch) ? background : DisposedFailure(message);
+            }
+
             _logger.Log(
                 message is WorkerInputMessage.Ping ? LogLevel.Trace : LogLevel.Debug,
                 "=> {Id}: {Type} (fg)",
                 message.Id,
                 message.GetType().Name);
-            var incoming = await message.HandleAndGetOutputAsync(executor);
-            return epoch == Volatile.Read(ref _epoch) ? incoming : DisposedFailure(message);
+            var foreground = await message.HandleAndGetOutputAsync(executor);
+            return epoch == Volatile.Read(ref _epoch) ? foreground : DisposedFailure(message);
         }
 
         var worker = _worker;
@@ -274,12 +287,15 @@ public sealed class WorkerHost : IAsyncDisposable
     {
         if (_useWorker == true)
         {
-            _logger.LogInformation("Starting compilation web worker.");
+            _logger.LogInformation("LANGUAGE SERVICES EXECUTION: browser worker");
             _worker = await CreateWorkerAsync();
             return;
         }
 
-        _logger.LogInformation("Using in-process compilation worker.");
+        _logger.LogInformation(
+            _supportsThreads
+                ? "LANGUAGE SERVICES EXECUTION: background .NET thread"
+                : "LANGUAGE SERVICES EXECUTION: UI/foreground");
         await _transport.EnsureInProcessInteropAsync();
         _services = WorkerServices.Create(_baseUrl, _logging.LogLevel);
     }

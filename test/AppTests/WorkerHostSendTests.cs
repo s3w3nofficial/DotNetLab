@@ -3,6 +3,7 @@ using DotNetLab.Features.Preferences;
 using DotNetLab.Infrastructure.Browser;
 using DotNetLab.Infrastructure.Logging;
 using DotNetLab.Infrastructure.Worker;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.JSInterop;
 
@@ -33,12 +34,13 @@ public sealed class WorkerHostSendTests
     public async Task SendAsync_UnsupportedTransport_UsesInProcessInsteadOfCreateWorker()
     {
         var transport = new SpyInProcessTransport();
+        var logger = new ListLogger();
         await using var host = new WorkerHost(
             new LabEnvironment(IsDevelopment: false, BaseAddress: "http://localhost/"),
             new LabLogging(),
             new LabSettings(new EmptyPrefsJsRuntime()),
             transport,
-            NullLogger<WorkerHost>.Instance);
+            logger);
 
         var ping = await host.SendAsync(new WorkerInputMessage.Ping { Id = host.NextMessageId() });
 
@@ -46,6 +48,27 @@ public sealed class WorkerHostSendTests
         transport.CreateWorkerCalls.Should().Be(0);
         transport.InProcessCalls.Should().Be(1);
         host.LastPingResult.Should().BeNull();
+        logger.Messages.Should().Contain("LANGUAGE SERVICES EXECUTION: UI/foreground");
+    }
+
+    [TestMethod]
+    public async Task SendAsync_SupportsThreads_StillUsesInProcess()
+    {
+        var transport = new SpyInProcessTransport();
+        var logger = new ListLogger();
+        await using var host = new WorkerHost(
+            new LabEnvironment(IsDevelopment: false, BaseAddress: "http://localhost/", SupportsThreads: true),
+            new LabLogging(),
+            new LabSettings(new EmptyPrefsJsRuntime()),
+            transport,
+            logger);
+
+        var ping = await host.SendAsync(new WorkerInputMessage.Ping { Id = host.NextMessageId() });
+
+        ping.Should().NotBeNull();
+        transport.CreateWorkerCalls.Should().Be(0);
+        transport.InProcessCalls.Should().Be(1);
+        logger.Messages.Should().Contain("LANGUAGE SERVICES EXECUTION: background .NET thread");
     }
 
     private sealed class SpyInProcessTransport : IWorkerTransport
@@ -114,5 +137,22 @@ public sealed class WorkerHostSendTests
 
         public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args)
             => throw new NotSupportedException();
+    }
+
+    private sealed class ListLogger : ILogger<WorkerHost>
+    {
+        public List<string> Messages { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter)
+            => Messages.Add(formatter(state, exception));
     }
 }

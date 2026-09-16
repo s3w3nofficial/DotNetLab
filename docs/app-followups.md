@@ -79,9 +79,11 @@ Channels     Sessions          caches
 
 `Cancel` still goes straight to `WorkerHost` (serializing it against the
 request it aborts is wrong). Incremental document mutations must be **posted
-immediately**, like master — not parked on an app-side Channel that queries
-bypass. Do not put an ordered queue in the worker either. Language services
-stay as close to master as possible.
+immediately** — not parked on an app-side Channel that queries bypass. Do
+not put an ordered queue in the worker either. Master **awaits the worker
+ack** from `LanguageServicesClient` before the Monaco callback completes;
+this App currently posts and returns. Remaining LS work is item 18, not a
+Channel.
 
 ## Do not
 
@@ -105,7 +107,14 @@ stay as close to master as possible.
 - Invent interactive Blazor Server
 - Extract `DotNetLab.Editor.Monaco`
 - Add a worker `LanguageSession` or otherwise serialize LS work in the worker
-- Change language services further — keep them as close to master as possible
+- Await `OnSourceModelContentChangedAsync` from the `LabCodeEditor` keystroke
+  handler (in-process WASM would run apply-edit on the UI)
+- Set `SupportsThreads` true on browser WASM (`Task.Run` still uses the one
+  browser thread; there is no `WasmEnableThreads`)
+- Treat `src/Server` as an interactive Blazor circuit — it only serves WASM
+  files (`UseBlazorFrameworkFiles` + `index.html`)
+- Change language services further except item 18 (fence / timings after the
+  worker log is confirmed)
 - Split `CompilationOptionsState` or change `Compiler` / `GetOutput` for format
   prefs — that is deferred (needs Shared + Compiler, not App-only)
 - Commit / push unless asked
@@ -140,10 +149,11 @@ backlog during fast typing (unbounded + producer faster than 30–100 ms
 round-trips).
 
 Master does **not** add this queue. `LanguageServicesClient` posts
-`OnDidChangeModelContent` immediately via `WorkerController`, then
-fire-and-forgets diagnostics. The UI does not await the ack. The worker
+`OnDidChangeModelContent` immediately via `WorkerController` and **awaits
+the worker ack**, then fire-and-forgets diagnostics. The worker
 `postMessage` / JS bridge is essentially the same; do not start by rewriting
-`WorkerHost` serialization.
+`WorkerHost` serialization. Item 7’s “do not await the ack” was a misread
+of master.
 
 The comment on `OnDidChangeModelContentAsync` (“keystrokes must not sit
 behind completion/hover”) inverted the problem. Queries skipping the Channel
@@ -258,13 +268,14 @@ Posting order matches master again. `LanguageMutationQueue` is gone. Completions
 always go through debounce. `DebounceAsync` cancels in-flight handlers via
 `debounceToken`. Diagnostics skip `SetModelMarkers` when Monaco's
 `getAlternativeVersionId` moved while `GetDiagnostics` was in flight (no worker
-protocol change). Confirm `Starting compilation web worker.` when testing
-IntelliSense.
+protocol change). Confirm the worker log when testing IntelliSense (item 18).
 
 - [x] Remove `LanguageMutationQueue` from `OnDidChangeModelContent`. Call
       `SendAsync` immediately (do not await it from the keystroke handler).
-      Fire-and-forget diagnostics **after** that mutation task completes, like
-      master. Workspace snapshots follow the same “post now” rule.
+      Fire-and-forget diagnostics **after** that mutation task completes.
+      Master instead awaits the mutation ack from `LanguageServicesClient`
+      before the Monaco callback returns. Workspace snapshots follow the
+      same “post now” rule. Query ordering leftover is item 18.
 - [x] Remove `skipDebounce` for `CompletionTriggerKind.TriggerCharacter`.
       Master always runs completion through debounce. The trigger list
       includes `.` `(` `=` space; bypass + Channel is the worst ordering.
@@ -279,7 +290,7 @@ IntelliSense.
       diagnostics version guard either — add it here.
 
 Do not reopen HybridCache, `DropOldest` on LS deltas, a worker LS session,
-or deleting the facade. Do not change language services further.
+or deleting the facade. Further LS/WorkerHost work is item 18.
 
 ### 8. Remaining Channel races — done
 
@@ -333,7 +344,9 @@ App's default `UnsupportedWorkerTransport` does not support a background
 worker. `WorkerHost` then starts `WorkerServices` in-process instead of
 `CreateWorker` (which still throws if called). Browser
 `BrowserWorkerTransport` still supports the web worker. The Background worker
-setting is hidden when the transport cannot create one.
+setting is hidden when the transport cannot create one. In-process
+`Task.Run` runs when `ILabEnvironment.SupportsThreads` is true (native /
+test host). Browser WASM sets it false.
 
 ### 13. Document metadata Fluxor — done
 
@@ -369,10 +382,78 @@ Settings / palette / paste URL live on `LabDialogs`. Pane split dispatches
 component. Dead `MarkStale` / public `Running` / `Stale` wrappers are gone;
 those facts stay on `CompilationState` (host interfaces still read them).
 
+### 18. Worker placement, mutation fence, profile
+
+Typing jank after item 7 is **not** Fluxor, HybridCache, or a Channel.
+Confirm **where** Roslyn runs before changing query code.
+
+`src/Server` only serves the WASM app. Language services still run in the
+browser. Master’s `Task.Run` is for **in-process** Roslyn when the host has
+real .NET threads (native later, or background worker off on a threaded
+runtime). Default `http://localhost:5126` with the worker on never hits
+`HandleAndGetOutputAsync` on the UI — it posts JSON and waits on a TCS.
+
+Current WASM registration is last-wins: `AddDotNetLabApp` then
+`AddScoped<IWorkerTransport, BrowserWorkerTransport>()`. The trap is a host
+that registers Browser **before** `AddDotNetLabApp` and gets
+`UnsupportedWorkerTransport` instead (`SupportsBackgroundWorker = false` →
+in-process). `TryAddScoped` for the fallback is the default so that
+cannot happen. Current `Program.cs` still last-wins when Browser is
+registered after. Neither is why today’s WASM host would go in-process.
+
+Logs are Information so they show without Debug Logs. If the freeze
+repro shows browser worker, do not debug `Task.Run` / DI:
+
+```
+LANGUAGE SERVICES EXECUTION: browser worker
+LANGUAGE SERVICES EXECUTION: background .NET thread
+LANGUAGE SERVICES EXECUTION: UI/foreground
+```
+
+There is no `WasmEnableThreads`. Browser WASM is one thread. Do **not** set
+`SupportsThreads` true there — `Task.Run` still runs on that thread.
+
+Current App LS posts the mutation and `LabCodeEditor` returns
+`Task.CompletedTask`. Diagnostics wait on that mutation Task. Completions
+debounce ~1s (usually miss the race). Hover, signature help, and **semantic
+tokens** have no debounce and can `PostMessage` before the mutation. Two
+concurrent `PostAsync` calls have no post-order lock; a web worker is FIFO
+after `postMessage`.
+
+Do **not** await the mutation from the editor callback (in-process WASM
+would block typing). Do **not** bring `LanguageMutationQueue` back.
+
+- [x] `TryAddScoped<IWorkerTransport, UnsupportedWorkerTransport>()` so a
+      host cannot lose `BrowserWorkerTransport`
+- [x] `ILabEnvironment.SupportsThreads` + in-process `Task.Run` like master
+      `WorkerController` (native / threaded hosts only; not browser WASM)
+- [x] Unmistakable Information logs for the three modes (`LANGUAGE SERVICES
+      EXECUTION: browser worker` / `background .NET thread` / `UI/foreground`).
+      In-process fg/bg are covered by tests. Default WASM settings keep
+      Background worker on — if a freeze repro shows UI/foreground, stop
+      and fix placement before query code. Debug logs are not required;
+      these are Information.
+- [ ] With the worker on, disable semantic tokens, then diagnostics, then
+      completion — tokens first (whole document, every edit, no debounce)
+- [ ] If tokens / hover race: per-document mutation fence (latest mutation
+      `Task`). Queries `await` the fence then `SendAsync`. Completions wait
+      **after** debounce, not during it. `TrackMutation` before the editor
+      callback returns
+- [ ] Development T0–T4 timings per kind (completion / diagnostics /
+      semantic / hover): JS → .NET → post → Roslyn → apply. Architecture
+      cannot tell “Roslyn 186 ms” from “waited 220 ms then Roslyn 30 ms”
+
+Worker-side document versions stay in Later. Client
+`getAlternativeVersionId` is enough until a fence proves the race.
+
+Do not Channel LS deltas again. Do not Fluxor or HybridCache for this.
+
 ## Later (not now)
 
 - [ ] Drop `LabWorkspaceState` entirely once it is only glue — decide then,
       do not pre-delete
+- [ ] Worker protocol document versions (`AppliedVersion(uri) >= requested`)
+      — only after item 18’s fence proves the race
 
 ## Deferred
 
