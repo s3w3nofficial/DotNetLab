@@ -1,4 +1,4 @@
-namespace DotNetLab.Workspace;
+namespace DotNetLab.Features.Workspace;
 
 public sealed class EditorDragState
 {

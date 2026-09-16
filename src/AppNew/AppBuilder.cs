@@ -1,5 +1,5 @@
+using DotNetLab.Features.Workspace;
 using DotNetLab.Lab;
-using DotNetLab.Workspace;
 using Fluxor;
 using Fluxor.Blazor.Web.ReduxDevTools;
 using Microsoft.AspNetCore.Components.Web;
