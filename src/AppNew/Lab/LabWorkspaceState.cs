@@ -1,11 +1,13 @@
 using System.Collections.Immutable;
 using BlazorMonaco.Editor;
+using DotNetLab.Editor;
 using DotNetLab.Editor.LanguageServices;
 using DotNetLab.Features.Compiler;
 using DotNetLab.Features.Compilation;
 using DotNetLab.Features.Documents;
 using DotNetLab.Features.Outputs;
 using DotNetLab.Features.Preferences;
+using DotNetLab.Features.Sharing;
 using DotNetLab.Features.Workspace;
 using DotNetLab.Infrastructure.Persistence;
 using DotNetLab.Infrastructure.Worker;
@@ -18,7 +20,7 @@ using Microsoft.JSInterop;
 
 namespace DotNetLab.Lab;
 
-public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILabPalette, ILabSettings, ILabShell, IDisposable
+public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILabPalette, ILabSettings, ILabShell, ILabWorkspace, ILabEditor, ILabSharing, IDisposable
 {
     private readonly WorkerHost _worker;
     private readonly LabLanguageServices _language;

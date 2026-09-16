@@ -9,14 +9,14 @@ namespace DotNetLab.Features.Sharing;
 public sealed class LabUrlSync : IDisposable
 {
     private readonly NavigationManager _navigation;
-    private readonly LabWorkspaceState _state;
+    private readonly ILabSharing _state;
     private readonly LabSettings _settings;
     private readonly IJSRuntime _js;
     private bool _ignoreNextLocation;
     private bool _loaded;
     private string? _appliedSlug;
 
-    public LabUrlSync(NavigationManager navigation, LabWorkspaceState state, LabSettings settings, IJSRuntime js)
+    public LabUrlSync(NavigationManager navigation, ILabSharing state, LabSettings settings, IJSRuntime js)
     {
         _navigation = navigation;
         _state = state;

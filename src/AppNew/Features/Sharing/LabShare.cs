@@ -1,6 +1,5 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
-using DotNetLab.Lab;
 
 namespace DotNetLab.Features.Sharing;
 
@@ -8,9 +7,9 @@ public sealed class LabShare
 {
     private readonly IJSRuntime _js;
     private readonly NavigationManager _navigation;
-    private readonly LabWorkspaceState _state;
+    private readonly ILabSharing _state;
 
-    public LabShare(IJSRuntime js, NavigationManager navigation, LabWorkspaceState state)
+    public LabShare(IJSRuntime js, NavigationManager navigation, ILabSharing state)
     {
         _js = js;
         _navigation = navigation;

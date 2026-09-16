@@ -1,5 +1,3 @@
-using DotNetLab.Lab;
-
 namespace DotNetLab.Features.Sharing;
 
 public static class LabLinks
@@ -10,7 +8,7 @@ public static class LabLinks
     public const string GistNew = "https://gist.github.com/";
     public const string GitHubApi = "https://api.github.com";
 
-    public static string NewIssue(LabWorkspaceState state)
+    public static string NewIssue(ILabSharing state)
     {
         var body = $"""
             ### Environment
@@ -28,7 +26,7 @@ public static class LabLinks
         return $"{Repository}/issues/new?title={Uri.EscapeDataString("[.NET Lab] ")}&body={Uri.EscapeDataString(body)}";
     }
 
-    public static string GistSnapshot(LabWorkspaceState state)
+    public static string GistSnapshot(ILabSharing state)
     {
         var text = new StringBuilder();
         text.AppendLine($"// .NET Lab snapshot · SDK {state.Sdk} · Roslyn {state.Roslyn} · Razor {state.Razor}");

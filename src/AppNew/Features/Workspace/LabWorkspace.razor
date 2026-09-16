@@ -1,4 +1,4 @@
-@inject LabWorkspaceState State
+@inject ILabWorkspace State
 @inject IJSRuntime JS
 @implements IDisposable
 
@@ -17,7 +17,7 @@
                               ActiveChanged="OnSourceSelected"
                               ItemClosed="State.CloseFile"
                               ItemRenamed="OnSourceRenamed"
-                              PinnedOrder="LabWorkspaceState.SpecialSourceOrder"
+                              PinnedOrder="LabFixtures.SpecialSourceOrder"
                               Icon="@(new Icons.Regular.Size20.Code())">
                     <Actions>
                         <FluentButton Id="lab-source-format"
@@ -61,12 +61,12 @@
                         </FluentMenu>
                     </Actions>
                     <ItemLabel>
-                        @if (context == LabWorkspaceState.DirectivesFileName)
+                        @if (context == LabFixtures.DirectivesFileName)
                         {
                             <FluentIcon Value="@(new Icons.Regular.Size20.NumberSymbol())" Width="16px" />
                             <span>Directives</span>
                         }
-                        else if (context == LabWorkspaceState.ConfigurationFileName)
+                        else if (context == LabFixtures.ConfigurationFileName)
                         {
                             <FluentIcon Value="@(new Icons.Regular.Size20.DocumentSettings())" Width="16px" />
                             <span>Configuration</span>
@@ -143,7 +143,7 @@
                                                 Disabled="@(!State.HasClosedOutputTabs(stripIds))"
                                                 OnClick="RestoreClosedOutputTabs" />
                                 <FluentDivider />
-                                <FluentMenuItem Label="@($"Save for {LabWorkspaceState.OutputKindLabel(LabWorkspaceState.OutputKindFor(State.ActiveSource))}")"
+                                <FluentMenuItem Label="@($"Save for {LabCatalog.OutputKindLabel(LabCatalog.OutputKindFor(State.ActiveSource))}")"
                                                 OnClick="SaveOutputTabsAsync" />
                             </FluentMenuList>
                         </FluentMenu>
@@ -173,7 +173,7 @@
                             <div class="lab-toolbar">
                                 <FluentSelect TOption="string"
                                               TValue="string"
-                                              Items="LabWorkspaceState.SymbolDisplayKinds"
+                                              Items="LabCatalog.SymbolDisplayKinds"
                                               @bind-Value="State.ShowSymbols"
                                               @bind-Value:after="State.OnSavedStateChanged"
                                               AriaLabel="Symbols" />
@@ -252,7 +252,7 @@
 </main>
 
 @code {
-    private static readonly string[] _lockedOutputTabs = [LabWorkspaceState.ErrorsOutputType];
+    private static readonly string[] _lockedOutputTabs = [LabCatalog.ErrorsOutputType];
 
     private EditorGroups? _outputGroups;
     private ElementReference _workspace;

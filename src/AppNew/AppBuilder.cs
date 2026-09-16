@@ -1,3 +1,4 @@
+using DotNetLab.Editor;
 using DotNetLab.Editor.LanguageServices;
 using DotNetLab.Features.Preferences;
 using DotNetLab.Features.Sharing;
@@ -44,6 +45,9 @@ public static class AppBuilder
         builder.Services.AddScoped<ILabPalette>(sp => sp.GetRequiredService<LabWorkspaceState>());
         builder.Services.AddScoped<ILabSettings>(sp => sp.GetRequiredService<LabWorkspaceState>());
         builder.Services.AddScoped<ILabShell>(sp => sp.GetRequiredService<LabWorkspaceState>());
+        builder.Services.AddScoped<ILabWorkspace>(sp => sp.GetRequiredService<LabWorkspaceState>());
+        builder.Services.AddScoped<ILabEditor>(sp => sp.GetRequiredService<LabWorkspaceState>());
+        builder.Services.AddScoped<ILabSharing>(sp => sp.GetRequiredService<LabWorkspaceState>());
         builder.Services.AddScoped<LabUrlSync>();
         builder.Services.AddScoped<LabThemeService>();
         builder.Services.AddScoped<LabPlatform>();
