@@ -1,9 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using DotNetLab.Features.Compilation;
 using Microsoft.JSInterop;
 
-namespace DotNetLab.Infrastructure.Caching;
+namespace DotNetLab.Infrastructure.Caching.Compilation;
 
 /// <summary>
 /// Origin-scoped IndexedDB compilation cache. L1 of <see cref="CompilationCache"/>.

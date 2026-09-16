@@ -1,9 +1,8 @@
 using System.Net.Http.Json;
 using System.Text.Json;
-using DotNetLab.Features.Compilation;
 using DotNetLab.Lab;
 
-namespace DotNetLab.Infrastructure.Caching;
+namespace DotNetLab.Infrastructure.Caching.Compilation;
 
 /// <summary>
 /// Shared HTTP compilation cache (<c>vsinsertions.azurewebsites.net</c>). L2 of

@@ -1,6 +1,5 @@
 using AwesomeAssertions;
-using DotNetLab.Features.Compilation;
-using DotNetLab.Infrastructure.Caching;
+using DotNetLab.Infrastructure.Caching.Compilation;
 using DotNetLab.Lab;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.JSInterop;

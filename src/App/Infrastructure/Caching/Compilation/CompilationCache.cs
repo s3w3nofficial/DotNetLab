@@ -1,8 +1,7 @@
 using System.Collections.Concurrent;
-using DotNetLab.Features.Compilation;
 using DotNetLab.Lab;
 
-namespace DotNetLab.Infrastructure.Caching;
+namespace DotNetLab.Infrastructure.Caching.Compilation;
 
 /// <summary>
 /// L1 IndexedDB then L2 remote HTTP. Per-key in-flight Get coalesces stampede.

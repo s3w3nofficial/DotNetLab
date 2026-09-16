@@ -198,12 +198,12 @@ the HybridCache package.
 
 ```
 Infrastructure/Caching/Compilation/
-    ICompilationCache.cs        ← namespace stays Features.Compilation
+    ICompilationCache.cs
     CompilationCache            ← stampede + L1 then L2
     IndexedDbCompilationCache   ← L1 (thin `netLabCompileCache` JS)
     RemoteCompilationCache      ← L2 (rename of InputOutputCache)
 Infrastructure/Caching/Template/
-    TemplateCache               ← gzipped snapshots; namespace stays Persistence
+    TemplateCache               ← gzipped snapshots
 ```
 
 ```

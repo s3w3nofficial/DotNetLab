@@ -52,7 +52,7 @@ public sealed class TemplateCacheGenerator : IIncrementalGenerator
 
                 #nullable enable
 
-                namespace DotNetLab.Infrastructure.Persistence;
+                namespace DotNetLab.Infrastructure.Caching.Template;
 
                 partial class TemplateCache
                 {

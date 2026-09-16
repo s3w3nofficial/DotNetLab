@@ -1,6 +1,6 @@
 using AwesomeAssertions;
 using DotNetLab.Editor.Monaco;
-using DotNetLab.Features.Compilation;
+using DotNetLab.Infrastructure.Caching.Compilation;
 using DotNetLab.Features.Updates;
 using DotNetLab.Features.Workspace;
 using DotNetLab.Infrastructure.Browser;

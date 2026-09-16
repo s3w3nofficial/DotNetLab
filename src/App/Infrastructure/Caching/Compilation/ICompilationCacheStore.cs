@@ -1,6 +1,4 @@
-using DotNetLab.Features.Compilation;
-
-namespace DotNetLab.Infrastructure.Caching;
+namespace DotNetLab.Infrastructure.Caching.Compilation;
 
 internal interface ICompilationCacheStore
 {

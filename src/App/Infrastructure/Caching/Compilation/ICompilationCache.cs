@@ -1,6 +1,6 @@
 using DotNetLab.Lab;
 
-namespace DotNetLab.Features.Compilation;
+namespace DotNetLab.Infrastructure.Caching.Compilation;
 
 public readonly record struct CachedCompilation(CompiledAssembly Output, DateTimeOffset Timestamp);
 

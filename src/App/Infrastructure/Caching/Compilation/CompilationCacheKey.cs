@@ -3,7 +3,7 @@ using System.IO.Hashing;
 using System.Runtime.InteropServices;
 using DotNetLab.Lab;
 
-namespace DotNetLab.Infrastructure.Caching;
+namespace DotNetLab.Infrastructure.Caching.Compilation;
 
 /// <summary>
 /// Cache identity for L1 IndexedDB and L2 HTTP. Prefix with
