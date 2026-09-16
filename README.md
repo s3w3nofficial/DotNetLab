@@ -38,6 +38,9 @@ and workloads `wasm-tools wasm-experimental`).
 
 The recommended startup app for development is `src/Server`.
 
+Internals (caching, worker offload, tab drag-and-drop, Fluxor vs sessions):
+`docs/README.md`. Remaining App work: `docs/app-followups.md`.
+
 To hit breakpoints, it is recommended to turn off the worker (in app settings).
 
 - `eng/BuildTools`: build-time tools.
