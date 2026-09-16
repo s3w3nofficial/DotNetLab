@@ -158,28 +158,16 @@ Also in this WorkerHost pass:
       `SendAsync` (already-cancelled tokens Register immediately and send
       `Cancel` before the request)
 
-Next: compile-in-flight guard.
+### 3. Compile-in-flight guard — done
 
-### 3. Compile-in-flight guard
+`CompilationSession` gates work with `_compileInFlight`. Fluxor `Running` is only
+set when the UI should look busy. A quiet cached follow-up compile can no
+longer overlap another compile and both write `LastInput` /
+`_liveCompiledInput` / `Compiled`.
 
-`CompilationSession.CompileAsync` early-outs on Fluxor `Running`, then sets
-`Running` only when the UI should look busy:
-
-```
-showBusy = storeInCache || (updateDisplayedOutput && Compiled is null)
-```
-
-Cached-output follow-up compiles run with `Running == false`, so a second
-compile can start and both write `LastInput` / `_liveCompiledInput` /
-`Compiled`.
-
-Separate UI `CompilationState.Running` from a runtime gate
-(`_compileInFlight` is enough). Do not reuse Fluxor `Running` as a mutex.
-
-`ApplySavedStateCoreAsync` currently fire-and-forgets
-`AfterDocumentsChangedAsync` then applies template cache and compile. An
-ordered language queue makes that easier to reason about; the in-flight gate
-still has to exist.
+`ApplySavedStateCoreAsync` still fire-and-forgets `AfterDocumentsChangedAsync`
+then template cache / compile; the in-flight gate is the mutex those races
+needed. A latest-wins scheduler is the next item.
 
 ### 4. Optional compilation scheduler Channel
 

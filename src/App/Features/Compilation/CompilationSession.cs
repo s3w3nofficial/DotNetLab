@@ -23,6 +23,7 @@ public sealed class CompilationSession
     private readonly ILogger _logger;
     private GenerationCounter _compileGeneration;
     private GenerationCounter _applyGeneration;
+    private int _compileInFlight;
     private bool _storeInCache;
     private CompilationInput? _liveCompiledInput;
     private string? _compiledCompilerKey;
@@ -78,11 +79,7 @@ public sealed class CompilationSession
 
     internal bool IsCurrentCompile(int generation) => _compileGeneration.IsCurrent(generation);
 
-    private bool Running
-    {
-        get => _compilation.Value.Running;
-        set => _dispatcher.Dispatch(new SetRunningAction(value));
-    }
+    private void SetRunning(bool value) => _dispatcher.Dispatch(new SetRunningAction(value));
 
     private CompilerState Compiler => _compiler.Value;
 
@@ -94,107 +91,114 @@ public sealed class CompilationSession
 
     public async Task CompileAsync(bool storeInCache, bool updateDisplayedOutput)
     {
-        if (Running || Compiler.Loading)
+        if (Compiler.Loading || Interlocked.CompareExchange(ref _compileInFlight, 1, 0) != 0)
         {
             return;
         }
 
-        var input = _host.CreateCompilationInput();
-        if (CanReuseLastCompile(input))
+        var appliedToDisplay = false;
+        try
         {
-            _dispatcher.Dispatch(new SetStaleAction(false));
-            _host.Notify();
-            await _host.PersistUrlAsync(snapshot: true);
-            if (storeInCache && Compiled is { } reused)
+            var input = _host.CreateCompilationInput();
+            if (CanReuseLastCompile(input))
             {
-                StoreCompiledOutput(reused);
+                _dispatcher.Dispatch(new SetStaleAction(false));
+                _host.Notify();
+                await _host.PersistUrlAsync(snapshot: true);
+                if (storeInCache && Compiled is { } reused)
+                {
+                    StoreCompiledOutput(reused);
+                }
+
+                if (updateDisplayedOutput && _host.OutputCache.IsEmpty)
+                {
+                    _ = _host.OutputCache.LoadDisplayedAsync();
+                }
+
+                _ = _host.RefreshLanguageServicesAfterCompileAsync();
+                return;
             }
 
-            if (updateDisplayedOutput && _host.OutputCache.IsEmpty)
+            var showBusy = storeInCache || (updateDisplayedOutput && Compiled is null);
+            if (showBusy)
             {
+                SetRunning(true);
+                _host.Notify();
+                await Task.Yield();
+            }
+
+            try
+            {
+                if (showBusy)
+                {
+                    await _host.PersistUrlAsync(snapshot: true);
+                }
+
+                LastInput = input;
+                var compiled = await _worker.SendAsync(
+                    new WorkerInputMessage.Compile(input, LanguageServicesEnabled: Preferences.LanguageServices)
+                    {
+                        Id = _worker.NextMessageId(),
+                    });
+                _liveCompiledInput = input;
+                _compiledCompilerKey = Compiler.Key;
+
+                var applyToDisplay = storeInCache || (updateDisplayedOutput && Compiled is null);
+                if (applyToDisplay)
+                {
+                    var sameAssembly = ReferenceEquals(Compiled, compiled);
+                    Compiled = compiled;
+                    _storeInCache = storeInCache;
+                    _dispatcher.Dispatch(new SetStaleAction(false));
+                    appliedToDisplay = true;
+                    if (!sameAssembly)
+                    {
+                        BeginNewOutputGeneration();
+                    }
+
+                    if (storeInCache)
+                    {
+                        StoreCompiledOutput(compiled);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                if (storeInCache || (updateDisplayedOutput && Compiled is null))
+                {
+                    Compiled = CompiledAssembly.Fail(ex.ToString());
+                    LastInput = input;
+                    _liveCompiledInput = input;
+                    _compiledCompilerKey = Compiler.Key;
+                    BeginNewOutputGeneration();
+                    appliedToDisplay = true;
+                }
+                else
+                {
+                    _logger.LogError(ex, "Language services compile after cached output failed.");
+                }
+            }
+            finally
+            {
+                if (showBusy)
+                {
+                    SetRunning(false);
+                    _host.Notify();
+                }
+            }
+
+            if (appliedToDisplay)
+            {
+                RefreshTemporaryErrorList();
                 _ = _host.OutputCache.LoadDisplayedAsync();
             }
 
-            _ = _host.RefreshLanguageServicesAfterCompileAsync();
-            return;
-        }
-
-        var showBusy = storeInCache || (updateDisplayedOutput && Compiled is null);
-        var appliedToDisplay = false;
-        if (showBusy)
-        {
-            Running = true;
-            _host.Notify();
-            await Task.Yield();
-        }
-
-        try
-        {
-            if (showBusy)
-            {
-                await _host.PersistUrlAsync(snapshot: true);
-            }
-
-            LastInput = input;
-            var compiled = await _worker.SendAsync(
-                new WorkerInputMessage.Compile(input, LanguageServicesEnabled: Preferences.LanguageServices)
-                {
-                    Id = _worker.NextMessageId(),
-                });
-            _liveCompiledInput = input;
-            _compiledCompilerKey = Compiler.Key;
-
-            var applyToDisplay = storeInCache || (updateDisplayedOutput && Compiled is null);
-            if (applyToDisplay)
-            {
-                var sameAssembly = ReferenceEquals(Compiled, compiled);
-                Compiled = compiled;
-                _storeInCache = storeInCache;
-                _dispatcher.Dispatch(new SetStaleAction(false));
-                appliedToDisplay = true;
-                if (!sameAssembly)
-                {
-                    BeginNewOutputGeneration();
-                }
-
-                if (storeInCache)
-                {
-                    StoreCompiledOutput(compiled);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            if (storeInCache || (updateDisplayedOutput && Compiled is null))
-            {
-                Compiled = CompiledAssembly.Fail(ex.ToString());
-                LastInput = input;
-                _liveCompiledInput = input;
-                _compiledCompilerKey = Compiler.Key;
-                BeginNewOutputGeneration();
-                appliedToDisplay = true;
-            }
-            else
-            {
-                _logger.LogError(ex, "Language services compile after cached output failed.");
-            }
+            await _host.RefreshLanguageServicesAfterCompileAsync();
         }
         finally
         {
-            if (showBusy)
-            {
-                Running = false;
-                _host.Notify();
-            }
+            Interlocked.Exchange(ref _compileInFlight, 0);
         }
-
-        if (appliedToDisplay)
-        {
-            RefreshTemporaryErrorList();
-            _ = _host.OutputCache.LoadDisplayedAsync();
-        }
-
-        await _host.RefreshLanguageServicesAfterCompileAsync();
     }
 
     internal void ResetWorkerState()
