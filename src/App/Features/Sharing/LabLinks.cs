@@ -7,9 +7,9 @@ namespace DotNetLab.Features.Sharing;
 
 public static class LabLinks
 {
-    public const string Repository = "https://github.com/s3w3nofficial/DotNetLabRedesign";
+    public const string Repository = "https://github.com/jjonescz/DotNetLab";
     public const string Releases = $"{Repository}/releases";
-    public const string NativeApps = "https://github.com/jjonescz/DotNetLab/blob/main/docs/native-apps.md";
+    public const string NativeApps = $"{Repository}/blob/main/docs/native-apps.md";
     public const string GistNew = "https://gist.github.com/";
     public const string GitHubApi = "https://api.github.com";
 
