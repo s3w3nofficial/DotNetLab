@@ -1,9 +1,10 @@
 using DotNetLab.Editor;
 using DotNetLab.Editor.LanguageServices;
-using DotNetLab.Features.Documents;
+using DotNetLab.Editor.Monaco;
 using DotNetLab.Features.Preferences;
 using DotNetLab.Features.Sharing;
 using DotNetLab.Features.Theme;
+using DotNetLab.Features.Updates;
 using DotNetLab.Features.Workspace;
 using DotNetLab.Infrastructure.Browser;
 using DotNetLab.Infrastructure.Logging;

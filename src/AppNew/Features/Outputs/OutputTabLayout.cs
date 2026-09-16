@@ -113,7 +113,6 @@ public sealed class OutputTabLayout
         }
 
         EnsureActiveOutput();
-        _state.PublishOutputs();
         _state.Notify();
     }
 
@@ -128,7 +127,6 @@ public sealed class OutputTabLayout
         var index = order.IndexOf(type);
         var next = index + delta;
         (order[index], order[next]) = (order[next], order[index]);
-        _state.PublishOutputs();
         _state.Notify();
     }
 
@@ -143,7 +141,6 @@ public sealed class OutputTabLayout
         }
 
         EnsureActiveOutput();
-        _state.PublishOutputs();
         _state.Notify();
     }
 
@@ -189,7 +186,6 @@ public sealed class OutputTabLayout
         _openOutputTabs.Clear();
         Revision++;
         EnsureActiveOutput();
-        _state.PublishOutputs();
         _state.Notify();
     }
 
@@ -256,7 +252,6 @@ public sealed class OutputTabLayout
 
         tabs.Add(type);
         _state.ActiveOutput = type;
-        _state.PublishOutputs();
         _state.Notify();
     }
 
@@ -276,7 +271,6 @@ public sealed class OutputTabLayout
             .ThenBy(id => tabs.IndexOf(id))
             .ToList();
         Revision++;
-        _state.PublishOutputs();
         _state.Notify();
     }
 
@@ -309,7 +303,6 @@ public sealed class OutputTabLayout
 
         Revision++;
         EnsureActiveOutput();
-        _state.PublishOutputs();
         _state.Notify();
     }
 
@@ -358,7 +351,6 @@ public sealed class OutputTabLayout
             .Select(tab => tab.Type)
             .Where(id => !open.Contains(id) && id != LabCatalog.ErrorsOutputType)
             .ToHashSet(StringComparer.Ordinal);
-        _state.PublishOutputs();
         _state.Notify();
     }
     public void EnsureActiveOutput()
@@ -367,7 +359,6 @@ public sealed class OutputTabLayout
         var tabs = CurrentOutputTabIds;
         if (tabs.Contains(_state.ActiveOutput))
         {
-            _state.PublishOutputs();
             return;
         }
 
@@ -633,8 +624,6 @@ internal interface IOutputWorkspace
     string ActiveSource { get; }
 
     string ActiveOutput { get; set; }
-
-    void PublishOutputs();
 
     void Notify();
 }

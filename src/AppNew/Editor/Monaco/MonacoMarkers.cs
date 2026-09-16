@@ -1,7 +1,7 @@
 using BlazorMonaco;
 using BlazorMonaco.Editor;
 
-namespace DotNetLab;
+namespace DotNetLab.Editor.Monaco;
 
 internal static class MonacoConstants
 {

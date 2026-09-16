@@ -1,4 +1,5 @@
 using DotNetLab;
+using DotNetLab.Features.Updates;
 using DotNetLab.Lab;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using System.Runtime.Versioning;

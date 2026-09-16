@@ -1,4 +1,4 @@
-namespace DotNetLab;
+namespace DotNetLab.Features.Updates;
 
 public interface IUpdateChecker
 {

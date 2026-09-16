@@ -61,6 +61,16 @@ public sealed class OutputTabTests
     }
 
     [TestMethod]
+    public void AddOutputTab_SelectsTheNewTab()
+    {
+        var (tabs, host) = Create();
+        tabs.CaptureOpenOutputTabs(["cs", "errors"]);
+        tabs.AddOutputTab("il");
+        tabs.CurrentOutputTabIds.Should().Contain("il");
+        host.ActiveOutput.Should().Be("il");
+    }
+
+    [TestMethod]
     public void ApplySavedOutputTabs_IgnoresGarbage()
     {
         var (tabs, _) = Create();
@@ -78,10 +88,6 @@ public sealed class OutputTabTests
     {
         public string ActiveSource { get; set; } = "Program.cs";
         public string ActiveOutput { get; set; } = "cs";
-
-        public void PublishOutputs()
-        {
-        }
 
         public void Notify()
         {

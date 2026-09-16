@@ -1,7 +1,7 @@
 ﻿using BlazorMonaco;
 using BlazorMonaco.Languages;
 
-namespace DotNetLab;
+namespace DotNetLab.Editor.Monaco;
 
 /// <summary>
 /// <see href="https://github.com/serdarciplak/BlazorMonaco/issues/124"/>

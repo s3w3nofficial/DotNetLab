@@ -25,12 +25,12 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
     private readonly IState<CompilationState> _compilation;
     private readonly IState<DocumentsState> _documents;
     private readonly IState<WorkspaceState> _workspace;
-    private readonly IState<OutputsState> _outputs;
     private readonly IDispatcher _dispatcher;
     private bool _suppressUrlPersist;
     private bool _settingsReady;
     private bool _compilerWasLoading;
     private Task? _languageInit;
+    private string _activeOutput = "cs";
 
     public LabWorkspaceState(
         WorkerHost worker,
@@ -44,7 +44,6 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
         IState<CompilationState> compilation,
         IState<DocumentsState> documents,
         IState<WorkspaceState> workspace,
-        IState<OutputsState> outputs,
         IDispatcher dispatcher,
         ILogger<LabWorkspaceState> logger)
     {
@@ -57,7 +56,6 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
         _compilation = compilation;
         _documents = documents;
         _workspace = workspace;
-        _outputs = outputs;
         _dispatcher = dispatcher;
         Documents = new LabDocuments(this, dispatcher);
         Tabs = new OutputTabLayout(this);
@@ -72,13 +70,11 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
             compilation,
             dispatcher,
             logger);
-        PublishOutputs();
         _compiler.StateChanged += OnCompilerStoreChanged;
         _preferences.StateChanged += OnPreferencesChanged;
         _compilation.StateChanged += OnCompilationChanged;
         _documents.StateChanged += OnDocumentsChanged;
         _workspace.StateChanged += OnWorkspaceChanged;
-        _outputs.StateChanged += OnOutputsChanged;
         _worker.Failed += OnWorkerFailed;
     }
 
@@ -114,11 +110,11 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
 
     public string ActiveOutput
     {
-        get => OutputsSnapshot.ActiveOutput;
+        get => _activeOutput;
         set
         {
             var dismiss = OutputCache.DismissTemporaryErrorList();
-            if (string.Equals(OutputsSnapshot.ActiveOutput, value, StringComparison.Ordinal))
+            if (string.Equals(_activeOutput, value, StringComparison.Ordinal))
             {
                 if (dismiss)
                 {
@@ -128,7 +124,8 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
                 return;
             }
 
-            PublishOutputs(value);
+            _activeOutput = value;
+            Notify();
             _ = OutputCache.EnsureOutputLoadedAsync(value);
             _ = PersistUrlAsync();
         }
@@ -160,7 +157,6 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
         _compilation.StateChanged -= OnCompilationChanged;
         _documents.StateChanged -= OnDocumentsChanged;
         _workspace.StateChanged -= OnWorkspaceChanged;
-        _outputs.StateChanged -= OnOutputsChanged;
         _worker.Failed -= OnWorkerFailed;
     }
 
@@ -171,8 +167,6 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
     private void OnDocumentsChanged(object? sender, EventArgs e) => Notify();
 
     private void OnWorkspaceChanged(object? sender, EventArgs e) => Notify();
-
-    private void OnOutputsChanged(object? sender, EventArgs e) => Notify();
 
     private void OnCompilerStoreChanged(object? sender, EventArgs e)
     {
@@ -619,20 +613,6 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
     private DocumentsState DocumentsSnapshot => _documents.Value;
 
     private WorkspaceState WorkspaceSnapshot => _workspace.Value;
-
-    private OutputsState OutputsSnapshot => _outputs.Value;
-
-    public void PublishOutputs(string? activeOutput = null)
-    {
-        _dispatcher.Dispatch(new SetOutputsAction(new OutputsState
-        {
-            ActiveOutput = activeOutput ?? OutputsSnapshot.ActiveOutput,
-            Revision = Tabs.Revision,
-            CurrentOutputTabIds = [.. Tabs.CurrentOutputTabIds],
-        }));
-    }
-
-    void IOutputWorkspace.PublishOutputs() => PublishOutputs();
 
     public CompilationInput CreateCompilationInput()
     {

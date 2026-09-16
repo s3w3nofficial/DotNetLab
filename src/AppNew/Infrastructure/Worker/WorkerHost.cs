@@ -25,7 +25,7 @@ public sealed class WorkerHost : IAsyncDisposable
     private readonly Dispatcher _dispatcher = Dispatcher.CreateDefault();
     private readonly ConcurrentDictionary<int, TaskCompletionSource<WorkerOutputMessage>> _pending = new();
     private readonly SemaphoreSlim _startLock = new(1, 1);
-    private readonly SemaphoreSlim _inProcessGate = new(1, 1);
+    private readonly InProcessRequestCount _inProcessRequests = new();
     [SupportedOSPlatform("browser")]
     private readonly Lazy<Task> _controllerJs = new(() =>
         JSHost.ImportAsync(nameof(WorkerHost), "../_content/DotNetLab.AppNew/js/WorkerController.js"));
@@ -74,7 +74,6 @@ public sealed class WorkerHost : IAsyncDisposable
         }
 
         _startLock.Dispose();
-        _inProcessGate.Dispose();
     }
 
     public async Task RecreateAsync()
@@ -159,9 +158,17 @@ public sealed class WorkerHost : IAsyncDisposable
 
         if (_useWorker != true)
         {
-            var executor = _services!.GetRequiredService<WorkerInputMessage.IExecutor>();
+            using var lease = _inProcessRequests.Enter();
+            var services = Volatile.Read(ref _services);
+            if (services is null || _disposed || epoch != Volatile.Read(ref _epoch))
+            {
+                return DisposedFailure(message);
+            }
+
+            var executor = services.GetRequiredService<WorkerInputMessage.IExecutor>();
             // Do not serialize in-process messages: Cancel must overlap the request it aborts,
             // matching src/App WorkerController (ungated HandleAndGetOutputAsync / Task.Run).
+            // Recreate waits for _inProcessRequests to drain before disposing this provider.
             _logger.Log(
                 message is WorkerInputMessage.Ping ? LogLevel.Trace : LogLevel.Debug,
                 "=> {Id}: {Type} (fg)",
@@ -304,17 +311,10 @@ public sealed class WorkerHost : IAsyncDisposable
 
         if (_services is not null)
         {
-            await _inProcessGate.WaitAsync();
-            try
-            {
-                await DisposeServicesAsync(_services);
-            }
-            finally
-            {
-                _inProcessGate.Release();
-            }
-
+            var services = _services;
             _services = null;
+            await _inProcessRequests.WhenIdleAsync();
+            await DisposeServicesAsync(services);
         }
 
         DiscardPending("Worker disposed");

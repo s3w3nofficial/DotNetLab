@@ -3,7 +3,7 @@ using Microsoft.JSInterop;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 
-namespace DotNetLab;
+namespace DotNetLab.Editor.Monaco;
 
 using CursorPositionCallback = Func<int, Task>;
 

@@ -1,3 +1,4 @@
+using DotNetLab.Editor.Monaco;
 using DotNetLab.Lab;
 using Microsoft.JSInterop;
 

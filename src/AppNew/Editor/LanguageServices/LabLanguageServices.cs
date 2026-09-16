@@ -1,5 +1,6 @@
 using BlazorMonaco.Editor;
 using BlazorMonaco.Languages;
+using DotNetLab.Editor.Monaco;
 using DotNetLab.Features.Documents;
 using DotNetLab.Infrastructure.Worker;
 using DotNetLab.Lab;
