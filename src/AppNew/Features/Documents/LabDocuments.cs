@@ -1,4 +1,3 @@
-using DotNetLab.Features.Workspace;
 using DotNetLab.Lab;
 using Fluxor;
 
@@ -6,11 +5,11 @@ namespace DotNetLab.Features.Documents;
 
 public sealed class LabDocuments
 {
-    private readonly LabWorkspaceState _state;
+    private readonly IDocumentWorkspace _state;
     private readonly IDispatcher _dispatcher;
     private readonly Dictionary<string, string> _modelUris = new(StringComparer.Ordinal);
 
-    public LabDocuments(LabWorkspaceState state, IDispatcher dispatcher)
+    internal LabDocuments(IDocumentWorkspace state, IDispatcher dispatcher)
     {
         _state = state;
         _dispatcher = dispatcher;
@@ -475,4 +474,21 @@ public sealed class LabDocuments
             ModelUris = new Dictionary<string, string>(_modelUris, StringComparer.Ordinal),
         }));
     }
+}
+
+internal interface IDocumentWorkspace
+{
+    string ActiveOutput { get; set; }
+
+    bool Stale { get; set; }
+
+    void EnsureActiveOutput();
+
+    void Notify();
+
+    void NotifyStatus();
+
+    Task AfterDocumentsChangedAsync(IReadOnlyList<string> before);
+
+    Task PersistUrlAsync(bool snapshot = false);
 }

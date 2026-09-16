@@ -27,6 +27,7 @@
     <Project Path="src/WorkerWebAssembly/WorkerWebAssembly.csproj" />
   </Folder>
   <Folder Name="/test/">
+    <Project Path="test/AppNewTests/AppNewTests.csproj" />
     <Project Path="test/UnitTests/UnitTests.csproj" />
   </Folder>
   <Folder Name="/_/">

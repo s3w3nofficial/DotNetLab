@@ -14,7 +14,7 @@ using Microsoft.JSInterop;
 
 namespace DotNetLab.Features.Workspace;
 
-public sealed class LabWorkspaceState : IDisposable
+public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IDisposable
 {
     private readonly WorkerHost _worker;
     private readonly LabLanguageServices _language;
@@ -34,8 +34,8 @@ public sealed class LabWorkspaceState : IDisposable
     private readonly Dictionary<string, string> _outputModelUris = new(StringComparer.Ordinal);
     private readonly HashSet<string> _outputLoading = new(StringComparer.Ordinal);
     private bool _showErrorListIfOutputEmpty;
-    private int _compileGeneration;
-    private int _applyGeneration;
+    private GenerationCounter _compileGeneration;
+    private GenerationCounter _applyGeneration;
     private bool _suppressUrlPersist;
     private bool _settingsReady;
     private bool _storeInCache;
@@ -637,7 +637,7 @@ public sealed class LabWorkspaceState : IDisposable
         BeginNewOutputGeneration();
         Notify();
 
-        var applyGeneration = ++_applyGeneration;
+        var applyGeneration = _applyGeneration.Begin();
         var compilers = WaitUntilCompilerIdleAsync();
 
         var usedTemplateCache = TryApplyTemplateCache(state);
@@ -922,9 +922,11 @@ public sealed class LabWorkspaceState : IDisposable
         }));
     }
 
+    void IOutputWorkspace.PublishOutputs() => PublishOutputs();
+
     private void BeginNewOutputGeneration()
     {
-        _compileGeneration++;
+        _compileGeneration.Begin();
         _outputCache.Clear();
         _outputLoading.Clear();
     }
@@ -1056,13 +1058,13 @@ public sealed class LabWorkspaceState : IDisposable
             return;
         }
 
-        var generation = _compileGeneration;
+        var generation = _compileGeneration.Current;
         try
         {
             // LoadAsync is often already completed for a cached assembly. Yield so Notify
             // does not run in the middle of a Blazor render (GetOutput is called from one).
             await Task.Yield();
-            if (generation != _compileGeneration || Running || Compiled is null)
+            if (!_compileGeneration.IsCurrent(generation) || Running || Compiled is null)
             {
                 return;
             }
@@ -1094,7 +1096,7 @@ public sealed class LabWorkspaceState : IDisposable
                 result = new() { Text = ex.ToString(), Metadata = CompiledFileOutputMetadata.SpecialMessage };
             }
 
-            if (generation != _compileGeneration)
+            if (!_compileGeneration.IsCurrent(generation))
             {
                 return;
             }
@@ -1321,7 +1323,7 @@ public sealed class LabWorkspaceState : IDisposable
     private async Task TryLoadServerCacheAsync(SavedState state, int applyGeneration)
     {
         var result = await _cache.LoadAsync(state);
-        if (applyGeneration != _applyGeneration || result is null)
+        if (!_applyGeneration.IsCurrent(applyGeneration) || result is null)
         {
             return;
         }

@@ -72,9 +72,10 @@ the current god object; see [State direction](#state-direction).
 - [x] `StatusBar` drops `ILabStatus` (cursor line/col and diagnostic counts on `ILabWorkspace`; `StatusSelectors` formats them; no cursor Fluxor store)
 - [x] `ILabShell` gone (`MainLayout` / brand / command / palette use `ILabWorkspace` for settings / palette / paste)
 - [x] `ILabSharing` gone (`LabShare` / `LabUrlSync` / `LabLinks` use `ILabWorkspace`; no Sharing Fluxor store)
-- [x] `ILabDocumentHost` gone (`LabDocuments` takes `ILabWorkspace`)
-- [x] `ILabOutputHost` gone (`OutputTabLayout` takes `ILabWorkspace`)
+- [x] `ILabDocumentHost` gone (`LabDocuments` takes `IDocumentWorkspace`)
+- [x] `ILabOutputHost` gone (`OutputTabLayout` takes `IOutputWorkspace`)
 - [x] `ILabWorkspace` / `ILabEditor` gone (`LabWorkspace`, `LabCodeEditor`, sharing, documents, outputs, and chrome inject `LabWorkspaceState`)
+- [x] Tests for URL state, documents, tabs, and compile generations (`test/AppNewTests`; `LabDocuments` / `OutputTabLayout` take internal host seams; `GenerationCounter` on the workspace)
 
 ## P0
 
@@ -269,10 +270,10 @@ Namespaces carry the rest (`DotNetLab.Features.Documents`).
 - [x] `ILabStatus` gone (`StatusBar` uses `ILabWorkspace` + `StatusSelectors`; cursor/diagnostics not Fluxor)
 - [x] `ILabShell` gone (`MainLayout` / brand / command / palette use `ILabWorkspace`)
 - [x] `ILabSharing` gone (`LabShare` / `LabUrlSync` / `LabLinks` use `ILabWorkspace`)
-- [x] `ILabDocumentHost` gone (`LabDocuments` takes `ILabWorkspace`)
-- [x] `ILabOutputHost` gone (`OutputTabLayout` takes `ILabWorkspace`)
+- [x] `ILabDocumentHost` gone (`LabDocuments` takes `IDocumentWorkspace`)
+- [x] `ILabOutputHost` gone (`OutputTabLayout` takes `IOutputWorkspace`)
 - [x] `ILabWorkspace` / `ILabEditor` gone (`LabWorkspaceState` is the remaining facade; not Fluxor)
+- [x] Tests for URL state, documents, tabs, and compile generations (`test/AppNewTests`; generation cancel is `GenerationCounter`)
 - Host-neutral `AddDotNetLabApp()` and a true Server vs WASM split
 - `IWorkerTransport` (do not invent a new worker protocol)
-- Tests for URL state, documents, tabs, and compile generations
 - Extract `Editor/Monaco` to `DotNetLab.Editor.Monaco` (`LabCodeEditor` already injects `LabWorkspaceState`)
