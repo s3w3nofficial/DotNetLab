@@ -8,7 +8,6 @@ using DotNetLab.Infrastructure.Browser;
 using DotNetLab.Infrastructure.Logging;
 using DotNetLab.Infrastructure.Persistence;
 using DotNetLab.Infrastructure.Worker;
-using DotNetLab.Lab;
 using DotNetLab.Layout;
 using DotNetLab.Shell.CommandPalette;
 using DotNetLab.Shell.Header;

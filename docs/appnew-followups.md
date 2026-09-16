@@ -6,10 +6,9 @@ Track remaining work after the UI folder split and the first ISP cuts
 host-neutral `src/App` replacement is an explicit goal.
 
 Keep the current chrome folders until feature stores exist, then move into
-[Target folders](#target-folders). `LabWorkspace` injects `ILabWorkspace`.
-`LabCodeEditor` injects `ILabEditor`. Sharing (`LabShare` / `LabUrlSync` /
-`LabLinks`) uses `ILabSharing`. Do not Fluxor the current god object; see
-[State direction](#state-direction).
+[Target folders](#target-folders). `Lab/` is empty. `LabWorkspaceState` lives in
+`Features/Workspace/` and still implements the `ILab*` facades. Do not Fluxor
+the current god object; see [State direction](#state-direction).
 
 ## Done
 
@@ -63,6 +62,9 @@ Keep the current chrome folders until feature stores exist, then move into
 - [x] `LabCodeEditor` injects `ILabEditor` (file stays in `Workspace/`; Monaco stays source of truth; apply stays on the workspace)
 - [x] Move `LabCodeEditor` into `Editor/` (`ILabEditor` already there; no `DotNetLab.Editor.Monaco` project)
 - [x] Sharing (`LabShare` / `LabUrlSync` / `LabLinks`) uses `ILabSharing` (no Fluxor; `SavedState` still from Shared)
+- [x] `LabDocuments` uses `ILabDocumentHost` (`OutputTabLayout` still takes `LabWorkspaceState`)
+- [x] `OutputTabLayout` uses `ILabOutputHost` (`LabWorkspaceState` still constructs it)
+- [x] Move `LabWorkspaceState` into `Features/Workspace/` (`Lab/` empty; `ILab*` still implemented)
 
 ## P0
 
@@ -139,7 +141,7 @@ delete the facade in one pass.
 5. When a store is real, colocate its UI with it (e.g. `CompilerPicker` +
    `CompilerSection` move with `CompilerStore`, not before) and optionally
    convert that slice to Fluxor the same way Updates was converted.
-6. Shrink `LabWorkspaceState` / `Lab/` until both disappear.
+6. Shrink `LabWorkspaceState` / `Lab/` until both disappear. *(Lab/ empty; facade remains)*
 7. Cosmetic leftover: `Header/` → `Shell/Header/` for brand / command / memory
    only. *(done)*
 
@@ -208,7 +210,7 @@ Keep feature files flat (`CompilerState.cs`, `CompilerActions.cs`, … plus
 
 | Current | Target |
 |---|---|
-| `LabWorkspaceState.cs` | delete eventually (facade) |
+| `LabWorkspaceState.cs` | `Features/Workspace/` (facade; delete once `ILab*` go) |
 | `LabDocuments.cs` | `Features/Documents/` |
 | `OutputTabLayout.cs` | `Features/Outputs/` or `Features/Workspace/` |
 | `LabSettings.cs` | `Features/Preferences/` |
@@ -226,6 +228,8 @@ Keep feature files flat (`CompilerState.cs`, `CompilerActions.cs`, … plus
 | `ILabWorkspace.cs` | `Features/Workspace/` (pane surface; `LabWorkspaceState` still implements) |
 | `ILabEditor.cs` | `Editor/` (`LabCodeEditor` injects it; razor lives in `Editor/` too; no new project yet) |
 | `ILabSharing.cs` | `Features/Sharing/` (`LabShare` / `LabUrlSync` / `LabLinks`; workspace still implements) |
+| `ILabDocumentHost.cs` | `Features/Documents/` (`LabDocuments` constructed with the host; workspace still implements) |
+| `ILabOutputHost.cs` | `Features/Outputs/` (`OutputTabLayout` constructed with the host; workspace still implements) |
 
 Drop the `Lab` type prefix as files move (`DocumentsState`, not `LabDocuments`).
 Namespaces carry the rest (`DotNetLab.Features.Documents`).
@@ -239,7 +243,10 @@ Namespaces carry the rest (`DotNetLab.Features.Documents`).
 - [x] `LabCodeEditor` injecting a narrow editor surface instead of `LabWorkspaceState`
 - [x] Move `LabCodeEditor` into `Editor/` (no `DotNetLab.Editor.Monaco` project yet)
 - [x] Sharing injecting a narrow surface instead of `LabWorkspaceState`
-- [ ] `Lab/` empty; `ILab*` gone
+- [x] `LabDocuments` using a narrow host instead of `LabWorkspaceState`
+- [x] `OutputTabLayout` using a narrow host instead of `LabWorkspaceState`
+- [x] `Lab/` empty (`LabWorkspaceState` in `Features/Workspace/`)
+- [ ] `ILab*` gone
 - Host-neutral `AddDotNetLabApp()` and a true Server vs WASM split
 - `IWorkerTransport` (do not invent a new worker protocol)
 - Tests for URL state, documents, tabs, and compile generations

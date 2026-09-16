@@ -5,11 +5,11 @@ namespace DotNetLab.Features.Documents;
 
 public sealed class LabDocuments
 {
-    private readonly LabWorkspaceState _state;
+    private readonly ILabDocumentHost _state;
     private readonly IDispatcher _dispatcher;
     private readonly Dictionary<string, string> _modelUris = new(StringComparer.Ordinal);
 
-    public LabDocuments(LabWorkspaceState state, IDispatcher dispatcher)
+    public LabDocuments(ILabDocumentHost state, IDispatcher dispatcher)
     {
         _state = state;
         _dispatcher = dispatcher;
@@ -113,7 +113,7 @@ public sealed class LabDocuments
         Publish();
         _state.ActiveOutput = template is "Razor" or "CSHTML" ? "gcs" : "cs";
         _state.Stale = true;
-        _state.Tabs.EnsureActiveOutput();
+        _state.EnsureActiveOutput();
         _state.Notify();
     }
 
@@ -173,7 +173,7 @@ public sealed class LabDocuments
         {
             ActiveSource = normalized;
             Publish();
-            _state.Tabs.EnsureActiveOutput();
+            _state.EnsureActiveOutput();
         }
         else
         {
@@ -217,7 +217,7 @@ public sealed class LabDocuments
         {
             ActiveSource = _sourceFiles.FirstOrDefault(name => !IsSpecialSource(name)) ?? _sourceFiles[0];
             Publish();
-            _state.Tabs.EnsureActiveOutput();
+            _state.EnsureActiveOutput();
         }
         else
         {
@@ -255,7 +255,7 @@ public sealed class LabDocuments
         EnsureUri(name);
         ActiveSource = name;
         Publish();
-        _state.Tabs.EnsureActiveOutput();
+        _state.EnsureActiveOutput();
         _state.Stale = true;
         _state.Notify();
     }
@@ -279,7 +279,7 @@ public sealed class LabDocuments
 
         ActiveSource = fileName;
         Publish();
-        _state.Tabs.EnsureActiveOutput();
+        _state.EnsureActiveOutput();
         _state.Notify();
     }
 
@@ -361,7 +361,7 @@ public sealed class LabDocuments
 
         ActiveSource = _sourceFiles.FirstOrDefault(name => !IsSpecialSource(name)) ?? _sourceFiles[0];
         Publish();
-        _state.Tabs.EnsureActiveOutput();
+        _state.EnsureActiveOutput();
         _state.Stale = true;
         _state.Notify();
     }
@@ -375,7 +375,7 @@ public sealed class LabDocuments
 
         ActiveSource = file;
         Publish();
-        _state.Tabs.EnsureActiveOutput();
+        _state.EnsureActiveOutput();
         _state.Notify();
     }
 
@@ -457,7 +457,7 @@ public sealed class LabDocuments
                 : "C#";
 
         Publish();
-        _state.Tabs.EnsureActiveOutput();
+        _state.EnsureActiveOutput();
         _state.Notify();
     }
 

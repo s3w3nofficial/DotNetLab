@@ -8,9 +8,9 @@ using DotNetLab.Features.Documents;
 using DotNetLab.Features.Outputs;
 using DotNetLab.Features.Preferences;
 using DotNetLab.Features.Sharing;
-using DotNetLab.Features.Workspace;
 using DotNetLab.Infrastructure.Persistence;
 using DotNetLab.Infrastructure.Worker;
+using DotNetLab.Lab;
 using DotNetLab.Layout;
 using DotNetLab.Shell.CommandPalette;
 using DotNetLab.Shell.Header;
@@ -18,9 +18,9 @@ using DotNetLab.Shell.StatusBar;
 using Fluxor;
 using Microsoft.JSInterop;
 
-namespace DotNetLab.Lab;
+namespace DotNetLab.Features.Workspace;
 
-public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILabPalette, ILabSettings, ILabShell, ILabWorkspace, ILabEditor, ILabSharing, IDisposable
+public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILabPalette, ILabSettings, ILabShell, ILabWorkspace, ILabEditor, ILabSharing, ILabDocumentHost, ILabOutputHost, IDisposable
 {
     private readonly WorkerHost _worker;
     private readonly LabLanguageServices _language;
@@ -131,7 +131,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     public bool Stale
     {
         get => Compilation.Stale;
-        internal set => _dispatcher.Dispatch(new SetStaleAction(value));
+        set => _dispatcher.Dispatch(new SetStaleAction(value));
     }
     public string Template => DocumentsSnapshot.Template;
 
@@ -961,7 +961,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
 
     private OutputsState OutputsSnapshot => _outputs.Value;
 
-    internal void PublishOutputs(string? activeOutput = null)
+    public void PublishOutputs(string? activeOutput = null)
     {
         _dispatcher.Dispatch(new SetOutputsAction(new OutputsState
         {
