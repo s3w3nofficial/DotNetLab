@@ -4,9 +4,10 @@ Track remaining work after the UI folder split and the first ISP cuts
 (`ILabStatus`, `ILabBrand`, `ILabCommands`, `ILabPalette`, `ILabSettings`,
 `ILabShell`). AppNew is a WASM rewrite behind `WebAssemblyNew`. DI is host-neutral
 (`AddDotNetLabApp`); the WASM host supplies `ILabEnvironment`,
-`IUpdateChecker`, and `IWorkerTransport`. `AppNew` still references WASM
-packages (`Components.WebAssembly` / Gateway). `ServerNew` still serves WASM
-static files.
+`IUpdateChecker`, and `IWorkerTransport`. `AppNew` is a Razor class library
+(`Components.Web`); WASM packages live on `WebAssemblyNew`. Monaco interop stays
+in `Editor/Monaco/` (`DotNetLab.Editor.Monaco`). `Server` and `ServerNew` are
+WASM static-file hosts (`UseBlazorFrameworkFiles`), matching each other.
 
 Keep the current chrome folders until feature stores exist, then move into
 [Target folders](#target-folders). `Lab/` is empty. `LabWorkspaceState` lives in
@@ -53,7 +54,7 @@ the current god object; see [State direction](#state-direction).
 - [x] Move `CommandPalette` into `Shell/CommandPalette/` (`StatusBar` stays put; `ILabPalette` stays on the workspace)
 - [x] Move `StatusBar` / `StatusSelectors` into `Shell/StatusBar/` (cursor and diagnostics stay on `ILabStatus`)
 - [x] Move `LabLanguageServices` / `LabCursorSync` into `Editor/LanguageServices/` (`LabCodeEditor` and Monaco stay put; apply stays on the workspace)
-- [x] Move `Monaco/` into `Editor/Monaco/` (`DotNetLab.Editor.Monaco` namespace; no separate project; JS module path unchanged)
+- [x] Move `Monaco/` into `Editor/Monaco/` (`DotNetLab.Editor.Monaco` namespace; JS module path `_content/DotNetLab.AppNew`)
 - [x] Move `IUpdateChecker` into `Features/Updates/` (`DisabledUpdateChecker` with it; WASM host still registers `WebAssemblyUpdateChecker`)
 - [x] Move `WorkerHost` into `Infrastructure/Worker/` (`IWorkerTransport` is the existing `WorkerController.js` protocol; JSHost lives on the WASM host)
 - [x] Move `TemplateCache` / `InputOutputCache` into `Infrastructure/Persistence/` (compiled output stays off Fluxor)
@@ -65,6 +66,7 @@ the current god object; see [State direction](#state-direction).
 - [x] Delete unused `StateStore<T>` and `ElementRect` (Fluxor replaced the Lab stores; `ElementRect` had no callers)
 - [x] Move `ILabEnvironment` / `LabEnvironment` into `Infrastructure/Browser/` (`AddDotNetLabApp` takes it; WASM host still constructs `LabEnvironment`)
 - [x] Host-neutral `AddDotNetLabApp` (`IServiceCollection` + `RegisterRootComponents`; WASM host in `WebAssemblyNew`; `IUpdateChecker` / `IWorkerTransport` host-supplied)
+- [x] AppNew is a host-neutral Razor library (`Components.Web`; WASM / Gateway stay on `WebAssemblyNew`; `ServerNew` matches `Server` as a WASM static-file host)
 - [x] Move `ILab*` interfaces next to the chrome that injects them (`LabWorkspaceState` still implements them)
 - [x] `LabWorkspace` injects `ILabWorkspace` (`LabCodeEditor` still injects `LabWorkspaceState`; catalog/fixture statics come from `LabCatalog` / `LabFixtures`)
 - [x] `LabCodeEditor` injects `ILabEditor` (file stays in `Workspace/`; Monaco stays source of truth; apply stays on the workspace)
@@ -92,10 +94,11 @@ the current god object; see [State direction](#state-direction).
 - [x] `CompilationSession` for compile / `Compiled` / generations / caches (`Stale` from compiler actions is a reducer; worker `GetOutput` still on the workspace)
 - [x] `WorkerHost` in-process request refcount (`InProcessRequestCount`; recreate drains before disposing the provider; epoch still drops stale results)
 - [x] Output layout session-only (`OutputTabLayout`; `ActiveOutput` on the workspace; no `SetOutputsAction`)
-- [x] `Monaco/` → `Editor/Monaco/` (`IUpdateChecker` colocated with Updates; no `DotNetLab.Editor.Monaco` project)
+- [x] `Monaco/` → `Editor/Monaco/` (`IUpdateChecker` colocated with Updates; `DotNetLab.Editor.Monaco` namespace, files stay in AppNew)
 - [x] Invalid share URL UX (`TryUncompress`; banner + C# default; `Uncompress` still does not throw)
 - [x] Document metadata session-only (`LabDocuments`; `SetDocumentsAction` snapshot deleted)
 - [x] `IWorkerTransport` (existing `WorkerController.js` protocol; `BrowserWorkerTransport` on WASM host)
+- [x] AppNew host-neutral library (`Components.Web`; WASM / Gateway on `WebAssemblyNew`)
 
 ## P0
 
@@ -223,10 +226,10 @@ compile is a session. Do **not** extract a `WorkspaceCommands` junk drawer.
       `HandleAndGetOutputAsync` finishes). Default path is the web worker.
       *(done; `InProcessRequestCount`, not a mutex — Cancel still overlaps)*
    6. Cosmetic last: `Monaco/` → `Editor/Monaco/`; `IUpdateChecker` next to
-      Updates or infrastructure. No `DotNetLab.Editor.Monaco` yet.
-      *(done; `Editor/Monaco/` + `Features/Updates/IUpdateChecker.cs`;
-      `AddDotNetLabApp` is host-neutral DI; `IWorkerTransport` is the existing
-      `WorkerController.js` protocol)*
+      Updates or infrastructure. No `DotNetLab.Editor.Monaco` project.
+      *(done; `Editor/Monaco/` + `DotNetLab.Editor.Monaco` namespace;
+      `IUpdateChecker` in `Features/Updates/`; `AddDotNetLabApp` is host-neutral
+      DI; `IWorkerTransport` is the existing `WorkerController.js` protocol)*
 
 Fluxor constraints: no keystrokes, no Monaco handles, no worker handles, no
 `CompiledAssembly` in the store. Effects for async; reducers for
@@ -303,7 +306,7 @@ Keep feature files flat (`CompilerState.cs`, `CompilerActions.cs`, … plus
 | `LabTheme*.cs` | `Features/Theme/` |
 | `LabUrlSync.cs`, `LabShare.cs` | `Features/Sharing/` |
 | `LabLanguageServices.cs`, `LabCursorSync.cs`, `EditorCursor.cs` | `Editor/` |
-| `Monaco/*.cs` | `Editor/Monaco/` (namespace `DotNetLab.Editor.Monaco`; no extra project) |
+| `Monaco/*.cs` | `Editor/Monaco/` (namespace `DotNetLab.Editor.Monaco`; stays in AppNew) |
 | `IUpdateChecker.cs` | `Features/Updates/` |
 | `WorkerHost.cs` | `Infrastructure/Worker/` (`IWorkerTransport`; `InProcessRequestCount` for in-process recreate) |
 | `IWorkerTransport.cs` | `Infrastructure/Worker/` (existing `WorkerController.js` protocol; `BrowserWorkerTransport` on WASM host) |
@@ -319,7 +322,7 @@ Keep feature files flat (`CompilerState.cs`, `CompilerActions.cs`, … plus
 | `ILabSettings.cs` | deleted (`SettingsDialog` / `PreferenceSettings` / `LabCommandBar` use `ILabWorkspace`; URL persist on `ILabEditor`) |
 | `ILabBrand.cs` | deleted (`LabBrandBar` uses `LabDocuments` + `ILabShell`) |
 | `ILabWorkspace.cs` | deleted (`LabWorkspace` / documents / outputs / sharing / chrome inject `LabWorkspaceState`) |
-| `ILabEditor.cs` | deleted (`LabCodeEditor` injects `LabWorkspaceState`; no `DotNetLab.Editor.Monaco` project yet) |
+| `ILabEditor.cs` | deleted (`LabCodeEditor` injects `LabWorkspaceState`; Monaco stays in `Editor/Monaco/`) |
 | `ILabSharing.cs` | deleted (`LabShare` / `LabUrlSync` / `LabLinks` use `ILabWorkspace`) |
 | `ILabDocumentHost.cs` | deleted (`LabDocuments` takes `ILabWorkspace`) |
 | `ILabOutputHost.cs` | deleted (`OutputTabLayout` takes `ILabWorkspace`) |
@@ -335,7 +338,7 @@ Namespaces carry the rest (`DotNetLab.Features.Documents`).
 - [ ] Move each store + its UI into `Features/` / `Shell/` / `Editor/` / `Infrastructure/`
 - [x] `LabWorkspace` injecting a narrow workspace surface instead of `LabWorkspaceState`
 - [x] `LabCodeEditor` injecting a narrow editor surface instead of `LabWorkspaceState`
-- [x] Move `LabCodeEditor` into `Editor/` (no `DotNetLab.Editor.Monaco` project yet)
+- [x] Move `LabCodeEditor` into `Editor/` (no `DotNetLab.Editor.Monaco` project)
 - [x] Sharing injecting a narrow surface instead of `LabWorkspaceState`
 - [x] `LabDocuments` using a narrow host instead of `LabWorkspaceState`
 - [x] `OutputTabLayout` using a narrow host instead of `LabWorkspaceState`
@@ -360,10 +363,9 @@ Namespaces carry the rest (`DotNetLab.Features.Documents`).
 - [x] `CompilationSession` (`CompileAsync`, `Compiled`, generations, caches; compiler actions mark `Stale`; not Fluxor)
 - [x] `WorkerHost` in-process request refcount (epoch already drops results; `InProcessRequestCount` drains before dispose)
 - [x] Output layout: session-only (`OutputTabLayout`; `SetOutputsAction` snapshot deleted)
-- [x] `Monaco/` → `Editor/Monaco/`; colocate `IUpdateChecker` (`Features/Updates/`; no extra Monaco project)
+- [x] `Monaco/` → `Editor/Monaco/`; colocate `IUpdateChecker` (`Features/Updates/`; `DotNetLab.Editor.Monaco` namespace, files stay in AppNew)
 - [x] Invalid share URL UX (`TryUncompress`; banner + C# default; `Uncompress` still does not throw)
 - [x] Document metadata: session-only (`LabDocuments`; `SetDocumentsAction` snapshot deleted)
 - [x] Host-neutral `AddDotNetLabApp()` (`IServiceCollection`; WASM host in `WebAssemblyNew`; `ILabEnvironment` / `IUpdateChecker` / `IWorkerTransport` host-supplied)
 - [x] `IWorkerTransport` (existing `WorkerController.js` protocol; `BrowserWorkerTransport` on WASM host; default is `UnsupportedWorkerTransport`)
-- [ ] True Server vs WASM split (`AppNew` still references WASM packages / Gateway; `ServerNew` still static files; interactive Blazor Server later)
-- [ ] Extract `Editor/Monaco` to `DotNetLab.Editor.Monaco` (`LabCodeEditor` already injects `LabWorkspaceState`)
+- [x] AppNew is a host-neutral Razor library (`Components.Web`; WASM / Gateway stay on `WebAssemblyNew`)

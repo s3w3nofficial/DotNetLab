@@ -1,4 +1,4 @@
-﻿namespace DotNetLab;
+﻿namespace DotNetLab.Editor.Monaco;
 
 public sealed class HoverProvider(ILoggerFactory loggerFactory)
 {

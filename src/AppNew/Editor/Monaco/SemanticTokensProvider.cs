@@ -1,4 +1,4 @@
-﻿namespace DotNetLab;
+﻿namespace DotNetLab.Editor.Monaco;
 
 /// <summary>
 /// Combination of Monaco Editor's

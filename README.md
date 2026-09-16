@@ -50,7 +50,7 @@ To hit breakpoints, it is recommended to turn off the worker (in app settings).
 - `src/RoslynAccess`: `internal` access to Roslyn Compiler DLLs (via fake assembly name).
 - `src/RoslynCodeStyleAccess`: `internal` access to Roslyn CodeStyle DLLs (via fake assembly name).
 - `src/RoslynWorkspaceAccess`: `internal` access to Roslyn Workspace DLLs (via fake assembly name).
-- `src/Server`: a Blazor Server entrypoint for easier development of the App
+- `src/Server`: a WASM static-file host for easier development of the App
   (it has better tooling support for hot reload and debugging).
 - `src/Shared`: code used by `Compiler` that does not depend on Roslyn/Razor.
 - `src/WebAssembly`: web-assembly host of the `App` (this is what's deployed online).

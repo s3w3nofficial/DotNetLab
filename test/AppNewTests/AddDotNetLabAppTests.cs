@@ -1,4 +1,5 @@
 using AwesomeAssertions;
+using DotNetLab.Editor.Monaco;
 using DotNetLab.Features.Updates;
 using DotNetLab.Features.Workspace;
 using DotNetLab.Infrastructure.Browser;
@@ -21,6 +22,7 @@ public sealed class AddDotNetLabAppTests
 
         HasSingleton<ILabEnvironment>(services).Should().BeTrue();
         HasScoped<LabWorkspaceState>(services).Should().BeTrue();
+        HasScoped<BlazorMonacoInterop>(services).Should().BeTrue();
         HasScoped<WorkerHost>(services).Should().BeTrue();
         HasScoped<HttpClient>(services).Should().BeTrue();
         services.Should().Contain(d =>
