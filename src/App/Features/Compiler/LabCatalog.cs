@@ -17,10 +17,49 @@ public static class LabCatalog
     ];
 
     public static readonly string[] CompilerRefs = ["latest", "main", "built-in"];
-    public static readonly string[] RazorToolchains = ["Auto", "Source Generator", "Internal API"];
-    public static readonly string[] RazorStrategies = ["Runtime", "DesignTime"];
+    public static readonly RazorToolchain[] RazorToolchainOptions =
+    [
+        RazorToolchain.SourceGeneratorOrInternalApi,
+        RazorToolchain.SourceGenerator,
+        RazorToolchain.InternalApi,
+    ];
+    public static readonly RazorStrategy[] RazorStrategyOptions =
+    [
+        RazorStrategy.Runtime,
+        RazorStrategy.DesignTime,
+    ];
     public static readonly string[] Templates = ["C#", "Razor", "CSHTML"];
-    public static readonly string[] SymbolDisplayKinds = ["No Symbols", "Public Symbols", "Internal Symbols", "All Symbols"];
+    public static readonly SymbolDisplayKinds[] SymbolDisplayKindOptions =
+    [
+        SymbolDisplayKinds.None,
+        SymbolDisplayKinds.Public,
+        SymbolDisplayKinds.Internal,
+        SymbolDisplayKinds.Both,
+    ];
+
+    public static string RazorToolchainLabel(RazorToolchain value)
+        => value switch
+        {
+            RazorToolchain.SourceGenerator => "Source Generator",
+            RazorToolchain.InternalApi => "Internal API",
+            _ => "Auto",
+        };
+
+    public static string RazorStrategyLabel(RazorStrategy value)
+        => value switch
+        {
+            RazorStrategy.DesignTime => "DesignTime",
+            _ => "Runtime",
+        };
+
+    public static string SymbolDisplayKindLabel(SymbolDisplayKinds value)
+        => value switch
+        {
+            SymbolDisplayKinds.Public => "Public Symbols",
+            SymbolDisplayKinds.Internal => "Internal Symbols",
+            SymbolDisplayKinds.Both => "All Symbols",
+            _ => "No Symbols",
+        };
 
     public const string ErrorsOutputType = "errors";
     public const string FailOutputType = "fail";

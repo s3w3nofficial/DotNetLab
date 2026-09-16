@@ -4,6 +4,7 @@
 @inject IUpdateChecker Updates
 @inject IState<UpdateState> UpdateStore
 @inject IState<PreferencesState> Prefs
+@inject IState<CompilationOptionsState> Options
 @inject IDispatcher Dispatcher
 
 <FluentDialog @ref="_dialog" Class="lab-settings-dialog" Modal="false" OnStateChange="OnDialogStateChange">
@@ -25,10 +26,20 @@
         <div class="lab-settings-top">
             <PreferenceSettings>
                     <SettingRow Title="Razor Toolchain">
-                        <FluentSelect TOption="string" TValue="string" Items="LabCatalog.RazorToolchains" @bind-Value="Workspace.RazorToolchain" @bind-Value:after="Workspace.OnSavedStateChanged" />
+                        <FluentSelect TOption="RazorToolchain"
+                                      TValue="RazorToolchain"
+                                      Items="LabCatalog.RazorToolchainOptions"
+                                      OptionText="@(static (RazorToolchain value) => LabCatalog.RazorToolchainLabel(value))"
+                                      Value="Options.Value.RazorToolchain"
+                                      ValueChanged="SetRazorToolchain" />
                     </SettingRow>
                     <SettingRow Title="Razor Strategy">
-                        <FluentSelect TOption="string" TValue="string" Items="LabCatalog.RazorStrategies" @bind-Value="Workspace.RazorStrategy" @bind-Value:after="Workspace.OnSavedStateChanged" />
+                        <FluentSelect TOption="RazorStrategy"
+                                      TValue="RazorStrategy"
+                                      Items="LabCatalog.RazorStrategyOptions"
+                                      OptionText="@(static (RazorStrategy value) => LabCatalog.RazorStrategyLabel(value))"
+                                      Value="Options.Value.RazorStrategy"
+                                      ValueChanged="SetRazorStrategy" />
                     </SettingRow>
             </PreferenceSettings>
 
@@ -192,6 +203,12 @@
     }
 
     private void OnStateChanged() => InvokeAsync(StateHasChanged);
+
+    private void SetRazorToolchain(RazorToolchain value)
+        => Dispatcher.Dispatch(new SetRazorToolchainAction(value));
+
+    private void SetRazorStrategy(RazorStrategy value)
+        => Dispatcher.Dispatch(new SetRazorStrategyAction(value));
 
     protected override ValueTask DisposeAsyncCore(bool disposing)
     {

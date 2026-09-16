@@ -3,6 +3,8 @@
 @inject IState<PreferencesState> Prefs
 @inject IState<WorkspaceState> Layout
 @inject IState<CompilationState> Compilation
+@inject IState<CompilationOptionsState> Options
+@inject IDispatcher Dispatcher
 @inject IJSRuntime JS
 @implements IDisposable
 
@@ -175,20 +177,21 @@
                         @if (context == "tree")
                         {
                             <div class="lab-toolbar">
-                                <FluentSelect TOption="string"
-                                              TValue="string"
-                                              Items="LabCatalog.SymbolDisplayKinds"
-                                              @bind-Value="State.ShowSymbols"
-                                              @bind-Value:after="State.OnSavedStateChanged"
+                                <FluentSelect TOption="SymbolDisplayKinds"
+                                              TValue="SymbolDisplayKinds"
+                                              Items="LabCatalog.SymbolDisplayKindOptions"
+                                              OptionText="@(static (SymbolDisplayKinds kind) => LabCatalog.SymbolDisplayKindLabel(kind))"
+                                              Value="Options.Value.ShowSymbols"
+                                              ValueChanged="SetShowSymbols"
                                               AriaLabel="Symbols" />
-                                <FluentCheckbox Label="Operations" @bind-Value="State.ShowOperations" @bind-Value:after="State.OnSavedStateChanged" />
-                                <FluentCheckbox Label="Bound nodes" @bind-Value="State.ShowBoundNodes" @bind-Value:after="State.OnSavedStateChanged" />
+                                <FluentCheckbox Label="Operations" Value="Options.Value.ShowOperations" ValueChanged="SetShowOperations" />
+                                <FluentCheckbox Label="Bound nodes" Value="Options.Value.ShowBoundNodes" ValueChanged="SetShowBoundNodes" />
                             </div>
                         }
                         else if (context == "gcs")
                         {
                             <div class="lab-toolbar">
-                                <FluentCheckbox Label="Declaration document" @bind-Value="State.ShowDeclarationDocument" @bind-Value:after="State.OnSavedStateChanged" />
+                                <FluentCheckbox Label="Declaration document" Value="Options.Value.ShowDeclarationDocument" ValueChanged="SetShowDeclarationDocument" />
                             </div>
                         }
                         else if (context == "html")
@@ -200,16 +203,16 @@
                         else if (context == "il")
                         {
                             <div class="lab-toolbar">
-                                <FluentCheckbox Label="Decode custom attribute blobs" @bind-Value="State.DecodeCustomAttributeBlobs" @bind-Value:after="State.OnSavedStateChanged" />
-                                <FluentCheckbox Label="Sequence points" @bind-Value="State.ShowSequencePoints" @bind-Value:after="State.OnSavedStateChanged" />
-                                <FluentCheckbox Label="Full IL" @bind-Value="State.FullIl" @bind-Value:after="State.OnSavedStateChanged" />
+                                <FluentCheckbox Label="Decode custom attribute blobs" Value="Options.Value.DecodeCustomAttributeBlobs" ValueChanged="SetDecodeCustomAttributeBlobs" />
+                                <FluentCheckbox Label="Sequence points" Value="Options.Value.ShowSequencePoints" ValueChanged="SetShowSequencePoints" />
+                                <FluentCheckbox Label="Full IL" Value="Options.Value.FullIl" ValueChanged="SetFullIl" />
                             </div>
                         }
                         else if (context == "errors")
                         {
                             <div class="lab-toolbar">
-                                <FluentCheckbox Label="Exclude single file name" @bind-Value="State.ExcludeSingleFileNameInDiagnostics" @bind-Value:after="State.OnSavedStateChanged" />
-                                <FluentCheckbox Label="Include hidden diagnostics" @bind-Value="State.IncludeHiddenDiagnostics" @bind-Value:after="State.OnSavedStateChanged" />
+                                <FluentCheckbox Label="Exclude single file name" Value="Options.Value.ExcludeSingleFileNameInDiagnostics" ValueChanged="SetExcludeSingleFileNameInDiagnostics" />
+                                <FluentCheckbox Label="Include hidden diagnostics" Value="Options.Value.IncludeHiddenDiagnostics" ValueChanged="SetIncludeHiddenDiagnostics" />
                             </div>
                         }
                     </Toolbar>
@@ -337,6 +340,33 @@
         State.ActiveOutput = tab;
         State.Notify();
     }
+
+    private void SetShowSymbols(SymbolDisplayKinds value)
+        => Dispatcher.Dispatch(new SetShowSymbolsAction(value));
+
+    private void SetShowOperations(bool value)
+        => Dispatcher.Dispatch(new SetShowOperationsAction(value));
+
+    private void SetShowBoundNodes(bool value)
+        => Dispatcher.Dispatch(new SetShowBoundNodesAction(value));
+
+    private void SetShowDeclarationDocument(bool value)
+        => Dispatcher.Dispatch(new SetShowDeclarationDocumentAction(value));
+
+    private void SetDecodeCustomAttributeBlobs(bool value)
+        => Dispatcher.Dispatch(new SetDecodeCustomAttributeBlobsAction(value));
+
+    private void SetShowSequencePoints(bool value)
+        => Dispatcher.Dispatch(new SetShowSequencePointsAction(value));
+
+    private void SetFullIl(bool value)
+        => Dispatcher.Dispatch(new SetFullIlAction(value));
+
+    private void SetExcludeSingleFileNameInDiagnostics(bool value)
+        => Dispatcher.Dispatch(new SetExcludeSingleFileNameInDiagnosticsAction(value));
+
+    private void SetIncludeHiddenDiagnostics(bool value)
+        => Dispatcher.Dispatch(new SetIncludeHiddenDiagnosticsAction(value));
 
     private void OnCursorChanged(CursorPositionChangedEvent args)
         => Cursor.Set(args.Position.LineNumber, args.Position.Column);

@@ -99,50 +99,14 @@ tabs / palette / segmented radios. `MainLayout` stays in `Layout/`.
 
 ## Sequence
 
-### 1. Compilation options + active output into Fluxor
+### 1. Compilation options + active output into Fluxor — done
 
-Move the remaining serializable compilation/output options off
-`LabWorkspaceState`:
+`CompilationOptionsState` owns the share-URL compilation flags as **enums**.
+`OutputState` owns `ActiveOutput`. `LabWorkspaceState` still applies/captures
+`SavedState` and persists URL when those stores change. `ShowRenderedHtml`
+stays local. `OutputTabLayout` still owns tab order.
 
-- `RazorToolchain`, `RazorStrategy`
-- `DecodeCustomAttributeBlobs`, `ShowSequencePoints`, `FullIl`
-- `ShowSymbols`, `ShowOperations`, `ShowBoundNodes`, `ShowDeclarationDocument`
-- `ExcludeSingleFileNameInDiagnostics`, `IncludeHiddenDiagnostics`
-
-Store the **real enums** (`RazorToolchain`, `RazorStrategy`,
-`SymbolDisplayKinds`), not UI strings (`"Auto"`, `"Runtime"`, `"No Symbols"`).
-Convert to labels in the component / `LabCatalog`.
-
-```
-CompilationOptionsState  ← new
-OutputState              ← tiny; owns ActiveOutput only
-```
-
-`OutputState` (or `ActiveOutput` on existing `WorkspaceState`) **owns** which
-output is selected. That is not the old `OutputsState` mirror of
-`OutputTabLayout`. Tab order/persistence stays on `OutputTabLayout`.
-
-Cross-feature reducers already mark `CompilationState.Stale` from compiler
-actions. Do the same for option actions. Pair with a persist-URL effect:
-`OnSavedStateChanged()` today also `Notify()`s and persists, which Fluxor will
-not do by itself.
-
-Leave on the facade / local UI:
-
-| Value | Destination |
-|---|---|
-| `ShowRenderedHtml` | local component (not in `SavedState`) |
-| `EditingUserPreferences` | settings/session flag |
-| `_suppressUrlPersist`, `_settingsReady`, `_compilerWasLoading` | orchestration |
-| `_languageInit` | runtime |
-| `WorkerError` | stay until a second UI consumer exists (`WorkerHost.Failed` is enough) |
-
-`CreateCompilationInput()` / `CaptureSavedState()` become composition of
-`LabDocuments` + `CompilerState` + `CompilationOptionsState`.
-
-Keep `LabDocuments` out of Fluxor. Per-keystroke `UpdateDocumentTextAction`
-is not worth it. Document metadata Fluxor (`ActiveDocument` / template /
-open names) only if a real consumer needs it.
+Next: language mutation queue.
 
 ### 2. Language mutation queue
 

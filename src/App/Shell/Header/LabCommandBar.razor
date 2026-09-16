@@ -62,14 +62,16 @@
                         Options="@CompilerRefOptions"
                         Selected="SelectRazor">
             <Trailing>
-                @foreach (var item in LabCatalog.RazorToolchains)
+                @foreach (var item in LabCatalog.RazorToolchainOptions)
                 {
-                    <FluentMenuItem Label="@($"Toolchain: {item}")" OnClick="@(() => Workspace.SetRazorToolchain(item))" />
+                    <FluentMenuItem Label="@($"Toolchain: {LabCatalog.RazorToolchainLabel(item)}")"
+                                    OnClick="@(() => Dispatcher.Dispatch(new SetRazorToolchainAction(item)))" />
                 }
                 <FluentDivider />
-                @foreach (var item in LabCatalog.RazorStrategies)
+                @foreach (var item in LabCatalog.RazorStrategyOptions)
                 {
-                    <FluentMenuItem Label="@($"Strategy: {item}")" OnClick="@(() => Workspace.SetRazorStrategy(item))" />
+                    <FluentMenuItem Label="@($"Strategy: {LabCatalog.RazorStrategyLabel(item)}")"
+                                    OnClick="@(() => Dispatcher.Dispatch(new SetRazorStrategyAction(item)))" />
                 }
             </Trailing>
         </CompilerPicker>

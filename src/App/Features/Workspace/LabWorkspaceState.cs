@@ -23,13 +23,14 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
     private readonly IState<CompilerState> _compiler;
     private readonly IState<PreferencesState> _preferences;
     private readonly IState<CompilationState> _compilation;
+    private readonly IState<CompilationOptionsState> _options;
     private readonly IState<WorkspaceState> _workspace;
+    private readonly IState<OutputState> _output;
     private readonly IDispatcher _dispatcher;
     private bool _suppressUrlPersist;
     private bool _settingsReady;
     private bool _compilerWasLoading;
     private Task? _languageInit;
-    private string _activeOutput = "cs";
 
     public LabWorkspaceState(
         WorkerHost worker,
@@ -41,7 +42,9 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
         IState<CompilerState> compiler,
         IState<PreferencesState> preferences,
         IState<CompilationState> compilation,
+        IState<CompilationOptionsState> options,
         IState<WorkspaceState> workspace,
+        IState<OutputState> output,
         IDispatcher dispatcher,
         ILogger<LabWorkspaceState> logger)
     {
@@ -52,7 +55,9 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
         _compiler = compiler;
         _preferences = preferences;
         _compilation = compilation;
+        _options = options;
         _workspace = workspace;
+        _output = output;
         _dispatcher = dispatcher;
         Documents = new LabDocuments(this);
         Tabs = new OutputTabLayout(this);
@@ -70,7 +75,9 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
         _compiler.StateChanged += OnCompilerStoreChanged;
         _preferences.StateChanged += OnPreferencesChanged;
         _compilation.StateChanged += OnCompilationChanged;
+        _options.StateChanged += OnCompilationOptionsChanged;
         _workspace.StateChanged += OnWorkspaceChanged;
+        _output.StateChanged += OnOutputChanged;
         _worker.Failed += OnWorkerFailed;
     }
 
@@ -98,11 +105,11 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
 
     public string ActiveOutput
     {
-        get => _activeOutput;
+        get => _output.Value.ActiveOutput;
         set
         {
             var dismiss = OutputCache.DismissTemporaryErrorList();
-            if (string.Equals(_activeOutput, value, StringComparison.Ordinal))
+            if (string.Equals(ActiveOutput, value, StringComparison.Ordinal))
             {
                 if (dismiss)
                 {
@@ -112,25 +119,12 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
                 return;
             }
 
-            _activeOutput = value;
-            Notify();
+            _dispatcher.Dispatch(new SetActiveOutputAction(value));
             _ = OutputCache.EnsureOutputLoadedAsync(value);
-            _ = PersistUrlAsync();
         }
     }
 
-    public string RazorToolchain { get; set; } = "Auto";
-    public string RazorStrategy { get; set; } = "Runtime";
-    public bool DecodeCustomAttributeBlobs { get; set; }
-    public bool ShowSequencePoints { get; set; }
-    public bool FullIl { get; set; }
-    public string ShowSymbols { get; set; } = "No Symbols";
-    public bool ShowOperations { get; set; }
-    public bool ShowBoundNodes { get; set; }
-    public bool ShowDeclarationDocument { get; set; }
     public bool ShowRenderedHtml { get; set; }
-    public bool ExcludeSingleFileNameInDiagnostics { get; set; } = true;
-    public bool IncludeHiddenDiagnostics { get; set; }
     public string? WorkerError { get; private set; }
     public bool EditingUserPreferences { get; set; }
 
@@ -143,13 +137,39 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
         _compiler.StateChanged -= OnCompilerStoreChanged;
         _preferences.StateChanged -= OnPreferencesChanged;
         _compilation.StateChanged -= OnCompilationChanged;
+        _options.StateChanged -= OnCompilationOptionsChanged;
         _workspace.StateChanged -= OnWorkspaceChanged;
+        _output.StateChanged -= OnOutputChanged;
         _worker.Failed -= OnWorkerFailed;
     }
 
     private void OnPreferencesChanged(object? sender, EventArgs e) => Notify();
 
     private void OnCompilationChanged(object? sender, EventArgs e) => Notify();
+
+    private void OnCompilationOptionsChanged(object? sender, EventArgs e)
+    {
+        Notify();
+        if (_suppressUrlPersist)
+        {
+            return;
+        }
+
+        _ = PersistUrlAsync();
+        if (EditingUserPreferences)
+        {
+            _ = PersistSettingsAsync();
+        }
+    }
+
+    private void OnOutputChanged(object? sender, EventArgs e)
+    {
+        Notify();
+        if (!_suppressUrlPersist)
+        {
+            _ = PersistUrlAsync();
+        }
+    }
 
     private void OnWorkspaceChanged(object? sender, EventArgs e) => Notify();
 
@@ -336,39 +356,6 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
 
     public Task DetachEditorAsync(string editorId) => _cursors.DetachAsync(editorId);
 
-    public void OnSavedStateChanged()
-    {
-        Stale = true;
-        Notify();
-        _ = PersistUrlAsync();
-        if (EditingUserPreferences)
-        {
-            _ = PersistSettingsAsync();
-        }
-    }
-
-    public void SetRazorToolchain(string value)
-    {
-        if (string.Equals(RazorToolchain, value, StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        RazorToolchain = value;
-        OnSavedStateChanged();
-    }
-
-    public void SetRazorStrategy(string value)
-    {
-        if (string.Equals(RazorStrategy, value, StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        RazorStrategy = value;
-        OnSavedStateChanged();
-    }
-
     public Task PersistOutputTabsAsync() => _settings.PersistOutputTabsAsync(Tabs.SerializeOutputTabs());
 
     public void EnsureActiveOutput() => Tabs.EnsureActiveOutput();
@@ -412,42 +399,18 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
             activeIndex = 0;
         }
 
-        return new SavedState
+        return _options.Value.WriteTo(new SavedState
         {
             Inputs = inputs,
             SelectedInputIndex = activeIndex,
             SelectedOutputType = ActiveOutput,
             Configuration = configuration,
-            RazorToolchain = RazorToolchain switch
-            {
-                "Source Generator" => global::DotNetLab.RazorToolchain.SourceGenerator,
-                "Internal API" => global::DotNetLab.RazorToolchain.InternalApi,
-                _ => global::DotNetLab.RazorToolchain.SourceGeneratorOrInternalApi,
-            },
-            RazorStrategy = RazorStrategy == "DesignTime"
-                ? global::DotNetLab.RazorStrategy.DesignTime
-                : global::DotNetLab.RazorStrategy.Runtime,
-            ShowSymbols = ShowSymbols switch
-            {
-                "Public Symbols" => global::DotNetLab.SymbolDisplayKinds.Public,
-                "Internal Symbols" => global::DotNetLab.SymbolDisplayKinds.Internal,
-                "All Symbols" => global::DotNetLab.SymbolDisplayKinds.Both,
-                _ => global::DotNetLab.SymbolDisplayKinds.None,
-            },
-            ShowOperations = ShowOperations,
-            ShowBoundNodes = ShowBoundNodes,
-            ShowDeclarationDocument = ShowDeclarationDocument,
-            DecodeCustomAttributeBlobs = DecodeCustomAttributeBlobs,
-            ShowSequencePoints = ShowSequencePoints,
-            FullIl = FullIl,
-            ExcludeSingleFileNameInDiagnostics = ExcludeSingleFileNameInDiagnostics,
-            IncludeHiddenDiagnostics = IncludeHiddenDiagnostics,
             SdkVersion = CompilerSpec.ToSpecifier(Compiler.Sdk),
             RoslynVersion = CompilerSpec.ToSpecifier(Compiler.Roslyn),
             RoslynConfiguration = CompilerSpec.ToBuildConfiguration(Compiler.RoslynConfig),
             RazorVersion = CompilerSpec.ToSpecifier(Compiler.Razor),
             RazorConfiguration = CompilerSpec.ToBuildConfiguration(Compiler.RazorConfig),
-        };
+        });
     }
 
     public async Task ApplySavedStateAsync(SavedState state)
@@ -479,31 +442,7 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
             ActiveOutput = state.SelectedOutputType;
         }
 
-        RazorToolchain = state.RazorToolchain switch
-        {
-            global::DotNetLab.RazorToolchain.SourceGenerator => "Source Generator",
-            global::DotNetLab.RazorToolchain.InternalApi => "Internal API",
-            _ => "Auto",
-        };
-        RazorStrategy = state.RazorStrategy == global::DotNetLab.RazorStrategy.DesignTime
-            ? "DesignTime"
-            : "Runtime";
-        ShowSymbols = state.ShowSymbols switch
-        {
-            global::DotNetLab.SymbolDisplayKinds.Both => "All Symbols",
-            global::DotNetLab.SymbolDisplayKinds.Internal => "Internal Symbols",
-            global::DotNetLab.SymbolDisplayKinds.Public => "Public Symbols",
-            _ => "No Symbols",
-        };
-        ShowOperations = state.ShowOperations;
-        ShowBoundNodes = state.ShowBoundNodes;
-        ShowDeclarationDocument = state.ShowDeclarationDocument;
-        DecodeCustomAttributeBlobs = state.DecodeCustomAttributeBlobs;
-        ShowSequencePoints = state.ShowSequencePoints;
-        FullIl = state.FullIl;
-        ExcludeSingleFileNameInDiagnostics = state.ExcludeSingleFileNameInDiagnostics;
-        IncludeHiddenDiagnostics = state.IncludeHiddenDiagnostics;
-
+        _dispatcher.Dispatch(new RestoreCompilationOptionsAction(CompilationOptionsState.FromSavedState(state)));
         _dispatcher.Dispatch(new RestoreCompilersAction(
             CompilerSpec.Display(state.SdkVersion),
             CompilerSpec.Display(state.RoslynVersion),
@@ -610,41 +549,17 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
 
         Documents.Sources.TryGetValue(LabFixtures.ConfigurationFileName, out var configuration);
 
+        var options = _options.Value;
         return new CompilationInput(inputs)
         {
             Configuration = configuration,
-            RazorToolchain = this.RazorToolchain switch
-            {
-                "Source Generator" => global::DotNetLab.RazorToolchain.SourceGenerator,
-                "Internal API" => global::DotNetLab.RazorToolchain.InternalApi,
-                _ => global::DotNetLab.RazorToolchain.SourceGeneratorOrInternalApi,
-            },
-            RazorStrategy = this.RazorStrategy == "DesignTime"
-                ? global::DotNetLab.RazorStrategy.DesignTime
-                : global::DotNetLab.RazorStrategy.Runtime,
-            Preferences = GetPreferences(),
+            RazorToolchain = options.RazorToolchain,
+            RazorStrategy = options.RazorStrategy,
+            Preferences = options.ToPreferences(),
         };
     }
 
-    public CompilationPreferences GetPreferences()
-        => new()
-        {
-            ShowSymbolKinds = ShowSymbols switch
-            {
-                "Public Symbols" => global::DotNetLab.SymbolDisplayKinds.Public,
-                "Internal Symbols" => global::DotNetLab.SymbolDisplayKinds.Internal,
-                "All Symbols" => global::DotNetLab.SymbolDisplayKinds.Both,
-                _ => global::DotNetLab.SymbolDisplayKinds.None,
-            },
-            ShowOperations = ShowOperations,
-            ShowBoundNodes = ShowBoundNodes,
-            ShowDeclarationDocument = ShowDeclarationDocument,
-            DecodeCustomAttributeBlobs = DecodeCustomAttributeBlobs,
-            ShowSequencePoints = ShowSequencePoints,
-            FullIl = FullIl,
-            ExcludeSingleFileNameInDiagnostics = ExcludeSingleFileNameInDiagnostics,
-            IncludeHiddenDiagnostics = IncludeHiddenDiagnostics,
-        };
+    public CompilationPreferences GetPreferences() => _options.Value.ToPreferences();
 
     CompiledAssembly? IOutputLoadHost.Compiled => Compilation.Compiled;
 
