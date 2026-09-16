@@ -1,4 +1,6 @@
-namespace DotNetLab.Lab;
+using DotNetLab.Lab;
+
+namespace DotNetLab.Features.Sharing;
 
 public static class LabLinks
 {

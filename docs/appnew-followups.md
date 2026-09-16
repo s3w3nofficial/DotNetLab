@@ -52,6 +52,12 @@ Keep the current chrome folders until feature stores exist, then move into
 - [x] Move `TemplateCache` / `InputOutputCache` into `Infrastructure/Persistence/` (compiled output stays off Fluxor)
 - [x] Move `LabPlatform` / `IScreenInfo` into `Infrastructure/Browser/` (`WebAssemblyScreenInfo` stays on the WASM host)
 - [x] Move `LabLogging` into `Infrastructure/Logging/` (persist still in Preferences effects; worker snapshots log level on create)
+- [x] Move `LabIdentity` into `Features/Preferences` (git commit / date still from assembly metadata)
+- [x] Split `LabTypes` into `Features/Compiler` (`SdkOption`), `Features/Outputs` (`OutputTab` / `OutputFileKind`), and `Features/Workspace` (`DropZone` / `TabRename`)
+- [x] Move `LabLinks` into `Features/Sharing` (`NewIssue` / gist snapshot still take `LabWorkspaceState`)
+- [x] Delete unused `StateStore<T>` and `ElementRect` (Fluxor replaced the Lab stores; `ElementRect` had no callers)
+- [x] Move `ILabEnvironment` / `LabEnvironment` into `Infrastructure/Browser/` (`AppBuilder` still wires the WASM host; no `AddDotNetLabApp`)
+- [x] Move `ILab*` interfaces next to the chrome that injects them (`LabWorkspaceState` still implements them)
 
 ## P0
 
@@ -123,7 +129,8 @@ delete the facade in one pass.
 4. Extract small scoped stores (`CompilationStore`, `CompilerStore`,
    `PreferencesStore`, …) next to the current types in `Lab/`.
    `StateStore<T>` / immutable records / generation checks are enough until a
-   slice is ready to become a Fluxor feature.
+   slice is ready to become a Fluxor feature. *(done; `StateStore<T>` deleted
+   after those slices became Fluxor features)*
 5. When a store is real, colocate its UI with it (e.g. `CompilerPicker` +
    `CompilerSection` move with `CompilerStore`, not before) and optionally
    convert that slice to Fluxor the same way Updates was converted.
@@ -166,7 +173,7 @@ AppNew/
 │   └── LanguageServices/     LabLanguageServices, cursor sync
 ├── Infrastructure/
 │   ├── Worker/               WorkerHost
-│   ├── Browser/              LabPlatform, IScreenInfo
+│   ├── Browser/              LabPlatform, IScreenInfo, ILabEnvironment
 │   ├── Persistence/          InputOutputCache, TemplateCache
 │   └── Logging/              LabLogging
 ├── Shared/
@@ -206,10 +213,11 @@ Keep feature files flat (`CompilerState.cs`, `CompilerActions.cs`, … plus
 | `WorkerHost.cs` | `Infrastructure/Worker/` |
 | `InputOutputCache.cs`, `TemplateCache.cs` | `Infrastructure/Persistence/` |
 | `LabPlatform.cs` | `Infrastructure/Browser/` |
+| `ILabEnvironment.cs` | `Infrastructure/Browser/` |
 | `LabLogging.cs` | `Infrastructure/Logging/` |
 | `LabCatalog.cs` | `Features/Compiler/Services/` |
 | `LabFixtures.cs` | `Features/Documents/` |
-| `ILabStatus.cs`, `ILabBrand.cs`, `ILabCommands.cs` | delete once selectors/stores replace them |
+| `ILabStatus.cs`, `ILabBrand.cs`, `ILabCommands.cs` | delete once selectors/stores replace them (files now sit with Shell chrome; workspace still implements) |
 
 Drop the `Lab` type prefix as files move (`DocumentsState`, not `LabDocuments`).
 Namespaces carry the rest (`DotNetLab.Features.Documents`).

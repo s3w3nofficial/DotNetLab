@@ -4,8 +4,8 @@ using System.Runtime.Versioning;
 using System.Text;
 using System.Text.Json;
 using DotNetLab.Features.Preferences;
+using DotNetLab.Infrastructure.Browser;
 using DotNetLab.Infrastructure.Logging;
-using DotNetLab.Lab;
 using Timer = System.Timers.Timer;
 
 namespace DotNetLab.Infrastructure.Worker;

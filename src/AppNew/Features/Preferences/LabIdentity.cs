@@ -1,4 +1,4 @@
-namespace DotNetLab.Lab;
+namespace DotNetLab.Features.Preferences;
 
 internal static class LabIdentity
 {

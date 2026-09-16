@@ -1,4 +1,4 @@
-namespace DotNetLab.Lab;
+namespace DotNetLab.Layout;
 
 public interface ILabShell
 {

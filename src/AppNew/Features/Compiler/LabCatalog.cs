@@ -1,4 +1,4 @@
-using DotNetLab.Lab;
+using DotNetLab.Features.Outputs;
 
 namespace DotNetLab.Features.Compiler;
 

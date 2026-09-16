@@ -1,4 +1,4 @@
-namespace DotNetLab.Lab;
+namespace DotNetLab.Shell.CommandPalette;
 
 public interface ILabPalette
 {

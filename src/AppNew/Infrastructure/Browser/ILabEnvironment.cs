@@ -1,4 +1,4 @@
-namespace DotNetLab.Lab;
+namespace DotNetLab.Infrastructure.Browser;
 
 public interface ILabEnvironment
 {

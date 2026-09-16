@@ -1,4 +1,4 @@
-namespace DotNetLab.Lab;
+namespace DotNetLab.Features.Compiler;
 
 public sealed record SdkOption(string Value, string Label, string Roslyn, string Razor)
 {
@@ -12,23 +12,3 @@ public sealed record SdkOption(string Value, string Label, string Roslyn, string
         }
     }
 }
-
-public sealed record OutputTab(string Type, string Label);
-
-public enum OutputFileKind
-{
-    Cs,
-    Razor,
-    Cshtml
-}
-
-public enum DropZone
-{
-    Center,
-    Left,
-    Right,
-    Top,
-    Bottom
-}
-
-public readonly record struct TabRename(string From, string To);

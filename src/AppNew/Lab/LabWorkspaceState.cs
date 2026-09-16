@@ -9,6 +9,10 @@ using DotNetLab.Features.Preferences;
 using DotNetLab.Features.Workspace;
 using DotNetLab.Infrastructure.Persistence;
 using DotNetLab.Infrastructure.Worker;
+using DotNetLab.Layout;
+using DotNetLab.Shell.CommandPalette;
+using DotNetLab.Shell.Header;
+using DotNetLab.Shell.StatusBar;
 using Fluxor;
 using Microsoft.JSInterop;
 

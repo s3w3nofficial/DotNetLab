@@ -1,4 +1,6 @@
-namespace DotNetLab.Lab;
+using DotNetLab.Features.Outputs;
+
+namespace DotNetLab.Features.Preferences;
 
 public interface ILabSettings
 {
