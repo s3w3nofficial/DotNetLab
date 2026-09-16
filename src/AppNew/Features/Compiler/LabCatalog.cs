@@ -1,4 +1,6 @@
-namespace DotNetLab.Lab;
+using DotNetLab.Lab;
+
+namespace DotNetLab.Features.Compiler;
 
 public static class LabCatalog
 {

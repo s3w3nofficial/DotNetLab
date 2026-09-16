@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using DotNetLab.Features.Compiler;
 using DotNetLab.Lab;
 
 namespace DotNetLab.Features.Outputs;
