@@ -1,4 +1,4 @@
-namespace DotNetLab.Lab;
+namespace DotNetLab.Features.Documents;
 
 public static class LabFixtures
 {

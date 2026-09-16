@@ -38,6 +38,7 @@ Keep the current chrome folders until feature stores exist, then move into
 - [x] Fluxor `Features/Outputs` (`ActiveOutput` / tab ids / revision; `OutputTabLayout` still mutates; worker output stays on the workspace)
 - [x] Move `LabWorkspace` / `EditorGroups` / `EditorDragState` into `Features/Workspace` (`LabCodeEditor` stays in `Workspace/`)
 - [x] Move `OutputTabLayout` into `Features/Outputs` (`LabWorkspaceState` still owns the instance; worker output stays on the workspace)
+- [x] Move `LabDocuments` / `LabFixtures` into `Features/Documents` (file contents stay on `LabDocuments`; Monaco stays source of truth)
 
 ## P0
 

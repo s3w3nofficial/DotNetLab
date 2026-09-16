@@ -1,5 +1,6 @@
 using BlazorMonaco.Editor;
 using BlazorMonaco.Languages;
+using DotNetLab.Features.Documents;
 using Microsoft.JSInterop;
 using System.IO.Compression;
 

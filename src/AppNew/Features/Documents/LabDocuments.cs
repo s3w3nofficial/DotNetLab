@@ -1,7 +1,7 @@
-using DotNetLab.Features.Documents;
+using DotNetLab.Lab;
 using Fluxor;
 
-namespace DotNetLab.Lab;
+namespace DotNetLab.Features.Documents;
 
 public sealed class LabDocuments
 {
