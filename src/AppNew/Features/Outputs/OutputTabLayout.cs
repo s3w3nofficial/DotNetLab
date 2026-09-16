@@ -1,7 +1,8 @@
 using System.Text;
 using System.Text.Json;
+using DotNetLab.Lab;
 
-namespace DotNetLab.Lab;
+namespace DotNetLab.Features.Outputs;
 
 public sealed class OutputTabLayout
 {

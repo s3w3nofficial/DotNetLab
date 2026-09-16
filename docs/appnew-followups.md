@@ -36,7 +36,8 @@ Keep the current chrome folders until feature stores exist, then move into
 - [x] Fluxor `Features/Workspace` (`Split`; pointer-move stays in JS; `LabWorkspace` still injects `LabWorkspaceState`)
 - [x] `OutputsStore` under `Lab/` (`OutputsState`; `OutputTabLayout` still mutates; worker output stays on the workspace)
 - [x] Fluxor `Features/Outputs` (`ActiveOutput` / tab ids / revision; `OutputTabLayout` still mutates; worker output stays on the workspace)
-- [x] Move `LabWorkspace` / `EditorGroups` / `EditorDragState` into `Features/Workspace` (`LabCodeEditor` stays in `Workspace/`; `OutputTabLayout` stays in `Lab/`)
+- [x] Move `LabWorkspace` / `EditorGroups` / `EditorDragState` into `Features/Workspace` (`LabCodeEditor` stays in `Workspace/`)
+- [x] Move `OutputTabLayout` into `Features/Outputs` (`LabWorkspaceState` still owns the instance; worker output stays on the workspace)
 
 ## P0
 
