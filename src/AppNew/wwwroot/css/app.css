@@ -724,40 +724,110 @@ h2.lab-setting-section {
     top: 0.5rem;
 }
 
+.loading-splash {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    overflow: auto;
+    background: var(--lab-brand);
+    color: var(--lab-brand-foreground);
+}
+
+html[data-theme="light"] .loading-splash {
+    background: #fff;
+    color: var(--lab-foreground);
+}
+
+html:not(.app-ready),
+html:not(.app-ready) body {
+    background-color: var(--lab-brand);
+}
+
+html[data-theme="light"]:not(.app-ready),
+html[data-theme="light"]:not(.app-ready) body {
+    background-color: #fff;
+}
+
+html.app-ready .loading-splash {
+    display: none;
+    pointer-events: none;
+}
+
+html.app-ready,
+html.app-ready body {
+    background-color: var(--lab-background);
+}
+
 .loading-progress {
-    position: absolute;
+    position: relative;
     display: block;
     width: 8rem;
     height: 8rem;
-    inset: 20vh 0 auto 0;
-    margin: 0 auto;
+    margin: 20vh auto 1rem auto;
+    color: inherit;
 }
 
-.loading-progress circle {
-    fill: none;
-    stroke: var(--lab-hairline);
-    stroke-width: 0.6rem;
-    transform-origin: 50% 50%;
-    transform: rotate(-90deg);
+.loading-progress .filling {
+    transform: scaleY(var(--blazor-load-percentage, 0%));
+    transform-box: fill-box;
+    transform-origin: bottom;
 }
 
-.loading-progress circle:last-child {
-    stroke: var(--lab-primary);
-    stroke-dasharray: calc(3.141 * var(--blazor-load-percentage, 0%) * 0.8), 500%;
-    transition: stroke-dasharray 0.05s ease-in-out;
+.loading-progress .filling-deep {
+    fill: var(--lab-brand);
+}
+
+.loading-progress .filling-mid {
+    fill: var(--lab-primary);
 }
 
 .loading-progress-text {
-    position: absolute;
     text-align: center;
     font-weight: 600;
+    font-size: 1.5em;
     font-family: var(--font-display);
-    inset: calc(20vh + 3.25rem) 0 auto 0.2rem;
-    color: var(--lab-muted);
+    color: color-mix(in srgb, currentColor 78%, transparent);
 }
 
 .loading-progress-text:after {
-    content: var(--blazor-load-percentage-text, "Loading");
+    content: var(--blazor-load-percentage-text, "0%");
+}
+
+.loading-info {
+    margin-top: 1em;
+    text-align: center;
+    color: color-mix(in srgb, currentColor 78%, transparent);
+    font-family: var(--font-body);
+}
+
+.loading-info h1 {
+    margin: 0 0 0.35rem;
+    font-family: var(--font-display);
+    font-weight: 600;
+    font-size: 1.5rem;
+    color: inherit;
+}
+
+.loading-info a {
+    color: inherit;
+    text-decoration: none;
+}
+
+html[data-theme="light"] .loading-info a {
+    color: var(--lab-primary);
+}
+
+.loading-info a:hover {
+    text-decoration: underline;
+}
+
+.loading-info img {
+    display: block;
+    margin: 0.75rem auto 0;
+}
+
+html[data-theme="light"] .loading-info svg path[fill="#e8e8e8"] {
+    fill: var(--lab-foreground);
 }
 
 @media (prefers-reduced-motion: reduce) {

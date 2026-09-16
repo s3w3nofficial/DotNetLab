@@ -9,6 +9,10 @@ Track remaining work after the UI folder split and the first ISP cuts
 in `Editor/Monaco/` (`DotNetLab.Editor.Monaco`). `Server` and `ServerNew` are
 WASM static-file hosts (`UseBlazorFrameworkFiles`), matching each other.
 
+The rewrite is done as a **parallel stack**. Next is [Replace](#replace):
+delete old `App` / `WebAssembly` / `Server` and rename the New projects to
+those names. Production still publishes `src/WebAssembly` → old `App`.
+
 Keep the current chrome folders until feature stores exist, then move into
 [Target folders](#target-folders). `Lab/` is empty. `LabWorkspaceState` lives in
 `Features/Workspace/` as the remaining facade (`ILab*` are gone). Do not Fluxor
@@ -331,11 +335,42 @@ Keep feature files flat (`CompilerState.cs`, `CompilerActions.cs`, … plus
 Drop the `Lab` type prefix as files move (`DocumentsState`, not `LabDocuments`).
 Namespaces carry the rest (`DotNetLab.Features.Documents`).
 
+## Replace
+
+Delete the old web stack and make AppNew the only `App`. Do **not** keep both
+under the old names. Native/store apps are a follow-up (old `IAppHostEnvironment`
+/ in-process worker); this cutover is the repo's web hosts.
+
+| Remove | Rename to |
+|---|---|
+| `src/App` | `src/AppNew` → `src/App` |
+| `src/WebAssembly` | `src/WebAssemblyNew` → `src/WebAssembly` |
+| `src/Server` | `src/ServerNew` → `src/Server` |
+
+`Worker` / `WorkerWebAssembly` stay. `test/AppNewTests` can keep its name or
+fold into `UnitTests`. Folder rename changes assembly names
+(`DotNetLab.AppNew` → `DotNetLab.App` via `Directory.Build.props`).
+
+- [ ] Delete old `src/App`, `src/WebAssembly`, `src/Server`
+- [ ] Rename `AppNew` / `WebAssemblyNew` / `ServerNew` to `App` / `WebAssembly` / `Server`
+- [ ] Retarget `_content/DotNetLab.AppNew`, JSInvokable `'DotNetLab.AppNew'`,
+      `WorkerHost.js` re-export, `InternalsVisibleTo`,
+      `TemplateCacheGenerator` (`AssemblyName == "DotNetLab.AppNew"`),
+      `DotNetLab.slnx`, `eng/build.sh` / README publish path
+- [ ] Point `UnitTests` at renamed `App` (`TemplateCache` /
+      `InputOutputCache` namespaces moved; cannot reference both App assemblies)
+- [ ] Keep `WasmEnableWebcil=false` and Fluent UI 5 on the WASM host
+- [ ] Native host later (`IWorkerTransport` in-process; default
+      `UnsupportedWorkerTransport.CreateWorker` throws)
+
+Do **not** invent interactive Blazor Server. Do **not** extract
+`DotNetLab.Editor.Monaco`.
+
 ## Later (not now)
 
 - [x] Next Fluxor features only after a real store exists (not wrapping `LabWorkspaceState`) — Compiler, Preferences, Compilation, Documents, Workspace, Outputs
 - [x] Small scoped feature stores still under `Lab/` until a store is real — CompilerStore, PreferencesStore, CompilationStore, DocumentsStore, LayoutStore, OutputsStore
-- [ ] Move each store + its UI into `Features/` / `Shell/` / `Editor/` / `Infrastructure/`
+- [x] Move each store + its UI into `Features/` / `Shell/` / `Editor/` / `Infrastructure/` (cosmetic leftovers vs the target tree; not a replace blocker)
 - [x] `LabWorkspace` injecting a narrow workspace surface instead of `LabWorkspaceState`
 - [x] `LabCodeEditor` injecting a narrow editor surface instead of `LabWorkspaceState`
 - [x] Move `LabCodeEditor` into `Editor/` (no `DotNetLab.Editor.Monaco` project)

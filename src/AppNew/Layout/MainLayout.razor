@@ -5,6 +5,7 @@
 @inject LabPlatform Platform
 @inject ILabEnvironment Environment
 @inject IDispatcher Dispatcher
+@inject IJSRuntime JS
 @implements IDisposable
 
 <div class="lab-shell">
@@ -40,6 +41,7 @@
     private CommandPalette? _palette;
     private PasteUrlDialog? _paste;
     private bool _ready;
+    private bool _splashHidden;
     private bool _invalidShareUrl;
 
     protected override void OnInitialized()
@@ -52,24 +54,36 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender)
+        if (firstRender)
         {
+            try
+            {
+                Dispatcher.Dispatch(new SeedPreferencesAction(Environment.IsDevelopment));
+                await Theme.InitializeAsync();
+                await Platform.InitializeAsync();
+                Dispatcher.Dispatch(new InitializeUpdatesAction());
+                await Workspace.LoadSettingsAsync();
+                await Urls.LoadFromUriAsync();
+            }
+            finally
+            {
+                _ready = true;
+                StateHasChanged();
+            }
+
             return;
         }
 
-        try
+        if (_ready && !_splashHidden)
         {
-            Dispatcher.Dispatch(new SeedPreferencesAction(Environment.IsDevelopment));
-            await Theme.InitializeAsync();
-            await Platform.InitializeAsync();
-            Dispatcher.Dispatch(new InitializeUpdatesAction());
-            await Workspace.LoadSettingsAsync();
-            await Urls.LoadFromUriAsync();
-        }
-        finally
-        {
-            _ready = true;
-            StateHasChanged();
+            _splashHidden = true;
+            try
+            {
+                await JS.InvokeVoidAsync("netLabHideSplash");
+            }
+            catch (JSException)
+            {
+            }
         }
     }
 

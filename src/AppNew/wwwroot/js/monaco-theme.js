@@ -407,6 +407,8 @@ window.netLabTheme = {
     }
 };
 
+window.netLabTheme.applyDocument(window.netLabTheme.resolveDark(window.netLabTheme.readPreference()));
+
 window.netLabMonaco = {
     defineTheme: function () {
         if (!window.monaco || !window.monaco.editor) {
