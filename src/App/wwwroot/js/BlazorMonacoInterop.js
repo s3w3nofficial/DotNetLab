@@ -38,6 +38,20 @@ export function setModelValueUndoable(editorId, modelUri, text) {
 }
 
 /**
+ * @param {string} modelUri
+ * @returns {number}
+ */
+export function getAlternativeVersionId(modelUri) {
+    const models = monaco.editor.getModels();
+    const model = monaco.editor.getModel(modelUri)
+        ?? models.find((candidate) => {
+            const uri = candidate.uri.toString();
+            return uri === modelUri || decodeURI(uri) === modelUri;
+        });
+    return model?.getAlternativeVersionId() ?? -1;
+}
+
+/**
  * @param {string} language
  * @param {string[] | undefined} triggerCharacters
  */

@@ -90,7 +90,7 @@ messages or a worker-side session queue), not in front of `postMessage`.
   request it aborts)
 - Park Monaco deltas on an app-side unbounded Channel that waits for each
   worker ack while completion / hover / tokens / code actions skip it
-  (that is item 2 as shipped — a regression vs master)
+  (that was item 2 as shipped — a regression vs master; undone in 7)
 - `DropOldest` on language-service deltas (they are incremental)
 - `skipDebounce` for trigger-character completions until posting order /
   versions are solid (`.` / `(` / `=` bypass the 1s throttle)
@@ -118,7 +118,7 @@ tabs / palette / segmented radios. `MainLayout` stays in `Layout/`.
 `SavedState` and persists URL when those stores change. `ShowRenderedHtml`
 stays local. `OutputTabLayout` still owns tab order.
 
-### 2. Language mutation queue — shipped; regression vs master (undo in 7)
+### 2. Language mutation queue — shipped; undone in 7
 
 `LanguageMutationQueue` serializes incremental deltas on an unbounded Channel
 and **awaits each worker ack** before posting the next. Queries do not use it.
@@ -249,27 +249,28 @@ applies/captures `SavedState` and wires persist / settings / palette.
 Whether that leftover coordinator should exist is a later question. Do not
 delete it as a line-count goal.
 
-### 7. Language-service baseline — next
+### 7. Language-service baseline — done
 
-Get posting order back to master before any new LS Channel. Do not
-performance-test IntelliSense on the in-process worker
-(`Using in-process compilation worker.`). The WASM host already registers
-`BrowserWorkerTransport`; `AppBuilder`'s `UnsupportedWorkerTransport` is only
-the default for non-browser hosts. Confirm `Starting compilation web worker.`
+Posting order matches master again. `LanguageMutationQueue` is gone. Completions
+always go through debounce. `DebounceAsync` cancels in-flight handlers via
+`debounceToken`. Diagnostics skip `SetModelMarkers` when Monaco's
+`getAlternativeVersionId` moved while `GetDiagnostics` was in flight (no worker
+protocol change). Confirm `Starting compilation web worker.` when testing
+IntelliSense.
 
-- [ ] Remove `LanguageMutationQueue` from `OnDidChangeModelContent`. Call
+- [x] Remove `LanguageMutationQueue` from `OnDidChangeModelContent`. Call
       `SendAsync` immediately (do not await it from the keystroke handler).
       Fire-and-forget diagnostics **after** that mutation task completes, like
-      master. Workspace snapshots can follow the same “post now” rule.
-- [ ] Remove `skipDebounce` for `CompletionTriggerKind.TriggerCharacter`.
+      master. Workspace snapshots follow the same “post now” rule.
+- [x] Remove `skipDebounce` for `CompletionTriggerKind.TriggerCharacter`.
       Master always runs completion through debounce. The trigger list
       includes `.` `(` `=` space; bypass + Channel is the worst ordering.
       Do not special-case `.` until versions/order are solid.
-- [ ] `DebounceAsync`: after the wait, call `handler(args, debounceToken)` so a
+- [x] `DebounceAsync`: after the wait, call `handler(args, debounceToken)` so a
       later edit cancels in-flight diagnostics / completion, not only the
       delay. The debounce CTS is already linked to the user token. Same bug
       exists in master; it matters more with overlapping LS traffic.
-- [ ] Document-version checks on diagnostics (and later hover / tokens /
+- [x] Document-version checks on diagnostics (and later hover / tokens /
       signature help / code actions). Completions already discard stale
       results via `model.getAlternativeVersionId()` in JS. Master has no
       diagnostics version guard either — add it here.
@@ -285,7 +286,7 @@ Worker: versioned / ordered LS session → Roslyn
 Do not reopen HybridCache, `DropOldest` on LS deltas, or deleting the facade
 in this pass.
 
-### 8. Remaining Channel races
+### 8. Remaining Channel races — next
 
 Compile / persist leftovers. Independent of the LS undo.
 

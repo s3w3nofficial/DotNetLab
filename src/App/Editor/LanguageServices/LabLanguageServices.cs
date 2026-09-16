@@ -19,7 +19,6 @@ public sealed class LabLanguageServices(
 {
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "CA2213", Justification = "WorkerHost is a scoped DI service owned by the container.")]
     private readonly WorkerHost _worker = worker;
-    private readonly LanguageMutationQueue _mutations = BindQueue(worker, logger);
     private readonly LanguageSelector _cSharpLanguageSelector = new(CompiledAssembly.CSharpLanguageId);
     private readonly LanguageSelector _outputLanguageSelector = new(CompiledAssembly.OutputLanguageId);
     private IAsyncDisposable? _completionProvider, _semanticTokensProvider, _codeActionProvider, _hoverProvider, _signatureHelpProvider;
@@ -36,10 +35,7 @@ public sealed class LabLanguageServices(
 
     public async ValueTask DisposeAsync()
     {
-        _worker.Recreating -= _mutations.Cancel;
-        _worker.Recreated -= _mutations.RestartAsync;
         await UnregisterAsync();
-        await _mutations.DisposeAsync();
         if (_outputSemanticTokensProvider is not null)
         {
             await _outputSemanticTokensProvider.DisposeAsync();
@@ -113,16 +109,15 @@ public sealed class LabLanguageServices(
         }
 
         InvalidateCaches();
-        var applied = EnqueueMutationAsync(
-            new WorkerInputMessage.OnDidChangeWorkspace(models, refresh) { Id = _worker.NextMessageId() },
-            activeModelUri);
-
+        var update = SendAsync(
+            new WorkerInputMessage.OnDidChangeWorkspace(models, refresh) { Id = _worker.NextMessageId() });
+        _ = UpdateDiagnosticsAfterMutationAsync(update, activeModelUri);
         if (!refresh)
         {
             return Task.CompletedTask;
         }
 
-        return RefreshAfterWorkspaceAsync(applied);
+        return RefreshSemanticTokensAsync();
     }
 
     public Task OnDidChangeModelContentAsync(string modelUri, ModelContentChangedEvent args)
@@ -133,26 +128,14 @@ public sealed class LabLanguageServices(
         }
 
         InvalidateCaches();
-        // Write returns without waiting: keystrokes must not sit behind completion/hover.
-        _ = EnqueueMutationAsync(
-            new WorkerInputMessage.OnDidChangeModelContent(modelUri, args) { Id = _worker.NextMessageId() },
-            modelUri);
+        var update = SendAsync(
+            new WorkerInputMessage.OnDidChangeModelContent(modelUri, args) { Id = _worker.NextMessageId() });
+        _ = UpdateDiagnosticsAfterMutationAsync(update, modelUri);
         return Task.CompletedTask;
     }
 
-    public async Task<bool> UpdateDiagnosticsAfterCompilationAsync(string? activeModelUri)
-    {
-        try
-        {
-            await _mutations.EnqueueBarrierAsync();
-        }
-        catch (OperationCanceledException)
-        {
-            return false;
-        }
-
-        return await UpdateDiagnosticsAsync(activeModelUri, afterCompilation: true);
-    }
+    public Task<bool> UpdateDiagnosticsAfterCompilationAsync(string? activeModelUri)
+        => UpdateDiagnosticsAsync(activeModelUri, afterCompilation: true);
 
     public async Task<bool> OnCachedCompilationLoadedAsync(
         CompilerConfiguration config,
@@ -161,7 +144,7 @@ public sealed class LabLanguageServices(
     {
         try
         {
-            await EnqueueMutationAsync(new WorkerInputMessage.OnCachedCompilationLoaded(config, output)
+            await SendAsync(new WorkerInputMessage.OnCachedCompilationLoaded(config, output)
             {
                 Id = _worker.NextMessageId(),
             });
@@ -344,7 +327,6 @@ public sealed class LabLanguageServices(
                             Id = args.Item1._worker.NextMessageId(),
                         },
                         cancellationToken),
-                    skipDebounce: context.TriggerKind == CompletionTriggerKind.TriggerCharacter,
                     cancellationToken: cancellationToken);
             },
             ResolveCompletionItemFunc = (item, cancellationToken) =>
@@ -407,8 +389,6 @@ public sealed class LabLanguageServices(
     private async Task UnregisterAsync()
     {
         InvalidateCaches();
-        _mutations.Cancel();
-        await _mutations.RestartAsync();
         await Task.WhenAll(
             UnregisterOneAsync(ref _completionProvider),
             UnregisterOneAsync(ref _semanticTokensProvider),
@@ -429,43 +409,20 @@ public sealed class LabLanguageServices(
         return Task.CompletedTask;
     }
 
-    private static LanguageMutationQueue BindQueue(WorkerHost worker, ILogger logger)
-    {
-        var queue = new LanguageMutationQueue(logger);
-        worker.Recreating += queue.Cancel;
-        worker.Recreated += queue.RestartAsync;
-        return queue;
-    }
-
-    private Task EnqueueMutationAsync(IWorkerInputMessage<NoOutput> message, string? diagnosticUri = null)
-    {
-        return _mutations.EnqueueAsync(async cancellationToken =>
-        {
-            await SendAsync(message, cancellationToken);
-            if (diagnosticUri is not null)
-            {
-                _ = UpdateDiagnosticsAsync(diagnosticUri);
-            }
-        });
-    }
-
-    private async Task RefreshAfterWorkspaceAsync(Task applied)
+    private async Task UpdateDiagnosticsAfterMutationAsync(Task mutation, string? modelUri)
     {
         try
         {
-            await applied;
+            await mutation;
+            _ = UpdateDiagnosticsAsync(modelUri);
         }
         catch (OperationCanceledException)
         {
-            return;
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Applying workspace mutation failed");
-            return;
+            logger.LogError(ex, "Language mutation failed");
         }
-
-        await RefreshSemanticTokensAsync();
     }
 
     private void InvalidateCaches() => _lastCodeActions = null;
@@ -479,22 +436,30 @@ public sealed class LabLanguageServices(
 
         try
         {
-            await DebounceAsync(ref _diagnosticsDebounce, (this, jsRuntime, modelUri), 0, static async (args, cancellationToken) =>
+            await DebounceAsync(ref _diagnosticsDebounce, (this, jsRuntime, blazorMonacoInterop, modelUri), 0, static async (args, cancellationToken) =>
             {
-                var (services, js, uri) = args;
+                var (services, js, monaco, uri) = args;
+                var model = await BlazorMonaco.Editor.Global.GetModel(js, uri);
+                if (model is null)
+                {
+                    return 0;
+                }
+
+                var version = await monaco.GetAlternativeVersionIdAsync(uri);
                 var markers = (await services.SendAsync(new WorkerInputMessage.GetDiagnostics(uri)
                 {
                     Id = services._worker.NextMessageId(),
                 }, cancellationToken))
                     .Select(static m => m.WithSeverityIcon())
                     .ToList();
-                var model = await BlazorMonaco.Editor.Global.GetModel(js, uri);
                 cancellationToken.ThrowIfCancellationRequested();
-                if (model is not null)
+                if (version >= 0 &&
+                    await monaco.GetAlternativeVersionIdAsync(uri) != version)
                 {
-                    await BlazorMonaco.Editor.Global.SetModelMarkers(js, model, MonacoConstants.MarkersOwner, markers);
+                    return 0;
                 }
 
+                await BlazorMonaco.Editor.Global.SetModelMarkers(js, model, MonacoConstants.MarkersOwner, markers);
                 return 0;
             },
             skipDebounce: afterCompilation);
@@ -519,27 +484,23 @@ public sealed class LabLanguageServices(
         bool skipDebounce = false,
         CancellationToken cancellationToken = default)
     {
-        var wait = TimeSpan.FromSeconds(1) - (DateTime.UtcNow - info.Timestamp);
+        var wait = skipDebounce
+            ? TimeSpan.Zero
+            : TimeSpan.FromSeconds(1) - (DateTime.UtcNow - info.Timestamp);
         info.CancellationTokenSource.Cancel();
         info.CancellationTokenSource.Dispose();
 #pragma warning disable CA2000
         info = new(CancellationTokenSource.CreateLinkedTokenSource(cancellationToken));
 #pragma warning restore CA2000
 
-        if (skipDebounce)
-        {
-            return handler(args, cancellationToken);
-        }
-
-        return DebounceCoreAsync(wait, info.CancellationTokenSource.Token, args, fallback, handler, cancellationToken);
+        return DebounceCoreAsync(wait, info.CancellationTokenSource.Token, args, fallback, handler);
 
         static async Task<TOut> DebounceCoreAsync(
             TimeSpan wait,
             CancellationToken debounceToken,
             TIn args,
             TOut fallback,
-            Func<TIn, CancellationToken, Task<TOut>> handler,
-            CancellationToken userToken)
+            Func<TIn, CancellationToken, Task<TOut>> handler)
         {
             try
             {
@@ -549,7 +510,7 @@ public sealed class LabLanguageServices(
                 }
 
                 debounceToken.ThrowIfCancellationRequested();
-                return await handler(args, userToken);
+                return await handler(args, debounceToken);
             }
             catch (OperationCanceledException)
             {

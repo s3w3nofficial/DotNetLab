@@ -18,7 +18,7 @@ public sealed partial class BlazorMonacoInterop : IAsyncDisposable
 
     public BlazorMonacoInterop(IJSRuntime jsRuntime)
     {
-        initialize = new(() => jsRuntime.InvokeAsync<IJSObjectReference>("import", "../_content/DotNetLab.App/js/BlazorMonacoInterop.js").AsTask());
+        initialize = new(() => jsRuntime.InvokeAsync<IJSObjectReference>("import", "../_content/DotNetLab.App/js/BlazorMonacoInterop.js?v=ls-1").AsTask());
     }
 
     public async ValueTask DisposeAsync()
@@ -156,6 +156,18 @@ public sealed partial class BlazorMonacoInterop : IAsyncDisposable
     public async Task SetModelValueUndoable(string editorId, string modelUri, string text)
     {
         await (await Module).InvokeVoidAsync("setModelValueUndoable", editorId, modelUri, text);
+    }
+
+    public async Task<int> GetAlternativeVersionIdAsync(string modelUri)
+    {
+        try
+        {
+            return await (await Module).InvokeAsync<int>("getAlternativeVersionId", modelUri);
+        }
+        catch (JSException)
+        {
+            return -1;
+        }
     }
 
     public async Task<IAsyncDisposable> RegisterCompletionProviderAsync(
