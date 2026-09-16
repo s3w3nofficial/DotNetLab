@@ -42,6 +42,7 @@ Keep the current chrome folders until feature stores exist, then move into
 - [x] Move `LabCatalog` into `Features/Compiler` (flat; picker already colocated)
 - [x] Move `LabSettings` into `Features/Preferences` (persist stays in effects)
 - [x] Move `SettingsDialog` / `SettingRow` into `Features/Preferences` (composer; `ILabSettings` stays on the workspace)
+- [x] Move `LabUrlSync` / `LabShare` / `PasteUrlDialog` into `Features/Sharing` (no Fluxor yet; `CommandPalette` stays in `Dialogs/`)
 
 ## P0
 

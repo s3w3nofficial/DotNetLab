@@ -2,8 +2,9 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Routing;
 using Microsoft.JSInterop;
 using DotNetLab.Features.Preferences;
+using DotNetLab.Lab;
 
-namespace DotNetLab.Lab;
+namespace DotNetLab.Features.Sharing;
 
 public sealed class LabUrlSync : IDisposable
 {

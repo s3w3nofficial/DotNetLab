@@ -1,4 +1,5 @@
 using DotNetLab.Features.Preferences;
+using DotNetLab.Features.Sharing;
 using DotNetLab.Features.Workspace;
 using DotNetLab.Lab;
 using Fluxor;

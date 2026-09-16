@@ -1,7 +1,8 @@
 using Microsoft.AspNetCore.Components;
 using Microsoft.JSInterop;
+using DotNetLab.Lab;
 
-namespace DotNetLab.Lab;
+namespace DotNetLab.Features.Sharing;
 
 public sealed class LabShare
 {
