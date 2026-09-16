@@ -339,7 +339,7 @@ export function underlineLinks(editorId, offsets) {
     const model = editor.getModel();
     if (model) {
         const ranges = [];
-        for (let i = 0; i <= offsets.length; i += 2) {
+        for (let i = 0; i < offsets.length; i += 2) {
             const startPosition = model.getPositionAt(offsets[i]);
             const endPosition = model.getPositionAt(offsets[i + 1]);
             const range = new monaco.Range(

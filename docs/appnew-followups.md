@@ -2,16 +2,21 @@
 
 Track remaining work after the UI folder split and the first ISP cuts
 (`ILabStatus`, `ILabBrand`, `ILabCommands`, `ILabPalette`, `ILabSettings`,
-`ILabShell`). AppNew is a WASM rewrite behind `WebAssemblyNew`. DI is host-neutral
-(`AddDotNetLabApp`); the WASM host supplies `ILabEnvironment`,
-`IUpdateChecker`, and `IWorkerTransport`. `AppNew` is a Razor class library
-(`Components.Web`); WASM packages live on `WebAssemblyNew`. Monaco interop stays
-in `Editor/Monaco/` (`DotNetLab.Editor.Monaco`). `Server` and `ServerNew` are
-WASM static-file hosts (`UseBlazorFrameworkFiles`), matching each other.
+`ILabShell`). The rewrite now **is** `src/App`, hosted by `src/WebAssembly`
+and `src/Server`. DI is host-neutral (`AddDotNetLabApp`); the WASM host
+supplies `ILabEnvironment`, `IUpdateChecker`, and `IWorkerTransport`.
+`App` is a Razor class library (`Components.Web`); WASM packages live on
+`WebAssembly`. Monaco interop stays in `Editor/Monaco/`
+(`DotNetLab.Editor.Monaco`). `Server` is a WASM static-file host
+(`UseBlazorFrameworkFiles`).
 
-The rewrite is done as a **parallel stack**. Next is [Replace](#replace):
-delete old `App` / `WebAssembly` / `Server` and rename the New projects to
-those names. Production still publishes `src/WebAssembly` → old `App`.
+The old parallel stack has been [replaced](#replace). Production publishes
+`src/WebAssembly` → `src/App`. Native/store apps are a later follow-up.
+
+Keep the current chrome folders until feature stores exist, then move into
+[Target folders](#target-folders). `Lab/` is empty. `LabWorkspaceState` lives in
+`Features/Workspace/` as the remaining facade (`ILab*` are gone). Do not Fluxor
+the current god object; see [State direction](#state-direction).
 
 Keep the current chrome folders until feature stores exist, then move into
 [Target folders](#target-folders). `Lab/` is empty. `LabWorkspaceState` lives in
@@ -89,7 +94,7 @@ the current god object; see [State direction](#state-direction).
 - [x] `ILabDocumentHost` gone (`LabDocuments` takes `IDocumentWorkspace`)
 - [x] `ILabOutputHost` gone (`OutputTabLayout` takes `IOutputWorkspace`)
 - [x] `ILabWorkspace` / `ILabEditor` gone (`LabWorkspace`, `LabCodeEditor`, sharing, documents, outputs, and chrome inject `LabWorkspaceState`)
-- [x] Tests for URL state, documents, tabs, and compile generations (`test/AppNewTests`; `LabDocuments` / `OutputTabLayout` take internal host seams; `GenerationCounter` on the workspace)
+- [x] Tests for URL state, documents, tabs, and compile generations (`test/AppTests`; `LabDocuments` / `OutputTabLayout` take internal host seams; `GenerationCounter` on the workspace)
 - [x] Drop catalog and tab-layout pass-throughs on `LabWorkspaceState` (`LabWorkspace` / `SettingsDialog` use `Tabs` and `LabCatalog`; persist still on the workspace)
 - [x] Move output-load cache off `LabWorkspaceState` (`OutputLoadCache` + `IOutputLoadHost`; worker `GetOutput` still on the workspace)
 - [x] Drop Fluxor getter pass-throughs on `LabWorkspaceState` (`LabWorkspace` / `LabCodeEditor` / `LabLinks` read `IState<T>` / `Documents` / `Tabs`; `Notify` still pulses runtime)
@@ -337,29 +342,28 @@ Namespaces carry the rest (`DotNetLab.Features.Documents`).
 
 ## Replace
 
-Delete the old web stack and make AppNew the only `App`. Do **not** keep both
-under the old names. Native/store apps are a follow-up (old `IAppHostEnvironment`
-/ in-process worker); this cutover is the repo's web hosts.
+The old web stack is gone. AppNew is now `src/App`. Native/store apps remain a
+follow-up (old `IAppHostEnvironment` / in-process worker).
 
-| Remove | Rename to |
+| Removed | Renamed to |
 |---|---|
-| `src/App` | `src/AppNew` → `src/App` |
-| `src/WebAssembly` | `src/WebAssemblyNew` → `src/WebAssembly` |
-| `src/Server` | `src/ServerNew` → `src/Server` |
+| old `src/App` | `src/AppNew` → `src/App` |
+| old `src/WebAssembly` | `src/WebAssemblyNew` → `src/WebAssembly` |
+| old `src/Server` | `src/ServerNew` → `src/Server` |
 
-`Worker` / `WorkerWebAssembly` stay. `test/AppNewTests` can keep its name or
-fold into `UnitTests`. Folder rename changes assembly names
-(`DotNetLab.AppNew` → `DotNetLab.App` via `Directory.Build.props`).
+`Worker` / `WorkerWebAssembly` stay. `test/AppTests` is the App test project.
+Folder rename changed assembly names (`DotNetLab.AppNew` → `DotNetLab.App`
+via `Directory.Build.props`).
 
-- [ ] Delete old `src/App`, `src/WebAssembly`, `src/Server`
-- [ ] Rename `AppNew` / `WebAssemblyNew` / `ServerNew` to `App` / `WebAssembly` / `Server`
-- [ ] Retarget `_content/DotNetLab.AppNew`, JSInvokable `'DotNetLab.AppNew'`,
+- [x] Delete old `src/App`, `src/WebAssembly`, `src/Server`
+- [x] Rename `AppNew` / `WebAssemblyNew` / `ServerNew` to `App` / `WebAssembly` / `Server`
+- [x] Retarget `_content/DotNetLab.App`, JSInvokable `'DotNetLab.App'`,
       `WorkerHost.js` re-export, `InternalsVisibleTo`,
-      `TemplateCacheGenerator` (`AssemblyName == "DotNetLab.AppNew"`),
+      `TemplateCacheGenerator` (`DotNetLab.Infrastructure.Persistence`),
       `DotNetLab.slnx`, `eng/build.sh` / README publish path
-- [ ] Point `UnitTests` at renamed `App` (`TemplateCache` /
-      `InputOutputCache` namespaces moved; cannot reference both App assemblies)
-- [ ] Keep `WasmEnableWebcil=false` and Fluent UI 5 on the WASM host
+- [x] Point `UnitTests` at renamed `App` (`TemplateCache` /
+      `InputOutputCache` namespaces moved)
+- [x] Keep `WasmEnableWebcil=false` and Fluent UI 5 on the WASM host
 - [ ] Native host later (`IWorkerTransport` in-process; default
       `UnsupportedWorkerTransport.CreateWorker` throws)
 
@@ -388,7 +392,7 @@ Do **not** invent interactive Blazor Server. Do **not** extract
 - [x] `ILabDocumentHost` gone (`LabDocuments` takes `IDocumentWorkspace`)
 - [x] `ILabOutputHost` gone (`OutputTabLayout` takes `IOutputWorkspace`)
 - [x] `ILabWorkspace` / `ILabEditor` gone (`LabWorkspaceState` is the remaining facade; not Fluxor)
-- [x] Tests for URL state, documents, tabs, and compile generations (`test/AppNewTests`; generation cancel is `GenerationCounter`)
+- [x] Tests for URL state, documents, tabs, and compile generations (`test/AppTests`; generation cancel is `GenerationCounter`)
 - [x] Drop catalog and tab-layout pass-throughs on `LabWorkspaceState` (`LabWorkspace` / `SettingsDialog` use `Tabs` and `LabCatalog`)
 - [x] Move output-load cache off `LabWorkspaceState` (`OutputLoadCache`; worker `GetOutput` still on the workspace)
 - [x] Drop Fluxor getter pass-throughs on `LabWorkspaceState` (`LabWorkspace` / `LabCodeEditor` / `LabLinks` read `IState<T>` / `Documents` / `Tabs`)

@@ -67,6 +67,7 @@ To hit breakpoints, it is recommended to turn off the worker (in app settings).
   so the app can be optimized (trimming, NativeAOT) and the worker can be loaded more lazily.
 - `src/WorkerWebAssembly`: web-assembly host of the `Worker`.
 - `test/UnitTests`
+- `test/AppTests`
 
 ## Attribution
 
