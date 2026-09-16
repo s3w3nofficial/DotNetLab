@@ -45,6 +45,8 @@ Keep the current chrome folders until feature stores exist, then move into
 - [x] Move `LabUrlSync` / `LabShare` / `PasteUrlDialog` into `Features/Sharing` (no Fluxor yet; `CommandPalette` stays in `Dialogs/`)
 - [x] Move `LabTheme` / `LabThemeService` into `Features/Theme` (no Fluxor yet; theme preference stays on `PreferencesState`)
 - [x] Move `Header/` into `Shell/Header/` (`LabBrandBar` / `LabCommandBar` / `MemoryUsageView`; `StatusBar` and `CommandPalette` stay put)
+- [x] Move `CommandPalette` into `Shell/CommandPalette/` (`StatusBar` stays put; `ILabPalette` stays on the workspace)
+- [x] Move `StatusBar` / `StatusSelectors` into `Shell/StatusBar/` (cursor and diagnostics stay on `ILabStatus`)
 
 ## P0
 
@@ -177,9 +179,8 @@ Three kinds of code:
 `SettingsDialog` composes `<CompilerSettings />`, `<ThemeSettings />`, etc. It
 does not own every setting. `CompilerPicker` lives with Compiler even if the
 header renders it. Status is
-`CompilationState` + `CompilerState` + `DocumentsState` → `StatusBar/StatusSelectors.cs`
-(pure function; move with `Shell/StatusBar/` later). Cursor and diagnostics
-stay on `ILabStatus`.
+`CompilationState` + `CompilerState` + `DocumentsState` → `Shell/StatusBar/StatusSelectors.cs`
+(pure function). Cursor and diagnostics stay on `ILabStatus`.
 
 Keep feature files flat (`CompilerState.cs`, `CompilerActions.cs`, … plus
 `Components/` / `Services/` when needed). Do not add `State/` / `Actions/` /

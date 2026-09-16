@@ -2,7 +2,7 @@ using DotNetLab.Features.Compilation;
 using DotNetLab.Features.Compiler;
 using DotNetLab.Features.Documents;
 
-namespace DotNetLab.StatusBar;
+namespace DotNetLab.Shell.StatusBar;
 
 public static class StatusSelectors
 {
