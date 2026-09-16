@@ -95,8 +95,8 @@ Channel.
   worker ack while completion / hover / tokens / code actions skip it
   (that was item 2 as shipped — a regression vs master; undone in 7)
 - `DropOldest` on language-service deltas (they are incremental)
-- `skipDebounce` for trigger-character completions until posting order /
-  versions are solid (`.` / `(` / `=` bypass the 1s throttle)
+- Restore identifier / space / Enter completion triggers until Compiler
+  shrinks the unfiltered list (see Deferred)
 - Mistake `ConfigureAwait(false)` on a Channel reader for “this is off the
   UI thread” (Blazor WASM is still one browser thread)
 - Reintroduce Documents/Outputs Fluxor snapshot mirrors
@@ -113,8 +113,8 @@ Channel.
   browser thread; there is no `WasmEnableThreads`)
 - Treat `src/Server` as an interactive Blazor circuit — it only serves WASM
   files (`UseBlazorFrameworkFiles` + `index.html`)
-- Change language services further except item 18 (fence / timings after the
-  worker log is confirmed)
+- Restore master's full completion trigger list from App only (JSON.parse of
+  ~6700 types freezes the UI; see Deferred)
 - Split `CompilationOptionsState` or change `Compiler` / `GetOutput` for format
   prefs — that is deferred (needs Shared + Compiler, not App-only)
 - Commit / push unless asked
@@ -414,8 +414,9 @@ There is no `WasmEnableThreads`. Browser WASM is one thread. Do **not** set
 `SupportsThreads` true there — `Task.Run` still runs on that thread.
 
 Current App LS posts the mutation and `LabCodeEditor` returns
-`Task.CompletedTask`. Diagnostics wait on that mutation Task. Completions
-debounce ~1s (usually miss the race). Hover, signature help, and **semantic
+`Task.CompletedTask`. Diagnostics and cheap completions wait on that
+mutation Task. Identifier / space / Enter completions are **not** sent
+(App-only; restore is Deferred). Hover, signature help, and **semantic
 tokens** have no debounce and can `PostMessage` before the mutation. Two
 concurrent `PostAsync` calls have no post-order lock; a web worker is FIFO
 after `postMessage`.
@@ -435,10 +436,10 @@ would block typing). Do **not** bring `LanguageMutationQueue` back.
       these are Information.
 - [ ] With the worker on, disable semantic tokens, then diagnostics, then
       completion — tokens first (whole document, every edit, no debounce)
-- [ ] If tokens / hover race: per-document mutation fence (latest mutation
-      `Task`). Queries `await` the fence then `SendAsync`. Completions wait
-      **after** debounce, not during it. `TrackMutation` before the editor
-      callback returns
+- [x] Per-document mutation fence (`_mutation` Task). Cheap completions
+      `await` it then `SendAsync`. Do not await the mutation from
+      `LabCodeEditor` (disposed `DotNetObjectReference` on keydown).
+      Identifier completions stay off until Deferred compiler work.
 - [ ] Development T0–T4 timings per kind (completion / diagnostics /
       semantic / hover): JS → .NET → post → Roslyn → apply. Architecture
       cannot tell “Roslyn 186 ms” from “waited 220 ms then Roslyn 30 ms”
@@ -494,3 +495,51 @@ The real change is in **Shared + Compiler**, not App:
 Do not start this from App. An attempt that patched `Compiler` / `ICompiler`
 for current prefs was reverted — stay UI-only until someone owns that
 compiler work.
+
+### Restore identifier completions (needs Compiler)
+
+Master registers the full Monaco trigger list (`space`, `=`, `{`, `"`, `/`,
+`:`, `>`, `~`, plus `.` `(` …) and still sends **Invoke** (typing a name,
+Enter, Ctrl+Space). `LanguageServices.ProvideCompletionItemsAsync` does not
+cap or `FilterItems`. Roslyn then returns the unfiltered type list
+(~6700 items). Serializing that on the worker and `JSON.parse` on the UI
+thread is the freeze (Enter after `Console.WriteLine();`, pause on
+`Console`, indent spaces).
+
+Master mostly dodges it with a **1s completion debounce** and by **awaiting
+the document mutation** before later queries, so fast typing often never
+starts the huge list. Pause still hitchs. `ShouldTriggerCompletion` rejects
+some insertion characters; it does not help Invoke.
+
+App currently keeps typing smooth **without** Compiler changes:
+
+- Monaco `quickSuggestions` off; trigger characters only `.` `(` `<` `#` `[`
+- JS/C# return `[]` for Invoke / space / Enter (no worker round-trip)
+- Slice to 200 items; drop completion payloads > 64KB
+- Cheap triggers skip debounce and wait on the mutation fence
+
+Do **not** restore master's trigger list, Invoke, or Ctrl+Space from App
+until the payload is small **before** it crosses to the UI. Capping after
+`JSON.parse` is too late.
+
+The real change is in **Compiler** (`LanguageServices` /
+`MonacoConversions`), not App:
+
+1. Prefix-filter with Roslyn `CompletionService.FilterItems` (current
+   identifier). If the filtered list is empty, keep the unfiltered list
+   then cap — a first FilterItems pass on `Console.` dropped all 53
+   members.
+2. Hard-cap the serialized list (e.g. 200) and set `IsIncomplete` so
+   Monaco can requery as the user types.
+3. Keep documentation off the list payload (`ResolveCompletionItem`
+   already fills it).
+4. Do not omit `Kind` when it is `Method = 0` (`JsonIgnoreCondition.WhenWritingDefault`
+   produced “No codicon for CompletionItemKind undefined”).
+5. Honor the request `CancellationToken` inside `GetCompletionsAsync` so
+   a later `.` can abort an in-flight 6700-item compute, not only the UI
+   wait.
+
+After that (and a measured typing/Enter pass): restore master's trigger
+list, identifier debounce, and Ctrl+Space; keep the App oversized-payload
+guard until it is unused. Stay on the current App filter until someone
+owns that compiler work.
