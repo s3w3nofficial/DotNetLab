@@ -13,6 +13,8 @@ public sealed class LabDocuments
         EnsureUri(InitialCode.CSharp.SuggestedFileName);
     }
 
+    public event Action? Changed;
+
     public string Template { get; private set; } = "C#";
     public string ActiveSource { get; set; } = "Program.cs";
 
@@ -109,7 +111,7 @@ public sealed class LabDocuments
         _state.ActiveOutput = template is "Razor" or "CSHTML" ? "gcs" : "cs";
         _state.Stale = true;
         _state.EnsureActiveOutput();
-        _state.Notify();
+        Notify();
         AfterChanged(before);
     }
 
@@ -146,7 +148,6 @@ public sealed class LabDocuments
         }
 
         _state.Stale = true;
-        _state.NotifyStatus();
     }
 
     public void RenameFile(string oldName, string newName)
@@ -179,7 +180,7 @@ public sealed class LabDocuments
         }
 
         _state.Stale = true;
-        _state.Notify();
+        Notify();
         AfterChanged(before);
     }
 
@@ -220,7 +221,7 @@ public sealed class LabDocuments
         }
 
         _state.Stale = true;
-        _state.Notify();
+        Notify();
         AfterChanged(before);
     }
 
@@ -253,7 +254,7 @@ public sealed class LabDocuments
         ActiveSource = name;
         _state.EnsureActiveOutput();
         _state.Stale = true;
-        _state.Notify();
+        Notify();
         AfterChanged(before);
     }
 
@@ -277,7 +278,7 @@ public sealed class LabDocuments
 
         ActiveSource = fileName;
         _state.EnsureActiveOutput();
-        _state.Notify();
+        Notify();
         AfterChanged(before);
     }
 
@@ -361,7 +362,7 @@ public sealed class LabDocuments
         ActiveSource = _sourceFiles.FirstOrDefault(name => !IsSpecialSource(name)) ?? _sourceFiles[0];
         _state.EnsureActiveOutput();
         _state.Stale = true;
-        _state.Notify();
+        Notify();
         AfterChanged(before);
     }
 
@@ -374,7 +375,7 @@ public sealed class LabDocuments
 
         ActiveSource = file;
         _state.EnsureActiveOutput();
-        _state.Notify();
+        Notify();
         _state.AfterActiveSourceChanged();
     }
 
@@ -456,9 +457,14 @@ public sealed class LabDocuments
                 : "C#";
 
         _state.EnsureActiveOutput();
-        _state.Notify();
+        Notify();
     }
 
+    private void Notify()
+    {
+        Changed?.Invoke();
+        _state.Notify();
+    }
 }
 
 internal interface IDocumentWorkspace
@@ -470,8 +476,6 @@ internal interface IDocumentWorkspace
     void EnsureActiveOutput();
 
     void Notify();
-
-    void NotifyStatus();
 
     Task AfterDocumentsChangedAsync(IReadOnlyList<string> before);
 

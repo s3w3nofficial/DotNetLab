@@ -96,11 +96,23 @@ public sealed class DocumentTests
         host.Stale = false;
         documents.SetSource("Program.cs", "class C;");
         host.Stale.Should().BeTrue();
-        host.StatusCount.Should().Be(1);
 
         documents.SetSource("Program.cs", "class D;");
-        host.StatusCount.Should().Be(1);
         documents.Sources["Program.cs"].Should().Be("class D;");
+    }
+
+    [TestMethod]
+    public void SetTemplate_RaisesChanged_SetSourceDoesNot()
+    {
+        var (documents, _) = Create();
+        var count = 0;
+        documents.Changed += () => count++;
+
+        documents.SetSource("Program.cs", "class C;");
+        count.Should().Be(0);
+
+        documents.SetTemplate("Razor");
+        count.Should().Be(1);
     }
 
     [TestMethod]
@@ -140,7 +152,6 @@ public sealed class DocumentTests
         public string ActiveOutput { get; set; } = "cs";
         public bool Stale { get; set; }
         public int PersistCount { get; private set; }
-        public int StatusCount { get; private set; }
         public Task? LastAfterDocumentsChanged { get; private set; }
 
         public void EnsureActiveOutput()
@@ -150,8 +161,6 @@ public sealed class DocumentTests
         public void Notify()
         {
         }
-
-        public void NotifyStatus() => StatusCount++;
 
         public Task AfterDocumentsChangedAsync(IReadOnlyList<string> before)
         {

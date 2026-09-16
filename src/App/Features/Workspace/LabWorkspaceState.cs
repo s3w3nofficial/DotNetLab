@@ -27,6 +27,7 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
     private readonly IState<WorkspaceState> _workspace;
     private readonly IState<OutputState> _output;
     private readonly IDispatcher _dispatcher;
+    private readonly PersistenceQueue _persistence;
     private bool _suppressUrlPersist;
     private bool _settingsReady;
     private bool _compilerWasLoading;
@@ -73,12 +74,10 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
             dispatcher,
             logger);
         _compiler.StateChanged += OnCompilerStoreChanged;
-        _preferences.StateChanged += OnPreferencesChanged;
-        _compilation.StateChanged += OnCompilationChanged;
         _options.StateChanged += OnCompilationOptionsChanged;
-        _workspace.StateChanged += OnWorkspaceChanged;
         _output.StateChanged += OnOutputChanged;
         _worker.Failed += OnWorkerFailed;
+        _persistence = new PersistenceQueue(PersistQueuedAsync, logger);
     }
 
     public LabDocuments Documents { get; }
@@ -87,7 +86,6 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
     public CompilationSession Compilation { get; }
 
     public event Action? Changed;
-    public event Action? StatusChanged;
     public event Func<Task>? SettingsRequested;
     public event Func<Task>? PaletteRequested;
     public event Func<Task>? PasteUrlRequested;
@@ -130,27 +128,18 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
 
     public void Notify() => Changed?.Invoke();
 
-    public void NotifyStatus() => StatusChanged?.Invoke();
-
     public void Dispose()
     {
         _compiler.StateChanged -= OnCompilerStoreChanged;
-        _preferences.StateChanged -= OnPreferencesChanged;
-        _compilation.StateChanged -= OnCompilationChanged;
         _options.StateChanged -= OnCompilationOptionsChanged;
-        _workspace.StateChanged -= OnWorkspaceChanged;
         _output.StateChanged -= OnOutputChanged;
         _worker.Failed -= OnWorkerFailed;
+        _persistence.Dispose();
         Compilation.Dispose();
     }
 
-    private void OnPreferencesChanged(object? sender, EventArgs e) => Notify();
-
-    private void OnCompilationChanged(object? sender, EventArgs e) => Notify();
-
     private void OnCompilationOptionsChanged(object? sender, EventArgs e)
     {
-        Notify();
         if (_suppressUrlPersist)
         {
             return;
@@ -172,14 +161,11 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
         }
     }
 
-    private void OnWorkspaceChanged(object? sender, EventArgs e) => Notify();
-
     private void OnCompilerStoreChanged(object? sender, EventArgs e)
     {
         var compiler = Compiler;
         var loadingFinished = _compilerWasLoading && !compiler.Loading;
         _compilerWasLoading = compiler.Loading;
-        Notify();
         if (!_suppressUrlPersist && loadingFinished)
         {
             _ = PersistUrlAsync();
@@ -268,7 +254,25 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
             return Task.CompletedTask;
         }
 
-        return _settings.SaveAsync(CaptureSettings());
+        return _persistence.EnqueueAsync(PersistKind.Settings);
+    }
+
+    private async Task PersistQueuedAsync(PersistKind kind)
+    {
+        if ((kind & PersistKind.Url) != 0 && !_suppressUrlPersist)
+        {
+            await InvokeHandlersAsync(UrlPersistRequested);
+        }
+
+        if ((kind & PersistKind.Settings) != 0 && _settingsReady)
+        {
+            await _settings.SaveAsync(CaptureSettings());
+        }
+
+        if ((kind & PersistKind.OutputTabs) != 0)
+        {
+            await _settings.PersistOutputTabsAsync(Tabs.SerializeOutputTabs());
+        }
     }
 
     public Task InitializeLanguageServicesAsync()
@@ -357,7 +361,7 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
 
     public Task DetachEditorAsync(string editorId) => _cursors.DetachAsync(editorId);
 
-    public Task PersistOutputTabsAsync() => _settings.PersistOutputTabsAsync(Tabs.SerializeOutputTabs());
+    public Task PersistOutputTabsAsync() => _persistence.EnqueueAsync(PersistKind.OutputTabs);
 
     public void EnsureActiveOutput() => Tabs.EnsureActiveOutput();
 
@@ -375,7 +379,7 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
             return;
         }
 
-        await InvokeHandlersAsync(UrlPersistRequested);
+        await _persistence.EnqueueAsync(PersistKind.Url);
     }
 
     public SavedState CaptureSavedState()

@@ -17,6 +17,8 @@ public sealed class OutputTabLayout
         _state = state;
     }
 
+    public event Action? Changed;
+
     public int Revision { get; private set; }
 
     public IReadOnlyList<string> CurrentOutputTabIds
@@ -113,7 +115,7 @@ public sealed class OutputTabLayout
         }
 
         EnsureActiveOutput();
-        _state.Notify();
+        Notify();
     }
 
     public void MoveOutputTab(OutputFileKind kind, string type, int delta)
@@ -127,7 +129,7 @@ public sealed class OutputTabLayout
         var index = order.IndexOf(type);
         var next = index + delta;
         (order[index], order[next]) = (order[next], order[index]);
-        _state.Notify();
+        Notify();
     }
 
     public void ResetOutputTabs(OutputFileKind kind)
@@ -141,7 +143,7 @@ public sealed class OutputTabLayout
         }
 
         EnsureActiveOutput();
-        _state.Notify();
+        Notify();
     }
 
     public string SerializeOutputTabs()
@@ -186,7 +188,7 @@ public sealed class OutputTabLayout
         _openOutputTabs.Clear();
         Revision++;
         EnsureActiveOutput();
-        _state.Notify();
+        Notify();
     }
 
     public void CaptureOpenOutputTabs(IReadOnlyList<string> ids)
@@ -252,7 +254,7 @@ public sealed class OutputTabLayout
 
         tabs.Add(type);
         _state.ActiveOutput = type;
-        _state.Notify();
+        Notify();
     }
 
     public void RestoreOutputTabOrder()
@@ -271,7 +273,7 @@ public sealed class OutputTabLayout
             .ThenBy(id => tabs.IndexOf(id))
             .ToList();
         Revision++;
-        _state.Notify();
+        Notify();
     }
 
     public void RestoreClosedOutputTabs()
@@ -303,7 +305,7 @@ public sealed class OutputTabLayout
 
         Revision++;
         EnsureActiveOutput();
-        _state.Notify();
+        Notify();
     }
 
     public void SaveOpenOutputTabsAsSettings()
@@ -351,7 +353,7 @@ public sealed class OutputTabLayout
             .Select(tab => tab.Type)
             .Where(id => !open.Contains(id) && id != LabCatalog.ErrorsOutputType)
             .ToHashSet(StringComparer.Ordinal);
-        _state.Notify();
+        Notify();
     }
     public void EnsureActiveOutput()
     {
@@ -616,6 +618,12 @@ public sealed class OutputTabLayout
     {
         _outputTabOrder[kind] = LabCatalog.DefaultTabOrder(kind);
         _hiddenOutputTabs[kind] = new HashSet<string>(StringComparer.Ordinal);
+    }
+
+    private void Notify()
+    {
+        Changed?.Invoke();
+        _state.Notify();
     }
 }
 

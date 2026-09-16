@@ -199,10 +199,10 @@
     protected override void OnInitialized()
     {
         base.OnInitialized();
-        Workspace.Changed += OnStateChanged;
+        Workspace.Tabs.Changed += OnTabsChanged;
     }
 
-    private void OnStateChanged() => InvokeAsync(StateHasChanged);
+    private void OnTabsChanged() => InvokeAsync(StateHasChanged);
 
     private void SetRazorToolchain(RazorToolchain value)
         => Dispatcher.Dispatch(new SetRazorToolchainAction(value));
@@ -214,7 +214,7 @@
     {
         if (disposing)
         {
-            Workspace.Changed -= OnStateChanged;
+            Workspace.Tabs.Changed -= OnTabsChanged;
         }
 
         return base.DisposeAsyncCore(disposing);

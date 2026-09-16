@@ -1,0 +1,73 @@
+using AwesomeAssertions;
+using DotNetLab.Features.Workspace;
+using Microsoft.Extensions.Logging.Abstractions;
+
+namespace DotNetLab;
+
+[TestClass]
+public sealed class PersistenceQueueTests
+{
+    [TestMethod]
+    public async Task Enqueue_ReturnsBeforeExecuteCompletes()
+    {
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var queue = new PersistenceQueue(async _ =>
+        {
+            started.SetResult();
+            await release.Task;
+        }, NullLogger.Instance, TimeSpan.Zero);
+
+        var enqueued = queue.EnqueueAsync(PersistKind.Url);
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        enqueued.IsCompleted.Should().BeFalse();
+
+        release.SetResult();
+        await enqueued.WaitAsync(TimeSpan.FromSeconds(2));
+    }
+
+    [TestMethod]
+    public async Task Burst_CoalescesKindsIntoOneExecute()
+    {
+        var executed = new List<PersistKind>();
+        var firstStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var firstRelease = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var queue = new PersistenceQueue(async kind =>
+        {
+            executed.Add(kind);
+            if (executed.Count == 1)
+            {
+                firstStarted.SetResult();
+                await firstRelease.Task;
+            }
+        }, NullLogger.Instance, TimeSpan.Zero);
+
+        var first = queue.EnqueueAsync(PersistKind.Url);
+        await firstStarted.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        var settings = queue.EnqueueAsync(PersistKind.Settings);
+        var tabs = queue.EnqueueAsync(PersistKind.OutputTabs);
+        firstRelease.SetResult();
+
+        await Task.WhenAll(first, settings, tabs).WaitAsync(TimeSpan.FromSeconds(2));
+        executed.Should().HaveCount(2);
+        executed[0].Should().Be(PersistKind.Url);
+        executed[1].Should().Be(PersistKind.Settings | PersistKind.OutputTabs);
+    }
+
+    [TestMethod]
+    public async Task Debounce_MergesFlagsQueuedDuringDelay()
+    {
+        var executed = new List<PersistKind>();
+        using var queue = new PersistenceQueue(kind =>
+        {
+            executed.Add(kind);
+            return Task.CompletedTask;
+        }, NullLogger.Instance, TimeSpan.FromMilliseconds(40));
+
+        var url = queue.EnqueueAsync(PersistKind.Url);
+        var settings = queue.EnqueueAsync(PersistKind.Settings);
+        await Task.WhenAll(url, settings).WaitAsync(TimeSpan.FromSeconds(2));
+
+        executed.Should().Equal(PersistKind.Url | PersistKind.Settings);
+    }
+}

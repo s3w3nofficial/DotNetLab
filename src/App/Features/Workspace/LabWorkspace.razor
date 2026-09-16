@@ -1,3 +1,4 @@
+@inherits FluxorComponent
 @inject LabWorkspaceState State
 @inject EditorCursor Cursor
 @inject IState<PreferencesState> Prefs
@@ -6,7 +7,6 @@
 @inject IState<CompilationOptionsState> Options
 @inject IDispatcher Dispatcher
 @inject IJSRuntime JS
-@implements IDisposable
 
 <main @ref="_workspace"
       class="lab-workspace @(Prefs.Value.Stacked ? "stacked" : null) @(Prefs.Value.DisplayHintSquiggles ? null : "no-squiggly-hint")"
@@ -266,7 +266,11 @@
     private ElementReference _splitter;
     private bool _resizing;
 
-    protected override void OnInitialized() => State.Changed += OnChanged;
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        State.Changed += OnChanged;
+    }
 
     protected override bool ShouldRender() => !_resizing;
 
@@ -429,5 +433,13 @@
         }
     }
 
-    public void Dispose() => State.Changed -= OnChanged;
+    protected override ValueTask DisposeAsyncCore(bool disposing)
+    {
+        if (disposing)
+        {
+            State.Changed -= OnChanged;
+        }
+
+        return base.DisposeAsyncCore(disposing);
+    }
 }

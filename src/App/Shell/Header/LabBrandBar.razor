@@ -109,16 +109,16 @@
     protected override void OnInitialized()
     {
         base.OnInitialized();
-        Workspace.Changed += OnWorkspaceChanged;
+        Docs.Changed += OnDocumentsChanged;
     }
 
-    private void OnWorkspaceChanged() => InvokeAsync(StateHasChanged);
+    private void OnDocumentsChanged() => InvokeAsync(StateHasChanged);
 
     protected override ValueTask DisposeAsyncCore(bool disposing)
     {
         if (disposing)
         {
-            Workspace.Changed -= OnWorkspaceChanged;
+            Docs.Changed -= OnDocumentsChanged;
         }
 
         return base.DisposeAsyncCore(disposing);

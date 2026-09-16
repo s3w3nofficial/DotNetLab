@@ -51,7 +51,7 @@
 
     protected override void OnInitialized()
     {
-        State.Changed += OnWorkspaceChanged;
+        Prefs.StateChanged += OnPreferencesChanged;
         State.SnapshotRequested += FlushAsync;
     }
 
@@ -63,7 +63,7 @@
         }
 
         _disposed = true;
-        State.Changed -= OnWorkspaceChanged;
+        Prefs.StateChanged -= OnPreferencesChanged;
         State.SnapshotRequested -= FlushAsync;
         try
         {
@@ -341,7 +341,7 @@
         }
     }
 
-    private void OnWorkspaceChanged()
+    private void OnPreferencesChanged(object? sender, EventArgs e)
     {
         if (_disposed || !_ready)
         {

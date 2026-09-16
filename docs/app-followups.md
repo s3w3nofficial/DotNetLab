@@ -215,21 +215,23 @@ wrapper around IndexedDB or the Azure HTTP cache API.
 Leave `OutputLoadCache` as session state (current compiled assembly + tab +
 generation + Monaco URIs). Rename to `OutputSession` only if useful.
 
-### 6. Shrink the facade
+### 6. Shrink the facade — done
 
-- [ ] Delete dead `LabWorkspaceState.StatusChanged` / `NotifyStatus` /
-      `IDocumentWorkspace.NotifyStatus` (`LabDocuments.SetSource` still calls
-      it; nothing subscribes; StatusBar reads Fluxor + `EditorCursor` +
-      `LabDocuments`)
-- [ ] Replace remaining `Workspace.Changed` subscribers with the actual
-      dependency (`LabWorkspace`, `LabCodeEditor`, `SettingsDialog`,
-      `LabBrandBar`). Brand bar only needs document/template changes.
-- [ ] Persistence Channel last (URL / settings / output tabs are snapshots,
-      so latest-wins + debounce is valid). `_suppressUrlPersist` stays
-      orchestration.
+Deleted dead `StatusChanged` / `NotifyStatus`. Remaining `Workspace.Changed`
+subscribers now listen to what they actually read:
 
-After options + ActiveOutput leave the facade, `LabWorkspaceState` should
-mostly apply/capture `SavedState` and wire persist / settings / palette.
+- `LabBrandBar` → `LabDocuments.Changed` (template)
+- `SettingsDialog` → `OutputTabLayout.Changed` (tab settings rows)
+- `LabCodeEditor` → `PreferencesState` (Monaco theme / vim / keyboard)
+- `LabWorkspace` → `Changed` for session chrome, plus Fluxor for prefs /
+  split / compilation / options
+
+URL / settings / output-tab writes go through `PersistenceQueue` (bounded 1 /
+`DropOldest` + 50ms debounce). Snapshots are captured at execute time.
+`_suppressUrlPersist` still skips URL writes during `ApplySavedState`.
+
+After options + ActiveOutput left the facade, `LabWorkspaceState` mostly
+applies/captures `SavedState` and wires persist / settings / palette.
 Whether that leftover coordinator should exist is a later question. Do not
 delete it in the same pass as the language queue.
 
@@ -240,7 +242,6 @@ delete it in the same pass as the language queue.
 - [ ] Document metadata Fluxor (`ActiveDocument` / template / open names)
       only with a real consumer
 - [ ] `WorkerState` for `WorkerError` only if more than one UI surface needs it
-- [ ] Persistence Channel for URL / settings / tab writes
 - [ ] Server-host Redis `IDistributedCache` (not WASM HybridCache / IndexedDB)
 - [ ] Compile Fluxor `CompileRequestedAction` → existing scheduler (session
       is already gated)
