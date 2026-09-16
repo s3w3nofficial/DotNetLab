@@ -23,12 +23,12 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     private readonly IState<CompilationState> _compilation;
     private readonly IState<DocumentsState> _documents;
     private readonly IState<WorkspaceState> _workspace;
+    private readonly OutputsStore _outputs;
     private readonly IDispatcher _dispatcher;
     private readonly ILogger<LabWorkspaceState> _logger;
     private readonly Dictionary<string, OutputSnapshot> _outputCache = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _outputModelUris = new(StringComparer.Ordinal);
     private readonly HashSet<string> _outputLoading = new(StringComparer.Ordinal);
-    private string _activeOutput = "cs";
     private bool _showErrorListIfOutputEmpty;
     private int _compileGeneration;
     private int _applyGeneration;
@@ -53,6 +53,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
         IState<CompilationState> compilation,
         IState<DocumentsState> documents,
         IState<WorkspaceState> workspace,
+        OutputsStore outputs,
         IDispatcher dispatcher,
         ILogger<LabWorkspaceState> logger)
     {
@@ -67,10 +68,12 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
         _compilation = compilation;
         _documents = documents;
         _workspace = workspace;
+        _outputs = outputs;
         _dispatcher = dispatcher;
         _logger = logger;
         Documents = new LabDocuments(this, dispatcher);
         Tabs = new OutputTabLayout(this);
+        PublishOutputs();
         _compilerKey = Compiler.Key;
         _compiler.StateChanged += OnCompilerStoreChanged;
         _preferences.StateChanged += OnPreferencesChanged;
@@ -133,12 +136,12 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
 
     public string ActiveOutput
     {
-        get => _activeOutput;
+        get => OutputsSnapshot.ActiveOutput;
         set
         {
             var dismiss = _showErrorListIfOutputEmpty;
             _showErrorListIfOutputEmpty = false;
-            if (string.Equals(_activeOutput, value, StringComparison.Ordinal))
+            if (string.Equals(OutputsSnapshot.ActiveOutput, value, StringComparison.Ordinal))
             {
                 if (dismiss)
                 {
@@ -148,16 +151,16 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
                 return;
             }
 
-            _activeOutput = value;
+            PublishOutputs(value);
             _ = EnsureOutputLoadedAsync(value);
             _ = PersistUrlAsync();
         }
     }
 
     public string DisplayOutputType
-        => _showErrorListIfOutputEmpty && HasEmptyOutputText(_activeOutput) == true
+        => _showErrorListIfOutputEmpty && HasEmptyOutputText(ActiveOutput) == true
             ? ErrorsOutputType
-            : _activeOutput;
+            : ActiveOutput;
     public string Sdk => Compiler.Sdk;
     public string Roslyn => Compiler.Roslyn;
     public string Razor => Compiler.Razor;
@@ -225,9 +228,9 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     public IReadOnlyDictionary<string, string> Sources => Documents.Sources;
     public IReadOnlyList<string> SourceFiles => DocumentsSnapshot.SourceFiles;
     public string UriFor(string fileName) => Documents.UriFor(fileName);
-    public int OutputLayoutRevision => Tabs.Revision;
+    public int OutputLayoutRevision => OutputsSnapshot.Revision;
 
-    public IReadOnlyList<string> CurrentOutputTabIds => Tabs.CurrentOutputTabIds;
+    public IReadOnlyList<string> CurrentOutputTabIds => OutputsSnapshot.CurrentOutputTabIds;
     public IReadOnlyList<OutputTab> CurrentOutputTabs => Tabs.CurrentOutputTabs;
 
     public static readonly SdkOption[] SdkVersions = LabCatalog.SdkVersions;
@@ -942,6 +945,18 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
 
     private WorkspaceState WorkspaceSnapshot => _workspace.Value;
 
+    private OutputsState OutputsSnapshot => _outputs.Value;
+
+    internal void PublishOutputs(string? activeOutput = null)
+    {
+        _outputs.Update(state => new OutputsState
+        {
+            ActiveOutput = activeOutput ?? state.ActiveOutput,
+            Revision = Tabs.Revision,
+            CurrentOutputTabIds = [.. Tabs.CurrentOutputTabIds],
+        });
+    }
+
     private void BeginNewOutputGeneration()
     {
         _compileGeneration++;
@@ -1141,8 +1156,8 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
 
     private async Task LoadDisplayedOutputAsync()
     {
-        await EnsureOutputLoadedAsync(_activeOutput);
-        if (!string.Equals(DisplayOutputType, _activeOutput, StringComparison.Ordinal))
+        await EnsureOutputLoadedAsync(ActiveOutput);
+        if (!string.Equals(DisplayOutputType, ActiveOutput, StringComparison.Ordinal))
         {
             await EnsureOutputLoadedAsync(DisplayOutputType);
         }
