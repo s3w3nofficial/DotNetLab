@@ -6,10 +6,12 @@ namespace DotNetLab.Features.Workspace;
 /// Latest-wins persistence scheduler. URL / settings / output-tab writes are snapshots,
 /// so a bounded 1 / <see cref="BoundedChannelFullMode.DropOldest"/> pulse plus a mailbox
 /// of flags is enough. A short debounce merges bursts (option toggles, tab edits).
-/// In-flight writes are not cancelled. <c>_suppressUrlPersist</c> is checked by the
-/// execute callback, not here.
+/// In-flight writes are not cancelled; <see cref="DisposeAsync"/> still waits until
+/// that execute returns. <c>_suppressUrlPersist</c> is checked by the execute
+/// callback, not here. There is no sync <c>Dispose</c> — a wait on the WASM UI
+/// thread would deadlock.
 /// </summary>
-internal sealed class PersistenceQueue : IDisposable
+internal sealed class PersistenceQueue : IAsyncDisposable
 {
     private static readonly TimeSpan DefaultDebounce = TimeSpan.FromMilliseconds(50);
 
@@ -24,9 +26,11 @@ internal sealed class PersistenceQueue : IDisposable
     private readonly TimeSpan _debounce;
     private readonly CancellationTokenSource _disposeCts = new();
     private readonly object _gate = new();
+    private readonly Task _read;
     private List<TaskCompletionSource> _waiters = [];
     private PersistKind _queued;
     private bool _disposed;
+    private int _ctsDisposed;
 
     public PersistenceQueue(Func<PersistKind, Task> execute, ILogger logger, TimeSpan? debounce = null)
     {
@@ -35,7 +39,7 @@ internal sealed class PersistenceQueue : IDisposable
         _execute = execute;
         _logger = logger;
         _debounce = debounce ?? DefaultDebounce;
-        _ = ReadAsync();
+        _read = ReadAsync();
     }
 
     public Task EnqueueAsync(PersistKind kind)
@@ -57,7 +61,23 @@ internal sealed class PersistenceQueue : IDisposable
         return completed.Task;
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
+    {
+        Stop();
+        try
+        {
+            await _read.ConfigureAwait(false);
+        }
+        finally
+        {
+            if (Interlocked.Exchange(ref _ctsDisposed, 1) == 0)
+            {
+                _disposeCts.Dispose();
+            }
+        }
+    }
+
+    private void Stop()
     {
         lock (_gate)
         {
@@ -72,7 +92,6 @@ internal sealed class PersistenceQueue : IDisposable
         _disposeCts.Cancel();
         _channel.Writer.TryComplete();
         Drain(canceled: true);
-        _disposeCts.Dispose();
     }
 
     private async Task ReadAsync()

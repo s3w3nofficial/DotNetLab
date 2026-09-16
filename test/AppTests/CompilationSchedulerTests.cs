@@ -12,7 +12,7 @@ public sealed class CompilationSchedulerTests
     {
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var scheduler = new CompilationScheduler(async (_, _) =>
+        await using var scheduler = new CompilationScheduler(async (_, _) =>
         {
             started.SetResult();
             await release.Task;
@@ -32,7 +32,7 @@ public sealed class CompilationSchedulerTests
         var executed = new List<int>();
         var firstStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var firstRelease = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var scheduler = new CompilationScheduler(async (request, _) =>
+        await using var scheduler = new CompilationScheduler(async (request, _) =>
         {
             executed.Add(request.Generation);
             if (request.Generation == 1)
@@ -58,7 +58,7 @@ public sealed class CompilationSchedulerTests
         CompileRequest? latest = null;
         var firstStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var firstRelease = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var scheduler = new CompilationScheduler(async (request, _) =>
+        await using var scheduler = new CompilationScheduler(async (request, _) =>
         {
             if (request.Generation == 1)
             {
@@ -81,5 +81,34 @@ public sealed class CompilationSchedulerTests
         latest!.Value.StoreInCache.Should().BeTrue();
         latest.Value.UpdateDisplayedOutput.Should().BeTrue();
         latest.Value.Generation.Should().Be(3);
+    }
+
+    [TestMethod]
+    public async Task DisposeAsync_WaitsUntilCancelledExecuteReturns()
+    {
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var executeEnded = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var scheduler = new CompilationScheduler(async (_, ct) =>
+        {
+            started.SetResult();
+            try
+            {
+                await Task.Delay(Timeout.Infinite, ct);
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            finally
+            {
+                executeEnded.TrySetResult();
+            }
+        }, NullLogger.Instance);
+
+        _ = scheduler.EnqueueAsync(storeInCache: true, updateDisplayedOutput: true);
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        await scheduler.DisposeAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(2));
+        executeEnded.Task.IsCompleted.Should().BeTrue();
+        scheduler.EnqueueAsync(storeInCache: true, updateDisplayedOutput: true).IsCanceled.Should().BeTrue();
     }
 }

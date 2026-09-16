@@ -28,7 +28,7 @@ public sealed class CompilationSessionTests
         var compilation = new Store<CompilationState>(new CompilationState());
         var dispatcher = new RecordingDispatcher(compilation);
         var created = CreateSession(worker, compilation, dispatcher);
-        using var session = created.Session;
+        await using var session = created.Session;
 
         var first = session.CompileAsync(storeInCache: false, updateDisplayedOutput: false);
         await transport.WaitStartedAsync(0).WaitAsync(TimeSpan.FromSeconds(2));
@@ -56,7 +56,7 @@ public sealed class CompilationSessionTests
         var compilation = new Store<CompilationState>(new CompilationState());
         var dispatcher = new RecordingDispatcher(compilation);
         var created = CreateSession(worker, compilation, dispatcher);
-        using var session = created.Session;
+        await using var session = created.Session;
 
         var compile = session.CompileAsync(storeInCache: true, updateDisplayedOutput: true);
         await transport.WaitStartedAsync(0).WaitAsync(TimeSpan.FromSeconds(2));
@@ -76,7 +76,7 @@ public sealed class CompilationSessionTests
         var compilation = new Store<CompilationState>(new CompilationState());
         var dispatcher = new RecordingDispatcher(compilation);
         var created = CreateSession(worker, compilation, dispatcher);
-        using var session = created.Session;
+        await using var session = created.Session;
         var host = created.Host;
 
         host.SourceText = "A";
@@ -108,7 +108,7 @@ public sealed class CompilationSessionTests
         var dispatcher = new RecordingDispatcher(compilation);
         var compiler = new Store<CompilerState>(new CompilerState { SdkLoading = true });
         var created = CreateSession(worker, compilation, dispatcher, compiler);
-        using var session = created.Session;
+        await using var session = created.Session;
 
         var compile = session.CompileAsync(storeInCache: true, updateDisplayedOutput: true);
         await Task.Delay(80);
@@ -131,7 +131,7 @@ public sealed class CompilationSessionTests
         var compilation = new Store<CompilationState>(new CompilationState());
         var dispatcher = new RecordingDispatcher(compilation);
         var created = CreateSession(worker, compilation, dispatcher);
-        using var session = created.Session;
+        await using var session = created.Session;
         var effects = new CompilationEffects(session);
 
         var compile = effects.Handle(new CompileRequestedAction(), dispatcher);

@@ -12,7 +12,7 @@ public sealed class PersistenceQueueTests
     {
         var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var queue = new PersistenceQueue(async _ =>
+        await using var queue = new PersistenceQueue(async _ =>
         {
             started.SetResult();
             await release.Task;
@@ -32,7 +32,7 @@ public sealed class PersistenceQueueTests
         var executed = new List<PersistKind>();
         var firstStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var firstRelease = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var queue = new PersistenceQueue(async kind =>
+        await using var queue = new PersistenceQueue(async kind =>
         {
             executed.Add(kind);
             if (executed.Count == 1)
@@ -58,7 +58,7 @@ public sealed class PersistenceQueueTests
     public async Task Debounce_MergesFlagsQueuedDuringDelay()
     {
         var executed = new List<PersistKind>();
-        using var queue = new PersistenceQueue(kind =>
+        await using var queue = new PersistenceQueue(kind =>
         {
             executed.Add(kind);
             return Task.CompletedTask;
@@ -76,7 +76,7 @@ public sealed class PersistenceQueueTests
     {
         var executed = new List<PersistKind>();
         var firstPulse = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        using var queue = new PersistenceQueue(kind =>
+        await using var queue = new PersistenceQueue(kind =>
         {
             executed.Add(kind);
             firstPulse.TrySetResult();
@@ -90,5 +90,32 @@ public sealed class PersistenceQueueTests
 
         await Task.WhenAll(url, settings, firstPulse.Task).WaitAsync(TimeSpan.FromSeconds(2));
         executed.Should().Equal(PersistKind.Url | PersistKind.Settings);
+    }
+
+    [TestMethod]
+    public async Task DisposeAsync_WaitsForInFlightExecute()
+    {
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var executing = false;
+        var queue = new PersistenceQueue(async _ =>
+        {
+            executing = true;
+            started.SetResult();
+            await release.Task;
+            executing = false;
+        }, NullLogger.Instance, TimeSpan.Zero);
+
+        _ = queue.EnqueueAsync(PersistKind.Url);
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+
+        var dispose = queue.DisposeAsync().AsTask();
+        dispose.IsCompleted.Should().BeFalse();
+        executing.Should().BeTrue();
+
+        release.SetResult();
+        await dispose.WaitAsync(TimeSpan.FromSeconds(2));
+        executing.Should().BeFalse();
+        queue.EnqueueAsync(PersistKind.Url).IsCanceled.Should().BeTrue();
     }
 }

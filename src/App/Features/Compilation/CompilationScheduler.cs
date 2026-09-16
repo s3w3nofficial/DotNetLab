@@ -8,8 +8,10 @@ namespace DotNetLab.Features.Compilation;
 /// <c>storeInCache</c> / <c>updateDisplayedOutput</c>. Cancellation stops in-flight work
 /// that is no longer interesting. Generation prevents a late result from being committed.
 /// User compiles dispatch <see cref="CompileRequestedAction"/>; the session still gates work.
+/// <see cref="DisposeAsync"/> completes the writer and waits for the reader. A sync
+/// <c>Dispose</c> would deadlock on the WASM UI thread, so there is none.
 /// </summary>
-internal sealed class CompilationScheduler : IDisposable
+internal sealed class CompilationScheduler : IAsyncDisposable
 {
     private readonly Channel<bool> _channel = Channel.CreateBounded<bool>(new BoundedChannelOptions(1)
     {
@@ -21,6 +23,7 @@ internal sealed class CompilationScheduler : IDisposable
     private readonly ILogger _logger;
     private readonly object _gate = new();
     private readonly List<(int Generation, TaskCompletionSource Completed)> _waiters = [];
+    private readonly Task _read;
     private CompileRequest? _queued;
     private CancellationTokenSource? _executingCts;
     private int _generation;
@@ -32,7 +35,7 @@ internal sealed class CompilationScheduler : IDisposable
         ArgumentNullException.ThrowIfNull(logger);
         _execute = execute;
         _logger = logger;
-        _ = ReadAsync();
+        _read = ReadAsync();
     }
 
     public int CurrentGeneration => Volatile.Read(ref _generation);
@@ -68,7 +71,13 @@ internal sealed class CompilationScheduler : IDisposable
         return completed.Task;
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
+    {
+        Stop();
+        await _read.ConfigureAwait(false);
+    }
+
+    private void Stop()
     {
         lock (_gate)
         {

@@ -106,6 +106,8 @@ stay as close to master as possible.
 - Extract `DotNetLab.Editor.Monaco`
 - Add a worker `LanguageSession` or otherwise serialize LS work in the worker
 - Change language services further — keep them as close to master as possible
+- Split `CompilationOptionsState` or change `Compiler` / `GetOutput` for format
+  prefs — that is deferred (needs Shared + Compiler, not App-only)
 - Commit / push unless asked
 
 Keep `WasmEnableWebcil=false` and Fluent UI 5. Native `<button>` stays for
@@ -350,13 +352,56 @@ Quiet `ApplySavedState` compiles still call the session directly.
 switch), not IndexedDB/HTTP. It is `OutputSession`; the workspace property is
 `Outputs`.
 
+### 16. Channel reader DisposeAsync — done
+
+`CompilationScheduler` and `PersistenceQueue` keep the Channel reader Task.
+`DisposeAsync` completes the writer and waits for the loop. There is no sync
+`Dispose` — a wait on the WASM UI thread would deadlock. In-flight persists
+are not cancelled; dispose waits until that execute returns. Compile dispose
+still cancels the in-flight CTS, then waits until execute returns.
+`LabWorkspaceState` / `CompilationSession` are `IAsyncDisposable` so DI waits.
+
 ## Later (not now)
 
-- [ ] Split compile-affecting options (`RazorToolchain` / `RazorStrategy`) from
-      output-only prefs (`ShowOperations`, `FullIl`, …) **only after**
-      `GetOutput` / lazy formatters take *current* prefs. Today those prefs
-      live on `CompilationInput`, so `CanReuseLastCompile` fails and the next
-      compile is a full Roslyn run. Fluxor-splitting first does not save work.
-- [ ] `IAsyncDisposable` on Channel readers so Dispose waits for the loop
 - [ ] Drop `LabWorkspaceState` entirely once it is only glue — decide then,
       do not pre-delete
+
+## Deferred
+
+### Compile identity vs output format
+
+Toggling Full IL, Operations, Bound nodes, Symbols, custom-attribute blobs,
+sequence points, or the Razor declaration document today starts a **full
+Roslyn compile**. Those flags live on `CompilationInput.Preferences`.
+`CanReuseLastCompile` is `CompilationInput` record equality, so any checkbox
+change is a new input. Lazy `GetOutput` lambdas in `Compiler` close over
+`compilationInput.Preferences` at compile time (`ShowOperations`, `FullIl`,
+…). `SavedState.ToCacheSlug` hashes the same prefs, so IndexedDB / HTTP miss
+too.
+
+Two groups are mixed on one record:
+
+| Compile-affecting | Format-only (should not re-run Roslyn) |
+|---|---|
+| sources, `Configuration` | `ShowOperations`, `ShowBoundNodes` |
+| `RazorToolchain`, `RazorStrategy` | `ShowSymbolKinds`, `FullIl` |
+| diagnostic flags (`ExcludeSingleFileNameInDiagnostics`, `IncludeHiddenDiagnostics`) | `DecodeCustomAttributeBlobs`, `ShowSequencePoints`, `ShowDeclarationDocument` |
+
+The UI already stores both groups on `CompilationOptionsState` / `SavedState`.
+Splitting Fluxor first does not save work: the next Compile still sends a
+different `CompilationInput` and the worker still formats with the prefs
+captured at compile.
+
+The real change is in **Shared + Compiler**, not App:
+
+1. Lazy formatters / `GetOutput` take *current* format prefs (pass them into
+   `LoadAsync`, do not close over `CompilationInput.Preferences`).
+2. Compilation identity (`CanReuseLastCompile`, cache slug) excludes format
+   prefs. Diagnostic flags stay on the identity if they change the diagnostic
+   list.
+3. App then reuses `CompilationSession.Compiled`, clears `OutputSession`, and
+   reloads the displayed tab.
+
+Do not start this from App. An attempt that patched `Compiler` / `ICompiler`
+for current prefs was reverted — stay UI-only until someone owns that
+compiler work.

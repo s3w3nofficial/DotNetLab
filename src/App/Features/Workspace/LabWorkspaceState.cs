@@ -14,7 +14,7 @@ using Microsoft.JSInterop;
 
 namespace DotNetLab.Features.Workspace;
 
-public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IOutputSessionHost, ICompilationWorkspace, IDisposable
+public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IOutputSessionHost, ICompilationWorkspace, IAsyncDisposable
 {
     private readonly WorkerHost _worker;
     private readonly LabLanguageServices _language;
@@ -128,14 +128,19 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
 
     public void Notify() => Changed?.Invoke();
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
+    {
+        Unsubscribe();
+        await _persistence.DisposeAsync();
+        await Compilation.DisposeAsync();
+    }
+
+    private void Unsubscribe()
     {
         _compiler.StateChanged -= OnCompilerStoreChanged;
         _options.StateChanged -= OnCompilationOptionsChanged;
         _output.StateChanged -= OnOutputChanged;
         _worker.Failed -= OnWorkerFailed;
-        _persistence.Dispose();
-        Compilation.Dispose();
     }
 
     private void OnCompilationOptionsChanged(object? sender, EventArgs e)

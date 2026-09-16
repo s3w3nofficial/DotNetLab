@@ -10,7 +10,7 @@ using Fluxor;
 
 namespace DotNetLab.Features.Compilation;
 
-public sealed class CompilationSession : IDisposable
+public sealed class CompilationSession : IAsyncDisposable
 {
     private readonly ICompilationWorkspace _host;
     private readonly WorkerHost _worker;
@@ -52,7 +52,7 @@ public sealed class CompilationSession : IDisposable
         _scheduler = new CompilationScheduler(CompileCoreAsync, logger);
     }
 
-    public void Dispose() => _scheduler.Dispose();
+    public ValueTask DisposeAsync() => _scheduler.DisposeAsync();
 
     public CompilationInput? LastInput { get; private set; }
 
