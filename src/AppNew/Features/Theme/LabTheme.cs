@@ -1,4 +1,4 @@
-namespace DotNetLab.Lab;
+namespace DotNetLab.Features.Theme;
 
 public static class LabTheme
 {

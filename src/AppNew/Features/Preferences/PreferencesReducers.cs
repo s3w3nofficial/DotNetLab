@@ -1,4 +1,4 @@
-using DotNetLab.Lab;
+using DotNetLab.Features.Theme;
 using Fluxor;
 
 namespace DotNetLab.Features.Preferences;

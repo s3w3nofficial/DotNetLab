@@ -2,7 +2,7 @@ using DotNetLab.Features.Preferences;
 using Fluxor;
 using Microsoft.JSInterop;
 
-namespace DotNetLab.Lab;
+namespace DotNetLab.Features.Theme;
 
 public sealed class LabThemeService : IAsyncDisposable
 {

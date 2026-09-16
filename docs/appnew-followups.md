@@ -43,6 +43,8 @@ Keep the current chrome folders until feature stores exist, then move into
 - [x] Move `LabSettings` into `Features/Preferences` (persist stays in effects)
 - [x] Move `SettingsDialog` / `SettingRow` into `Features/Preferences` (composer; `ILabSettings` stays on the workspace)
 - [x] Move `LabUrlSync` / `LabShare` / `PasteUrlDialog` into `Features/Sharing` (no Fluxor yet; `CommandPalette` stays in `Dialogs/`)
+- [x] Move `LabTheme` / `LabThemeService` into `Features/Theme` (no Fluxor yet; theme preference stays on `PreferencesState`)
+- [x] Move `Header/` into `Shell/Header/` (`LabBrandBar` / `LabCommandBar` / `MemoryUsageView`; `StatusBar` and `CommandPalette` stay put)
 
 ## P0
 
@@ -120,7 +122,7 @@ delete the facade in one pass.
    convert that slice to Fluxor the same way Updates was converted.
 6. Shrink `LabWorkspaceState` / `Lab/` until both disappear.
 7. Cosmetic leftover: `Header/` → `Shell/Header/` for brand / command / memory
-   only.
+   only. *(done)*
 
 Fluxor constraints: no keystrokes, no Monaco handles, no worker handles, no
 `CompiledAssembly` in the store. Effects for async; reducers for
