@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Routing;
 using Microsoft.JSInterop;
@@ -26,6 +27,8 @@ public sealed class LabUrlSync : IDisposable
         _state.UrlPersistRequested += SaveAsync;
         _navigation.LocationChanged += OnLocationChanged;
     }
+
+    public event Action? InvalidShareUrl;
 
     public async Task LoadFromUriAsync()
     {
@@ -80,6 +83,19 @@ public sealed class LabUrlSync : IDisposable
         return hashIndex >= 0 ? text[(hashIndex + 1)..] : text.Trim();
     }
 
+    public static bool TryGetSavedStateFromSlug(
+        string slug,
+        [NotNullWhen(true)] out SavedState? state)
+    {
+        if (WellKnownSlugs.ShorthandToState.TryGetValue(slug, out var wellKnown))
+        {
+            state = wellKnown;
+            return true;
+        }
+
+        return Compressor.TryUncompress(slug, out state, out _);
+    }
+
     private async Task ApplyLocationSlugAsync(string slug)
     {
         if (string.IsNullOrWhiteSpace(slug))
@@ -99,13 +115,21 @@ public sealed class LabUrlSync : IDisposable
         }
 
         SavedState state;
-        if (WellKnownSlugs.ShorthandToState.TryGetValue(slug, out var wellKnown))
+        var invalid = false;
+        if (TryGetSavedStateFromSlug(slug, out var decoded))
         {
-            state = wellKnown;
+            state = decoded;
         }
         else
         {
-            state = Compressor.Uncompress(slug);
+            state = SavedState.Initial;
+            loadPreferences = true;
+            invalid = true;
+        }
+
+        if (state.Inputs.IsDefault)
+        {
+            state = state with { Inputs = [] };
         }
 
         if (loadPreferences)
@@ -115,6 +139,13 @@ public sealed class LabUrlSync : IDisposable
 
         _state.EditingUserPreferences = loadPreferences;
         await _state.ApplySavedStateAsync(state);
+        if (invalid)
+        {
+            InvalidShareUrl?.Invoke();
+            await SaveAsync();
+            return;
+        }
+
         _appliedSlug = slug;
     }
 

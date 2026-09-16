@@ -88,6 +88,7 @@ the current god object; see [State direction](#state-direction).
 - [x] `WorkerHost` in-process request refcount (`InProcessRequestCount`; recreate drains before disposing the provider; epoch still drops stale results)
 - [x] Output layout session-only (`OutputTabLayout`; `ActiveOutput` on the workspace; no `SetOutputsAction`)
 - [x] `Monaco/` → `Editor/Monaco/` (`IUpdateChecker` colocated with Updates; no `DotNetLab.Editor.Monaco` project)
+- [x] Invalid share URL UX (`TryUncompress`; banner + C# default; `Uncompress` still does not throw)
 
 ## P0
 
@@ -175,8 +176,9 @@ loading finishes. Compiler key/loading → `Stale` is a compilation reducer on
 compiler start actions, not a `SetStaleAction` from that subscription.
 
 `Compressor.Uncompress` does **not** throw (garbage slug → `(error)` source
-file). `MainLayout` `finally` is enough for a blank page. Invalid-URL UX
-(toast + C# default) is later, not a try/catch around Uncompress.
+file). AppNew restore uses `TryUncompress` instead: invalid share URLs show a
+banner and load the C# default. `MainLayout` `finally` is enough for a blank
+page.
 
 Do **not** replace `LabWorkspaceState` with one `AppState` record. Do **not**
 delete the facade in one pass. Do **not** introduce `HybridCache` until
@@ -350,7 +352,7 @@ Namespaces carry the rest (`DotNetLab.Features.Documents`).
 - [x] `WorkerHost` in-process request refcount (epoch already drops results; `InProcessRequestCount` drains before dispose)
 - [x] Output layout: session-only (`OutputTabLayout`; `SetOutputsAction` snapshot deleted)
 - [x] `Monaco/` → `Editor/Monaco/`; colocate `IUpdateChecker` (`Features/Updates/`; no extra Monaco project)
-- [ ] Invalid share URL UX (`Uncompress` already does not throw)
+- [x] Invalid share URL UX (`TryUncompress`; banner + C# default; `Uncompress` still does not throw)
 - Host-neutral `AddDotNetLabApp()` and a true Server vs WASM split
 - `IWorkerTransport` (do not invent a new worker protocol)
 - Extract `Editor/Monaco` to `DotNetLab.Editor.Monaco` (`LabCodeEditor` already injects `LabWorkspaceState`)

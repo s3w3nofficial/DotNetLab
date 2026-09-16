@@ -445,6 +445,37 @@ h1:focus {
     min-width: 0;
 }
 
+.lab-share-url-error {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-shrink: 0;
+    margin: 0.5rem 0.75rem 0;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid var(--lab-hairline);
+    border-radius: 8px;
+    background: var(--lab-error-bar);
+    color: var(--lab-foreground);
+    font-size: 12px;
+}
+
+.lab-share-url-error-title {
+    font-weight: 600;
+    margin-bottom: 0.2rem;
+}
+
+.lab-share-url-error-dismiss {
+    flex-shrink: 0;
+    border: 1px solid var(--lab-hairline);
+    border-radius: 6px;
+    background: var(--lab-panel-raised);
+    color: var(--lab-foreground);
+    font: inherit;
+    padding: 0.25rem 0.55rem;
+    cursor: pointer;
+}
+
 .lab-brand-title {
     margin: 0;
     font-family: var(--font-display);

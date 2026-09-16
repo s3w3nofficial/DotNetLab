@@ -1,5 +1,6 @@
 using AwesomeAssertions;
 using DotNetLab.Features.Sharing;
+using DotNetLab.Lab;
 
 namespace DotNetLab;
 
@@ -15,6 +16,28 @@ public sealed class UrlStateTests
     [DataRow("https://example/#slug-with#extra", "slug-with#extra")]
     public void GetSlugFromClipboardText(string? text, string expected)
         => LabUrlSync.GetSlugFromClipboardText(text).Should().Be(expected);
+
+    [TestMethod]
+    [DataRow("csharp")]
+    [DataRow("razor")]
+    [DataRow("cshtml")]
+    public void TryGetSavedStateFromSlug_WellKnown(string slug)
+    {
+        LabUrlSync.TryGetSavedStateFromSlug(slug, out var state).Should().BeTrue();
+        state.Should().BeSameAs(WellKnownSlugs.ShorthandToState[slug]);
+    }
+
+    [TestMethod]
+    public void TryGetSavedStateFromSlug_CompressedInitial()
+    {
+        var slug = Compressor.Compress(SavedState.Initial);
+        LabUrlSync.TryGetSavedStateFromSlug(slug, out var state).Should().BeTrue();
+        state!.Inputs.Should().BeEquivalentTo(SavedState.Initial.Inputs);
+    }
+
+    [TestMethod]
+    public void TryGetSavedStateFromSlug_Garbage()
+        => LabUrlSync.TryGetSavedStateFromSlug("%%%not-a-slug%%%", out _).Should().BeFalse();
 
     [TestMethod]
     [DataRow("abcdef12", true, "abcdef12")]

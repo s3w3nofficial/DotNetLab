@@ -15,6 +15,16 @@
                 <LabBrandBar />
                 <LabCommandBar />
             </header>
+            @if (_invalidShareUrl)
+            {
+                <div class="lab-share-url-error" role="status">
+                    <div>
+                        <div class="lab-share-url-error-title">Could not open this share link.</div>
+                        <div>The link was invalid. Loaded the C# template instead.</div>
+                    </div>
+                    <button type="button" class="lab-share-url-error-dismiss" @onclick="DismissInvalidShareUrl">Dismiss</button>
+                </div>
+            }
             @Body
             <SettingsDialog @ref="_settings" />
             <CommandPalette @ref="_palette" />
@@ -30,12 +40,14 @@
     private CommandPalette? _palette;
     private PasteUrlDialog? _paste;
     private bool _ready;
+    private bool _invalidShareUrl;
 
     protected override void OnInitialized()
     {
         Workspace.SettingsRequested += OpenSettingsAsync;
         Workspace.PaletteRequested += TogglePaletteAsync;
         Workspace.PasteUrlRequested += OpenPasteAsync;
+        Urls.InvalidShareUrl += OnInvalidShareUrl;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -61,6 +73,17 @@
         }
     }
 
+    private void OnInvalidShareUrl()
+    {
+        _invalidShareUrl = true;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void DismissInvalidShareUrl()
+    {
+        _invalidShareUrl = false;
+    }
+
     private Task OpenSettingsAsync() => _settings?.ShowAsync() ?? Task.CompletedTask;
 
     private Task TogglePaletteAsync() => _palette?.ToggleAsync() ?? Task.CompletedTask;
@@ -72,5 +95,6 @@
         Workspace.SettingsRequested -= OpenSettingsAsync;
         Workspace.PaletteRequested -= TogglePaletteAsync;
         Workspace.PasteUrlRequested -= OpenPasteAsync;
+        Urls.InvalidShareUrl -= OnInvalidShareUrl;
     }
 }
