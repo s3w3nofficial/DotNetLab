@@ -1,11 +1,10 @@
 using System.Collections.Concurrent;
-using System.Runtime.InteropServices.JavaScript;
-using System.Runtime.Versioning;
 using System.Text;
 using System.Text.Json;
 using DotNetLab.Features.Preferences;
 using DotNetLab.Infrastructure.Browser;
 using DotNetLab.Infrastructure.Logging;
+using Microsoft.JSInterop;
 using Timer = System.Timers.Timer;
 
 namespace DotNetLab.Infrastructure.Worker;
@@ -15,20 +14,20 @@ namespace DotNetLab.Infrastructure.Worker;
 /// or in the existing <c>WorkerWebAssembly</c> web worker — same split as
 /// <c>src/App</c> <c>WorkerController</c>. Background-worker vs in-process is
 /// chosen on first use and requires a page reload to change.
+/// Browser I/O goes through <see cref="IWorkerTransport"/> (existing
+/// <c>WorkerController.js</c> protocol).
 /// </summary>
 public sealed class WorkerHost : IAsyncDisposable
 {
     private readonly string _baseUrl;
     private readonly LabLogging _logging;
     private readonly LabSettings _settings;
+    private readonly IWorkerTransport _transport;
     private readonly ILogger<WorkerHost> _logger;
     private readonly Dispatcher _dispatcher = Dispatcher.CreateDefault();
     private readonly ConcurrentDictionary<int, TaskCompletionSource<WorkerOutputMessage>> _pending = new();
     private readonly SemaphoreSlim _startLock = new(1, 1);
     private readonly InProcessRequestCount _inProcessRequests = new();
-    [SupportedOSPlatform("browser")]
-    private readonly Lazy<Task> _controllerJs = new(() =>
-        JSHost.ImportAsync(nameof(WorkerHost), "../_content/DotNetLab.AppNew/js/WorkerController.js"));
     private IServiceProvider? _services;
     private WorkerInstance? _worker;
     private bool? _useWorker;
@@ -40,11 +39,13 @@ public sealed class WorkerHost : IAsyncDisposable
         ILabEnvironment environment,
         LabLogging logging,
         LabSettings settings,
+        IWorkerTransport transport,
         ILogger<WorkerHost> logger)
     {
         _baseUrl = environment.BaseAddress;
         _logging = logging;
         _settings = settings;
+        _transport = transport;
         _logger = logger;
     }
 
@@ -133,17 +134,12 @@ public sealed class WorkerHost : IAsyncDisposable
 
     public async Task CollectAndDownloadGcDumpAsync()
     {
-        if (!OperatingSystem.IsBrowser())
-        {
-            return;
-        }
-
         await EnsureStartedAsync();
-        await _controllerJs.Value;
-        WorkerHostInterop.CollectAndDownloadGcDump();
+        await _transport.EnsureControllerAsync();
+        _transport.CollectAndDownloadGcDump();
         if (_useWorker == true && _worker is { } worker)
         {
-            WorkerHostInterop.PostSideMessage(worker.Handle, "collect-gc-dump");
+            _transport.PostSideMessage(worker.Handle, "collect-gc-dump");
         }
     }
 
@@ -200,14 +196,13 @@ public sealed class WorkerHost : IAsyncDisposable
 
         try
         {
-            Debug.Assert(OperatingSystem.IsBrowser());
             if (epoch != Volatile.Read(ref _epoch) || !ReferenceEquals(worker, _worker))
             {
                 _pending.TryRemove(message.Id, out _);
                 return DisposedFailure(message);
             }
 
-            WorkerHostInterop.PostMessage(worker.Handle, serialized);
+            _transport.PostMessage(worker.Handle, serialized);
         }
         catch (Exception ex)
         {
@@ -268,22 +263,13 @@ public sealed class WorkerHost : IAsyncDisposable
     {
         if (_useWorker == true)
         {
-            if (!OperatingSystem.IsBrowser())
-            {
-                throw new InvalidOperationException("Workers are only supported in the browser.");
-            }
-
             _logger.LogInformation("Starting compilation web worker.");
             _worker = await CreateWorkerAsync();
             return;
         }
 
         _logger.LogInformation("Using in-process compilation worker.");
-        if (OperatingSystem.IsBrowser())
-        {
-            await JSHost.ImportAsync("worker-interop.js", "../_content/DotNetLab.WorkerWebAssembly/interop.js");
-        }
-
+        await _transport.EnsureInProcessInteropAsync();
         _services = WorkerServices.Create(_baseUrl, _logging.LogLevel);
     }
 
@@ -295,11 +281,8 @@ public sealed class WorkerHost : IAsyncDisposable
             {
                 worker.PingTimer.Stop();
                 worker.PingTimer.Dispose();
-                if (OperatingSystem.IsBrowser())
-                {
-                    WorkerHostInterop.DisposeWorker(worker.Handle);
-                    worker.Handle.Dispose();
-                }
+                _transport.DisposeWorker(worker.Handle);
+                worker.Handle.Dispose();
             }
             catch (Exception ex)
             {
@@ -320,10 +303,9 @@ public sealed class WorkerHost : IAsyncDisposable
         DiscardPending("Worker disposed");
     }
 
-    [SupportedOSPlatform("browser")]
     private async Task<WorkerInstance> CreateWorkerAsync()
     {
-        await _controllerJs.Value;
+        await _transport.EnsureControllerAsync();
 
         var pingTimer = new Timer(TimeSpan.FromSeconds(10));
         pingTimer.Elapsed += (_, _) =>
@@ -393,12 +375,12 @@ public sealed class WorkerHost : IAsyncDisposable
             });
         };
 
-        var handle = WorkerHostInterop.CreateWorker(
+        var handle = _transport.CreateWorker(
             GetWorkerUrl("../_content/DotNetLab.WorkerWebAssembly/main.js", [_baseUrl, _logging.LogLevel.ToString()]),
             messageHandler,
             errorHandler);
         await workerReady.Task;
-        WorkerHostInterop.WorkerReady(handle);
+        _transport.WorkerReady(handle);
         pingTimer.Start();
         return new WorkerInstance
         {
@@ -462,36 +444,9 @@ public sealed class WorkerHost : IAsyncDisposable
 
     private sealed class WorkerInstance
     {
-        public required JSObject Handle { get; init; }
+        public required IWorkerHandle Handle { get; init; }
         public required Timer PingTimer { get; init; }
         public required Action<string> MessageHandler { get; init; }
         public required Action<string> ErrorHandler { get; init; }
     }
-}
-
-[SupportedOSPlatform("browser")]
-internal static partial class WorkerHostInterop
-{
-    [JSImport("createWorker", nameof(WorkerHost))]
-    public static partial JSObject CreateWorker(
-        string scriptUrl,
-        [JSMarshalAs<JSType.Function<JSType.String>>]
-        Action<string> messageHandler,
-        [JSMarshalAs<JSType.Function<JSType.String>>]
-        Action<string> errorHandler);
-
-    [JSImport("workerReady", nameof(WorkerHost))]
-    public static partial void WorkerReady(JSObject workerSetup);
-
-    [JSImport("postMessage", nameof(WorkerHost))]
-    public static partial void PostMessage(JSObject workerSetup, string message);
-
-    [JSImport("postSideMessage", nameof(WorkerHost))]
-    public static partial void PostSideMessage(JSObject workerSetup, string message);
-
-    [JSImport("disposeWorker", nameof(WorkerHost))]
-    public static partial void DisposeWorker(JSObject workerSetup);
-
-    [JSImport("collectAndDownloadGcDump", nameof(WorkerHost))]
-    public static partial void CollectAndDownloadGcDump();
 }

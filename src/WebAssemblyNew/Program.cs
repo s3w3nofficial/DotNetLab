@@ -1,6 +1,7 @@
 using DotNetLab;
 using DotNetLab.Features.Updates;
 using DotNetLab.Infrastructure.Browser;
+using DotNetLab.Infrastructure.Worker;
 using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
 using System.Runtime.Versioning;
 
@@ -10,6 +11,7 @@ var environment = new LabEnvironment(
     builder.HostEnvironment.IsDevelopment(),
     builder.HostEnvironment.BaseAddress);
 builder.Services.AddDotNetLabApp(environment, useReduxDevTools: environment.IsDevelopment);
+builder.Services.AddScoped<IWorkerTransport, BrowserWorkerTransport>();
 builder.Services.AddScoped<IUpdateChecker, WebAssemblyUpdateChecker>();
 
 await builder.Build().RunAsync();

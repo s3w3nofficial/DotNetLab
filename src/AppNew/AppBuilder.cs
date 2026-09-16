@@ -59,6 +59,7 @@ public static class AppBuilder
         services.AddScoped<EditorCursor>();
         services.AddScoped<EditorDragState>();
         services.AddScoped<IUpdateChecker, DisabledUpdateChecker>();
+        services.AddScoped<IWorkerTransport, UnsupportedWorkerTransport>();
         services.AddSingleton<LabLogging>();
         services.AddOptions<LoggerFilterOptions>().Configure<LabLogging>((options, logging) =>
         {
