@@ -483,25 +483,26 @@
 
     private bool TryApplyContentChanges(ModelContentChangedEvent args, out string next)
     {
-        next = _lastValue;
         if (args.Changes is not { Count: > 0 } changes)
         {
+            next = _lastValue;
             return false;
         }
 
-        foreach (var change in changes.OrderByDescending(static change => change.RangeOffset))
+        if (changes.Count == 1)
         {
-            var offset = change.RangeOffset;
-            var length = change.RangeLength;
-            if (offset < 0 || length < 0 || offset + length > next.Length)
-            {
-                return false;
-            }
-
-            next = string.Concat(next.AsSpan(0, offset), change.Text, next.AsSpan(offset + length));
+            var change = changes[0];
+            return MonacoTextPatch.TryApply(_lastValue, change.RangeOffset, change.RangeLength, change.Text, out next);
         }
 
-        return true;
+        var edits = new MonacoTextPatch.Edit[changes.Count];
+        for (var i = 0; i < changes.Count; i++)
+        {
+            var change = changes[i];
+            edits[i] = new MonacoTextPatch.Edit(change.RangeOffset, change.RangeLength, change.Text);
+        }
+
+        return MonacoTextPatch.TryApply(_lastValue, edits, out next);
     }
 
     private async Task FlushAsync()

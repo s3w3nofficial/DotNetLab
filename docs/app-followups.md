@@ -219,9 +219,8 @@ quota failure is a miss. The IDB **database** name is versioned
 no-ops L1 behind the same interface.
 
 There is no in-process map of *previous* slugs, so sequential hits after
-stampede ends go to IndexedDB. That is acceptable. A tiny last-N map on
-`ICompilationCache` would be optional later. Do **not** add the HybridCache
-package for it.
+stampede ends go to IndexedDB. That is acceptable. Do **not** add the
+HybridCache package for an in-process map.
 
 `IDistributedCache` belongs on a **server** host (Redis) later, not as a
 wrapper around IndexedDB or the Azure HTTP cache API.
@@ -300,10 +299,25 @@ when JSON stays backward compatible (`InputOutputCacheTests.BackwardsCompatibili
 The IDB database name still wipes the browser on bump; the key prefix versions
 the shared HTTP cache. SHA-256 instead of `XxHash128` stays optional later.
 
+### 10. Monaco text patch — done
+
+Each keystroke still needs a new C# `string` for `LabDocuments`. Concat of three
+spans is one allocation of the document; that is cheaper than Monaco `GetValue`
+JS interop. Measured on this machine (Release-equivalent Debug test host):
+
+| Work | Concat loop | One pass |
+|---|---|---|
+| C# template, 1 insert (20k×) | ~1.5µs | same path (~0.3µs, no LINQ sort) |
+| 64KiB, 1 insert | ~20–45µs | same (Concat) |
+| 512KiB, 1 insert | ~0.4ms | same (Concat) |
+| 64KiB, 80 disjoint edits (400×) | ~2.6ms | ~33µs |
+
+A rope / gap buffer is not worth it. The real cost was **N full copies in one
+Monaco event** (format, multi-cursor, paste). `MonacoTextPatch` walks original
+offsets once; the single-edit path keeps Concat.
+
 ## Later (not now)
 
-- [ ] Profile `LabCodeEditor` reconstructing the full source with
-      `string.Concat` per Monaco change (O(document) per edit)
 - [ ] `EnableSemanticHighlightingAsync` once globally — today each
       `LabCodeEditor` init loops every Monaco instance and `addAction`s again
 - [ ] Native host (`IWorkerTransport` in-process; default
@@ -320,8 +334,6 @@ the shared HTTP cache. SHA-256 instead of `XxHash128` stays optional later.
       `GetOutput` / lazy formatters take *current* prefs. Today those prefs
       live on `CompilationInput`, so `CanReuseLastCompile` fails and the next
       compile is a full Roslyn run. Fluxor-splitting first does not save work.
-- [ ] Optional last-N in-process map on `ICompilationCache` (not HybridCache)
 - [ ] `IAsyncDisposable` on Channel readers so Dispose waits for the loop
-- [ ] Size-based IndexedDB eviction (today max 16 entries)
 - [ ] Drop `LabWorkspaceState` entirely once it is only glue — decide then,
       do not pre-delete
