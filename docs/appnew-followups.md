@@ -50,6 +50,8 @@ Keep the current chrome folders until feature stores exist, then move into
 - [x] Move `LabLanguageServices` / `LabCursorSync` into `Editor/LanguageServices/` (`LabCodeEditor` and Monaco stay put; apply stays on the workspace)
 - [x] Move `WorkerHost` into `Infrastructure/Worker/` (same worker protocol; no `IWorkerTransport`)
 - [x] Move `TemplateCache` / `InputOutputCache` into `Infrastructure/Persistence/` (compiled output stays off Fluxor)
+- [x] Move `LabPlatform` / `IScreenInfo` into `Infrastructure/Browser/` (`WebAssemblyScreenInfo` stays on the WASM host)
+- [x] Move `LabLogging` into `Infrastructure/Logging/` (persist still in Preferences effects; worker snapshots log level on create)
 
 ## P0
 

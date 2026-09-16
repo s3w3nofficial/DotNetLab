@@ -3,6 +3,8 @@ using DotNetLab.Features.Preferences;
 using DotNetLab.Features.Sharing;
 using DotNetLab.Features.Theme;
 using DotNetLab.Features.Workspace;
+using DotNetLab.Infrastructure.Browser;
+using DotNetLab.Infrastructure.Logging;
 using DotNetLab.Infrastructure.Persistence;
 using DotNetLab.Infrastructure.Worker;
 using DotNetLab.Lab;

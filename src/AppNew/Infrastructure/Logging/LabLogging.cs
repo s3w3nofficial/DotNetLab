@@ -1,4 +1,4 @@
-namespace DotNetLab.Lab;
+namespace DotNetLab.Infrastructure.Logging;
 
 /// <summary>
 /// UI log-level switch, same role as <c>src/App/Logging.cs</c>.

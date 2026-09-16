@@ -1,6 +1,6 @@
 using Microsoft.JSInterop;
 
-namespace DotNetLab.Lab;
+namespace DotNetLab.Infrastructure.Browser;
 
 public sealed class LabPlatform
 {

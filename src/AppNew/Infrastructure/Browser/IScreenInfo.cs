@@ -1,4 +1,4 @@
-﻿namespace DotNetLab;
+﻿namespace DotNetLab.Infrastructure.Browser;
 
 public interface IScreenInfo
 {

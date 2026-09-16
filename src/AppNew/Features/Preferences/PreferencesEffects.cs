@@ -1,4 +1,4 @@
-using DotNetLab.Lab;
+using DotNetLab.Infrastructure.Logging;
 using Fluxor;
 
 namespace DotNetLab.Features.Preferences;
