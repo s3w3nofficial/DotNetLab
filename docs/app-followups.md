@@ -197,12 +197,13 @@ Stampede protection is a per-key in-flight `Get` on `ICompilationCache`, not
 the HybridCache package.
 
 ```
-Features/Compilation/
-    ICompilationCache.cs
-Infrastructure/Caching/
+Infrastructure/Caching/Compilation/
+    ICompilationCache.cs        ← namespace stays Features.Compilation
     CompilationCache            ← stampede + L1 then L2
     IndexedDbCompilationCache   ← L1 (thin `netLabCompileCache` JS)
     RemoteCompilationCache      ← L2 (rename of InputOutputCache)
+Infrastructure/Caching/Template/
+    TemplateCache               ← gzipped snapshots; namespace stays Persistence
 ```
 
 ```
