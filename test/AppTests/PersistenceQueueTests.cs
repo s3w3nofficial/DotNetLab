@@ -70,4 +70,25 @@ public sealed class PersistenceQueueTests
 
         executed.Should().Equal(PersistKind.Url | PersistKind.Settings);
     }
+
+    [TestMethod]
+    public async Task Debounce_WaiterQueuedDuringDelay_CompletesWithMergedFlags()
+    {
+        var executed = new List<PersistKind>();
+        var firstPulse = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var queue = new PersistenceQueue(kind =>
+        {
+            executed.Add(kind);
+            firstPulse.TrySetResult();
+            return Task.CompletedTask;
+        }, NullLogger.Instance, TimeSpan.FromMilliseconds(80));
+
+        var url = queue.EnqueueAsync(PersistKind.Url);
+        await Task.Delay(25);
+        var settings = queue.EnqueueAsync(PersistKind.Settings);
+        settings.IsCompleted.Should().BeFalse();
+
+        await Task.WhenAll(url, settings, firstPulse.Task).WaitAsync(TimeSpan.FromSeconds(2));
+        executed.Should().Equal(PersistKind.Url | PersistKind.Settings);
+    }
 }

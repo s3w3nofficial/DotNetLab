@@ -161,11 +161,10 @@ Also in the WorkerHost pass (keep):
 
 ### 3. Compile-in-flight guard — done
 
-`CompilationSession` gates work with `_compileInFlight`. Fluxor `Running` is only
-set when the UI should look busy. A quiet cached follow-up compile can no
-longer overlap another compile and both write `LastInput` /
-`_liveCompiledInput` / `Compiled`. Item 4's scheduler is now the real
-single-flight; item 8 can drop the Interlocked gate.
+`CompilationSession` no longer uses `_compileInFlight`. Fluxor `Running` is only
+set when the UI should look busy. A quiet cached follow-up compile cannot overlap
+another compile: item 4's scheduler is the mutex. Item 8 waits out
+`Compiler.Loading` instead of dropping the consumed pulse.
 
 `ApplySavedStateCoreAsync` still fire-and-forgets `AfterDocumentsChangedAsync`
 then template cache / compile; the scheduler is the mutex those races
@@ -179,11 +178,10 @@ lose a user `storeInCache`. In-flight work is cancelled when a newer request
 arrives; generation skips committing a stale result. Callers are not routed
 through `CompileRequestedAction`.
 
-The single reader already serializes `CompileCoreAsync`. `_compileInFlight` is
-belt-and-suspenders, not a second mutex. Do not drop a consumed request just
-because `Compiler.Loading` is true (item 8) — waiters complete and the click
-is gone. `ApplySavedState` waits for idle then compiles; a user Compile during
-an SDK apply does not.
+The single reader serializes `CompileCoreAsync`. A compile that arrives while
+`Compiler.Loading` waits until idle (or until a newer generation cancels it).
+`ApplySavedState` also waits for idle then compiles; a user Compile during an
+SDK apply is not dropped.
 
 ### 5. `ICompilationCache` — done
 
@@ -286,19 +284,19 @@ Worker: versioned / ordered LS session → Roslyn
 Do not reopen HybridCache, `DropOldest` on LS deltas, or deleting the facade
 in this pass.
 
-### 8. Remaining Channel races — next
+### 8. Remaining Channel races — done
 
 Compile / persist leftovers. Independent of the LS undo.
 
-- [ ] `PersistenceQueue`: take coalesced `PersistKind` flags **and** waiters in
-      one lock after the debounce. Today `TakeQueued()` then `TakeWaiters()`
-      can complete a waiter whose flags have not run yet.
-- [ ] `CompileCoreAsync`: do not `return` just because `Compiler.Loading`. The
-      scheduler has already consumed the pulse and will complete waiters. Wait
-      until idle while still current, or re-enqueue when loading finishes.
-      `_compileInFlight` can go once that is the only gate.
+- [x] `PersistenceQueue`: take coalesced `PersistKind` flags **and** waiters in
+      one lock after the debounce. Taking flags then waiters on separate locks
+      could complete a waiter whose kind had not run yet.
+- [x] `CompileCoreAsync`: wait while `Compiler.Loading` (or until a newer
+      generation cancels) instead of returning. The scheduler has already
+      consumed the pulse; dropping it completed waiters and lost the click.
+      `_compileInFlight` is gone — the scheduler is the only gate.
 
-### 9. Compilation cache key schema
+### 9. Compilation cache key schema — next
 
 Prefix the hashed key (or `ToCacheSlug`) with an explicit schema version so a
 `CompiledAssembly` / serialization change does not serve structurally valid

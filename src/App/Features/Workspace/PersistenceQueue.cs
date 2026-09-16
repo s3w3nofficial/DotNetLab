@@ -97,11 +97,19 @@ internal sealed class PersistenceQueue : IDisposable
                     {
                         break;
                     }
-
-                    kind |= TakeQueued();
                 }
 
-                var waiters = TakeWaiters();
+                // Flags and waiters together: a waiter whose kind arrived after
+                // TakeQueued must not complete before that kind has run.
+                List<TaskCompletionSource> waiters;
+                lock (_gate)
+                {
+                    kind |= _queued;
+                    _queued = PersistKind.None;
+                    waiters = _waiters;
+                    _waiters = [];
+                }
+
                 try
                 {
                     await _execute(kind).ConfigureAwait(false);
@@ -137,16 +145,6 @@ internal sealed class PersistenceQueue : IDisposable
             var kind = _queued;
             _queued = PersistKind.None;
             return kind;
-        }
-    }
-
-    private List<TaskCompletionSource> TakeWaiters()
-    {
-        lock (_gate)
-        {
-            var waiters = _waiters;
-            _waiters = [];
-            return waiters;
         }
     }
 

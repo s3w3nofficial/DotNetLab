@@ -98,6 +98,30 @@ public sealed class CompilationSessionTests
         FailText(session.Compiled).Should().Be("C");
     }
 
+    [TestMethod]
+    public async Task Compile_WaitsUntilCompilerIdleBeforeSending()
+    {
+        using var context = ImmediateSynchronizationContext.Install();
+        var transport = new DelayedCompileTransport();
+        await using var worker = CreateWorker(transport);
+        var compilation = new Store<CompilationState>(new CompilationState());
+        var dispatcher = new RecordingDispatcher(compilation);
+        var compiler = new Store<CompilerState>(new CompilerState { SdkLoading = true });
+        var created = CreateSession(worker, compilation, dispatcher, compiler);
+        using var session = created.Session;
+
+        var compile = session.CompileAsync(storeInCache: true, updateDisplayedOutput: true);
+        await Task.Delay(80);
+        compile.IsCompleted.Should().BeFalse();
+        transport.CompileCount.Should().Be(0);
+
+        compiler.Value = compiler.Value with { SdkLoading = false };
+        await transport.WaitStartedAsync(0).WaitAsync(TimeSpan.FromSeconds(2));
+        transport.CompileCount.Should().Be(1);
+        transport.Release(0);
+        await compile.WaitAsync(TimeSpan.FromSeconds(2));
+    }
+
     private static WorkerHost CreateWorker(IWorkerTransport transport)
         => new(
             new LabEnvironment(IsDevelopment: false, BaseAddress: "http://localhost/"),
@@ -109,7 +133,8 @@ public sealed class CompilationSessionTests
     private static (CompilationSession Session, FakeWorkspace Host) CreateSession(
         WorkerHost worker,
         IState<CompilationState> compilation,
-        IDispatcher dispatcher)
+        IDispatcher dispatcher,
+        IState<CompilerState>? compiler = null)
     {
         var host = new FakeWorkspace();
         var session = new CompilationSession(
@@ -117,7 +142,7 @@ public sealed class CompilationSessionTests
             worker,
             new TemplateCache(),
             new NullCompilationCache(),
-            new Store<CompilerState>(new CompilerState()),
+            compiler ?? new Store<CompilerState>(new CompilerState()),
             new Store<PreferencesState>(new PreferencesState { EnableCaching = false, LanguageServices = false }),
             compilation,
             dispatcher,
