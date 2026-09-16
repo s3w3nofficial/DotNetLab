@@ -25,7 +25,7 @@ process boundary.
  ┌────┼──────────────┐
  ▼    ▼              ▼
 Docs Compilation   Outputs
-     Session        Cache / Tabs
+     Session        Session / Tabs
         │
         ▼
     WorkerHost
@@ -35,7 +35,7 @@ Docs Compilation   Outputs
 |---|---|
 | `CompilerState` | `LabDocuments` |
 | `CompilationState` (`Running` / `Stale` / counts) | `CompilationSession` (`Compiled`, generations) |
-| `CompilationOptionsState` | `OutputLoadCache` |
+| `CompilationOptionsState` | `OutputSession` |
 | `OutputState` (`ActiveOutput`) | `OutputTabLayout` |
 | `PreferencesState` | `LabLanguageServices` |
 | `WorkspaceState` (`Split`) | `WorkerHost` / `EditorCursor` |
@@ -75,7 +75,7 @@ Channels     Sessions          caches
 | Fluxor | Serializable UI facts, stale/running flags | Handles, deltas, `CompiledAssembly` |
 | Channels | Latest-wins compile / persist coalescing | Incremental LS deltas, query overlap, Cancel overlap |
 | Sessions | Documents, compiled output, Monaco, LS | Share-URL fields |
-| `ICompilationCache` | IndexedDB L1 + remote HTTP L2 reuse | TemplateCache, OutputLoadCache, HybridCache |
+| `ICompilationCache` | IndexedDB L1 + remote HTTP L2 reuse | TemplateCache, OutputSession, HybridCache |
 
 `Cancel` still goes straight to `WorkerHost` (serializing it against the
 request it aborts is wrong). Incremental document mutations must be **posted
@@ -98,7 +98,7 @@ stay as close to master as possible.
 - Mistake `ConfigureAwait(false)` on a Channel reader for “this is off the
   UI thread” (Blazor WASM is still one browser thread)
 - Reintroduce Documents/Outputs Fluxor snapshot mirrors
-- Replace `TemplateCache` or `OutputLoadCache` with HybridCache or IndexedDB
+- Replace `TemplateCache` or `OutputSession` with HybridCache or IndexedDB
 - Pretend `vsinsertions.azurewebsites.net` is `IDistributedCache`
 - Pretend IndexedDB is HybridCache L1 or `IDistributedCache`
 - Inject `HybridCache` or IndexedDB into `CompilationSession`
@@ -178,8 +178,9 @@ needed.
 `CompilationScheduler` is bounded 1 / `DropOldest`. `CompileAsync` enqueues;
 the session still executes. A mailbox coalesces flags so DropOldest does not
 lose a user `storeInCache`. In-flight work is cancelled when a newer request
-arrives; generation skips committing a stale result. Callers are not routed
-through `CompileRequestedAction`.
+arrives; generation skips committing a stale result. User compiles dispatch
+`CompileRequestedAction` (item 14). Quiet `ApplySavedState` still calls
+`CompileAsync` so it does not look like a user request.
 
 The single reader serializes `CompileCoreAsync`. A compile that arrives while
 `Compiler.Loading` waits until idle (or until a newer generation cancels it).
@@ -225,8 +226,8 @@ HybridCache package for an in-process map.
 
 Do not wrap IndexedDB or the Azure HTTP cache as `IDistributedCache`.
 
-Leave `OutputLoadCache` as session state (current compiled assembly + tab +
-generation + Monaco URIs). Rename to `OutputSession` only if useful.
+`OutputSession` is session state (current compiled assembly + tab +
+generation + Monaco URIs), not IndexedDB/HTTP.
 
 ### 6. Shrink the facade — done
 
@@ -337,12 +338,20 @@ Template, active file, and open names are `DocumentMetadataState`. File text
 stays on `LabDocuments`. Consumers: template menu, source tabs, status bar.
 `SetDocumentsAction` snapshot buses stay gone.
 
+### 14. CompileRequestedAction — done
+
+Toolbar, palette, and Ctrl/Cmd+S dispatch `CompileRequestedAction`. The effect
+calls `CompilationSession.CompileAsync`; the scheduler stays the mutex.
+Quiet `ApplySavedState` compiles still call the session directly.
+
+### 15. OutputSession — done
+
+`OutputLoadCache` was session state (loaded tabs, Monaco URIs, error-list
+switch), not IndexedDB/HTTP. It is `OutputSession`; the workspace property is
+`Outputs`.
+
 ## Later (not now)
 
-- [ ] `WorkerState` for `WorkerError` only if more than one UI surface needs it
-- [ ] Compile Fluxor `CompileRequestedAction` → existing scheduler (session
-      is already gated)
-- [ ] Rename `OutputLoadCache` → `OutputSession` if the name still misleads
 - [ ] Split compile-affecting options (`RazorToolchain` / `RazorStrategy`) from
       output-only prefs (`ShowOperations`, `FullIl`, …) **only after**
       `GetOutput` / lazy formatters take *current* prefs. Today those prefs

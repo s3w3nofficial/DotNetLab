@@ -125,9 +125,9 @@ public sealed class CompilationSession : IDisposable
                 StoreCompiledOutput(reused);
             }
 
-            if (updateDisplayedOutput && _host.OutputCache.IsEmpty)
+            if (updateDisplayedOutput && _host.Outputs.IsEmpty)
             {
-                _ = _host.OutputCache.LoadDisplayedAsync();
+                _ = _host.Outputs.LoadDisplayedAsync();
             }
 
             _ = _host.RefreshLanguageServicesAfterCompileAsync();
@@ -225,7 +225,7 @@ public sealed class CompilationSession : IDisposable
         if (appliedToDisplay)
         {
             RefreshTemporaryErrorList();
-            _ = _host.OutputCache.LoadDisplayedAsync();
+            _ = _host.Outputs.LoadDisplayedAsync();
         }
 
         if (_scheduler.IsCurrent(request.Generation))
@@ -300,7 +300,7 @@ public sealed class CompilationSession : IDisposable
     internal void RefreshTemporaryErrorList()
     {
         _host.Tabs.EnsureActiveOutput();
-        _host.OutputCache.SetTemporaryErrorList(Compiled is { NumErrors: > 0 });
+        _host.Outputs.SetTemporaryErrorList(Compiled is { NumErrors: > 0 });
         _host.Notify();
     }
 
@@ -312,7 +312,7 @@ public sealed class CompilationSession : IDisposable
     private void BeginNewOutputGeneration()
     {
         _compileGeneration.Begin();
-        _host.OutputCache.Clear();
+        _host.Outputs.Clear();
     }
 
     private bool TryGetTemplateOutput(
@@ -358,7 +358,7 @@ public sealed class CompilationSession : IDisposable
         BeginNewOutputGeneration();
         RefreshTemporaryErrorList();
         _host.Notify();
-        _ = _host.OutputCache.LoadDisplayedAsync();
+        _ = _host.Outputs.LoadDisplayedAsync();
         _ = _host.RefreshLanguageServicesAfterCachedCompileAsync(output);
     }
 
@@ -388,7 +388,7 @@ internal interface ICompilationWorkspace
 
     SavedState CaptureSavedState();
 
-    OutputLoadCache OutputCache { get; }
+    OutputSession Outputs { get; }
 
     OutputTabLayout Tabs { get; }
 

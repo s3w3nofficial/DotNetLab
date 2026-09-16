@@ -14,7 +14,7 @@ using Microsoft.JSInterop;
 
 namespace DotNetLab.Features.Workspace;
 
-public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IOutputLoadHost, ICompilationWorkspace, IDisposable
+public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IOutputSessionHost, ICompilationWorkspace, IDisposable
 {
     private readonly WorkerHost _worker;
     private readonly LabLanguageServices _language;
@@ -62,7 +62,7 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
         _dispatcher = dispatcher;
         Documents = new LabDocuments(this);
         Tabs = new OutputTabLayout(this);
-        OutputCache = new OutputLoadCache(this);
+        Outputs = new OutputSession(this);
         Compilation = new CompilationSession(
             this,
             worker,
@@ -82,7 +82,7 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
 
     public LabDocuments Documents { get; }
     public OutputTabLayout Tabs { get; }
-    public OutputLoadCache OutputCache { get; }
+    public OutputSession Outputs { get; }
     public CompilationSession Compilation { get; }
 
     public event Action? Changed;
@@ -106,7 +106,7 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
         get => _output.Value.ActiveOutput;
         set
         {
-            var dismiss = OutputCache.DismissTemporaryErrorList();
+            var dismiss = Outputs.DismissTemporaryErrorList();
             if (string.Equals(ActiveOutput, value, StringComparison.Ordinal))
             {
                 if (dismiss)
@@ -118,7 +118,7 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
             }
 
             _dispatcher.Dispatch(new SetActiveOutputAction(value));
-            _ = OutputCache.EnsureOutputLoadedAsync(value);
+            _ = Outputs.EnsureOutputLoadedAsync(value);
         }
     }
 
@@ -341,7 +341,7 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
             if (readOnly)
             {
                 await _cursors.AttachOutputAsync(editorId);
-                if (OutputCache.TryGetSnapshot(OutputCache.DisplayType, out var snapshot) &&
+                if (Outputs.TryGetSnapshot(Outputs.DisplayType, out var snapshot) &&
                     string.Equals(snapshot.ModelUri, modelUri, StringComparison.Ordinal))
                 {
                     await _language.ApplyOutputEditorAsync(
@@ -570,22 +570,22 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
 
     public CompilationPreferences GetPreferences() => _options.Value.ToPreferences();
 
-    CompiledAssembly? IOutputLoadHost.Compiled => Compilation.Compiled;
+    CompiledAssembly? IOutputSessionHost.Compiled => Compilation.Compiled;
 
-    CompilationInput? IOutputLoadHost.LastInput => Compilation.LastInput;
+    CompilationInput? IOutputSessionHost.LastInput => Compilation.LastInput;
 
-    int IOutputLoadHost.CompileGeneration => Compilation.CompileGeneration;
+    int IOutputSessionHost.CompileGeneration => Compilation.CompileGeneration;
 
-    bool IOutputLoadHost.IsCurrentCompile(int generation) => Compilation.IsCurrentCompile(generation);
+    bool IOutputSessionHost.IsCurrentCompile(int generation) => Compilation.IsCurrentCompile(generation);
 
-    bool IOutputLoadHost.StoreInCache => Compilation.StoreInCache;
+    bool IOutputSessionHost.StoreInCache => Compilation.StoreInCache;
 
-    string IOutputLoadHost.OutputLabel(string tab) => Tabs.OutputLabel(tab);
+    string IOutputSessionHost.OutputLabel(string tab) => Tabs.OutputLabel(tab);
 
-    ValueTask<CompiledFileLazyResult> IOutputLoadHost.LoadFromWorkerAsync(string? file, string tab)
+    ValueTask<CompiledFileLazyResult> IOutputSessionHost.LoadFromWorkerAsync(string? file, string tab)
         => LoadOutputFromWorkerAsync(file, tab);
 
-    void IOutputLoadHost.StoreCompiledOutput(CompiledAssembly compiled)
+    void IOutputSessionHost.StoreCompiledOutput(CompiledAssembly compiled)
         => Compilation.StoreCompiledOutput(compiled);
 
     private async ValueTask<CompiledFileLazyResult> LoadOutputFromWorkerAsync(string? file, string tab)
@@ -607,7 +607,7 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
     {
         _ = SyncLanguageWorkspaceAsync();
         Compilation.RefreshTemporaryErrorList();
-        _ = OutputCache.LoadDisplayedAsync();
+        _ = Outputs.LoadDisplayedAsync();
         _ = PersistUrlAsync();
     }
 

@@ -1,6 +1,5 @@
 @inherits FluxorComponent
 @inject LabWorkspaceState Workspace
-@inject CompilationSession Compile
 @inject LabThemeService Theme
 @inject LabShare Share
 @inject LabPlatform Platform
@@ -222,6 +221,12 @@
         await item.Run();
     }
 
+    private Task RequestCompile()
+    {
+        Dispatcher.Dispatch(new CompileRequestedAction());
+        return Task.CompletedTask;
+    }
+
     private void Rebuild()
     {
         _filtered.Clear();
@@ -256,7 +261,7 @@
 
     private IEnumerable<CommandItem> Commands()
     {
-        yield return new("Compile", "compile run build", Platform.SaveChord, () => Compile.CompileAsync());
+        yield return new("Compile", "compile run build", Platform.SaveChord, RequestCompile);
         yield return new("Format document", "format indent", "", () => Workspace.FormatActiveSource());
         yield return new("Copy link", "copy share url link", "", Share.CopyLinkAsync);
         yield return new("Create gist", "gist github share", "", Share.CreateGistAsync);

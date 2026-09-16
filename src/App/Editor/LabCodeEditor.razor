@@ -46,7 +46,7 @@
     [Parameter] public EventCallback OnFocused { get; set; }
 
     [Inject] private LabWorkspaceState State { get; set; } = default!;
-    [Inject] private CompilationSession Compile { get; set; } = default!;
+    [Inject] private IDispatcher Dispatcher { get; set; } = default!;
     [Inject] private IState<PreferencesState> Prefs { get; set; } = default!;
 
     protected override void OnInitialized()
@@ -546,13 +546,15 @@
         return OnCursorChanged.InvokeAsync(args);
     }
 
-    private async Task OnKeyDownAsync(KeyboardEvent keyboardEvent)
+    private Task OnKeyDownAsync(KeyboardEvent keyboardEvent)
     {
         if (keyboardEvent.CtrlKey && string.Equals(keyboardEvent.KeyCode.ToString(), "KeyS", StringComparison.OrdinalIgnoreCase)
             || keyboardEvent.MetaKey && string.Equals(keyboardEvent.Code, "KeyS", StringComparison.OrdinalIgnoreCase)
             || keyboardEvent.CtrlKey && string.Equals(keyboardEvent.Code, "KeyS", StringComparison.OrdinalIgnoreCase))
         {
-            await Compile.CompileAsync();
+            Dispatcher.Dispatch(new CompileRequestedAction());
         }
+
+        return Task.CompletedTask;
     }
 }

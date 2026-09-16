@@ -112,7 +112,7 @@
                 <EditorGroups @ref="_outputGroups"
                               PaneId="output"
                               Items="State.Tabs.CurrentOutputTabIds"
-                              Active="@State.OutputCache.DisplayType"
+                              Active="@State.Outputs.DisplayType"
                               ActiveChanged="OnOutputSelected"
                               ItemClosed="OnOutputClosed"
                               LockedItems="_lockedOutputTabs"
@@ -224,14 +224,14 @@
                                     class="lab-html-preview"
                                     title="Rendered HTML"
                                     sandbox=""
-                                    srcdoc="@State.OutputCache.GetOutput("html")"></iframe>
+                                    srcdoc="@State.Outputs.GetOutput("html")"></iframe>
                         }
                         else
                         {
                             <LabCodeEditor @key="@($"output-{context}")"
-                                           Value="@State.OutputCache.GetOutput(context)"
-                                           Language="@State.OutputCache.OutputLanguage(context)"
-                                           ModelUri="@State.OutputCache.OutputUriFor(context)"
+                                           Value="@State.Outputs.GetOutput(context)"
+                                           Language="@State.Outputs.OutputLanguage(context)"
+                                           ModelUri="@State.Outputs.OutputUriFor(context)"
                                            ReadOnly="true"
                                            WordWrap="Prefs.Value.WordWrap" />
                         }

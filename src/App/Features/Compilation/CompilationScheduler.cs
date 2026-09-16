@@ -7,7 +7,7 @@ namespace DotNetLab.Features.Compilation;
 /// (what runs next). A mailbox holds the coalesced request so DropOldest does not lose
 /// <c>storeInCache</c> / <c>updateDisplayedOutput</c>. Cancellation stops in-flight work
 /// that is no longer interesting. Generation prevents a late result from being committed.
-/// Not a Fluxor effect: callers still use <see cref="CompilationSession.CompileAsync"/>.
+/// User compiles dispatch <see cref="CompileRequestedAction"/>; the session still gates work.
 /// </summary>
 internal sealed class CompilationScheduler : IDisposable
 {

@@ -6,73 +6,73 @@ using DotNetLab.Lab;
 namespace DotNetLab;
 
 [TestClass]
-public sealed class OutputLoadCacheTests
+public sealed class OutputSessionTests
 {
     [TestMethod]
     public void GetOutput_AsksToCompileWhenThereIsNoAssembly()
     {
-        var (cache, _) = Create();
-        cache.GetOutput("cs").Should().Be("(press Compile to load this)");
-        cache.IsEmpty.Should().BeTrue();
+        var (session, _) = Create();
+        session.GetOutput("cs").Should().Be("(press Compile to load this)");
+        session.IsEmpty.Should().BeTrue();
     }
 
     [TestMethod]
     public void GetOutput_ShowsCompilingPlaceholderWhileRunning()
     {
-        var (cache, host) = Create();
+        var (session, host) = Create();
         host.Running = true;
-        cache.GetOutput("cs").Should().Be("Compiling…");
+        session.GetOutput("cs").Should().Be("Compiling…");
     }
 
     [TestMethod]
     public void GetOutput_UsesFailOutput()
     {
-        var (cache, host) = Create();
+        var (session, host) = Create();
         host.Compiled = CompiledAssembly.Fail("boom");
-        cache.GetOutput("cs").Should().Be("boom");
+        session.GetOutput("cs").Should().Be("boom");
     }
 
     [TestMethod]
     public void GetOutput_CachesEagerTextUntilCleared()
     {
-        var (cache, host) = Create();
+        var (session, host) = Create();
         host.Compiled = AssemblyWithEager("cs", "class C;", "csharp");
-        cache.GetOutput("cs").Should().Be("class C;");
-        cache.OutputLanguage("cs").Should().Be("csharp");
-        cache.IsEmpty.Should().BeFalse();
+        session.GetOutput("cs").Should().Be("class C;");
+        session.OutputLanguage("cs").Should().Be("csharp");
+        session.IsEmpty.Should().BeFalse();
 
         host.Compiled = null;
-        cache.GetOutput("cs").Should().Be("class C;");
+        session.GetOutput("cs").Should().Be("class C;");
 
-        cache.Clear();
-        cache.GetOutput("cs").Should().Be("(press Compile to load this)");
-        cache.IsEmpty.Should().BeTrue();
+        session.Clear();
+        session.GetOutput("cs").Should().Be("(press Compile to load this)");
+        session.IsEmpty.Should().BeTrue();
     }
 
     [TestMethod]
     public void GetOutput_MissingTabUsesLabel()
     {
-        var (cache, host) = Create();
+        var (session, host) = Create();
         host.Compiled = AssemblyWithEager("il", ".class", "il");
-        cache.GetOutput("tree").Should().Be("(no Tree output for this file)");
+        session.GetOutput("tree").Should().Be("(no Tree output for this file)");
     }
 
     [TestMethod]
     public void DisplayType_SwitchesToErrorListWhenOutputIsEmpty()
     {
-        var (cache, host) = Create();
+        var (session, host) = Create();
         host.ActiveOutput = "cs";
         host.Compiled = AssemblyWithEager("cs", "", "csharp", errors: 1);
-        cache.SetTemporaryErrorList(true);
-        cache.DisplayType.Should().Be(LabCatalog.ErrorsOutputType);
-        cache.DismissTemporaryErrorList().Should().BeTrue();
-        cache.DisplayType.Should().Be("cs");
+        session.SetTemporaryErrorList(true);
+        session.DisplayType.Should().Be(LabCatalog.ErrorsOutputType);
+        session.DismissTemporaryErrorList().Should().BeTrue();
+        session.DisplayType.Should().Be("cs");
     }
 
     [TestMethod]
     public async Task EnsureOutputLoadedAsync_DropsStaleGeneration()
     {
-        var (cache, host) = Create();
+        var (session, host) = Create();
         host.LastInput = new CompilationInput(new(ImmutableArray<InputCode>.Empty));
         host.CompileGeneration = 1;
         host.Compiled = new CompiledAssembly(
@@ -98,15 +98,15 @@ public sealed class OutputLoadCacheTests
             Diagnostics: [],
             BaseDirectory: "/");
 
-        await cache.EnsureOutputLoadedAsync("cs");
-        cache.IsEmpty.Should().BeTrue();
+        await session.EnsureOutputLoadedAsync("cs");
+        session.IsEmpty.Should().BeTrue();
         host.StoredCount.Should().Be(0);
     }
 
-    private static (OutputLoadCache Cache, FakeOutputLoadHost Host) Create()
+    private static (OutputSession Session, FakeOutputSessionHost Host) Create()
     {
-        var host = new FakeOutputLoadHost();
-        return (new OutputLoadCache(host), host);
+        var host = new FakeOutputSessionHost();
+        return (new OutputSession(host), host);
     }
 
     private static CompiledAssembly AssemblyWithEager(string type, string text, string language, int errors = 0)
@@ -129,7 +129,7 @@ public sealed class OutputLoadCacheTests
             Diagnostics: [],
             BaseDirectory: "/");
 
-    private sealed class FakeOutputLoadHost : IOutputLoadHost
+    private sealed class FakeOutputSessionHost : IOutputSessionHost
     {
         public string ActiveSource { get; set; } = "Program.cs";
         public string ActiveOutput { get; set; } = "cs";

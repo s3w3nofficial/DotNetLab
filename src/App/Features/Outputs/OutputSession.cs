@@ -3,15 +3,15 @@ using DotNetLab.Lab;
 
 namespace DotNetLab.Features.Outputs;
 
-public sealed class OutputLoadCache
+public sealed class OutputSession
 {
-    private readonly IOutputLoadHost _host;
+    private readonly IOutputSessionHost _host;
     private readonly Dictionary<string, OutputSnapshot> _cache = new(StringComparer.Ordinal);
     private readonly Dictionary<string, string> _modelUris = new(StringComparer.Ordinal);
     private readonly HashSet<string> _loading = new(StringComparer.Ordinal);
     private bool _showErrorListIfOutputEmpty;
 
-    internal OutputLoadCache(IOutputLoadHost host)
+    internal OutputSession(IOutputSessionHost host)
     {
         _host = host;
     }
@@ -251,7 +251,7 @@ internal sealed record OutputSnapshot(
     CompiledFileOutputMetadata? Metadata,
     string ModelUri);
 
-internal interface IOutputLoadHost
+internal interface IOutputSessionHost
 {
     string ActiveSource { get; }
 

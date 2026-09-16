@@ -122,6 +122,27 @@ public sealed class CompilationSessionTests
         await compile.WaitAsync(TimeSpan.FromSeconds(2));
     }
 
+    [TestMethod]
+    public async Task CompileRequestedAction_EnqueuesOnExistingScheduler()
+    {
+        using var context = ImmediateSynchronizationContext.Install();
+        var transport = new DelayedCompileTransport();
+        await using var worker = CreateWorker(transport);
+        var compilation = new Store<CompilationState>(new CompilationState());
+        var dispatcher = new RecordingDispatcher(compilation);
+        var created = CreateSession(worker, compilation, dispatcher);
+        using var session = created.Session;
+        var effects = new CompilationEffects(session);
+
+        var compile = effects.Handle(new CompileRequestedAction(), dispatcher);
+        await transport.WaitStartedAsync(0).WaitAsync(TimeSpan.FromSeconds(2));
+        compilation.Value.Running.Should().BeTrue();
+
+        transport.Release(0);
+        await compile.WaitAsync(TimeSpan.FromSeconds(2));
+        compilation.Value.Running.Should().BeFalse();
+    }
+
     private static WorkerHost CreateWorker(IWorkerTransport transport)
         => new(
             new LabEnvironment(IsDevelopment: false, BaseAddress: "http://localhost/"),
@@ -264,17 +285,17 @@ public sealed class CompilationSessionTests
         }
     }
 
-    private sealed class FakeWorkspace : ICompilationWorkspace, IOutputLoadHost, IOutputWorkspace
+    private sealed class FakeWorkspace : ICompilationWorkspace, IOutputSessionHost, IOutputWorkspace
     {
         public FakeWorkspace()
         {
-            OutputCache = new OutputLoadCache(this);
+            Outputs = new OutputSession(this);
             Tabs = new OutputTabLayout(this);
         }
 
         public string SourceText { get; set; } = "class C;";
 
-        public OutputLoadCache OutputCache { get; }
+        public OutputSession Outputs { get; }
 
         public OutputTabLayout Tabs { get; }
 
