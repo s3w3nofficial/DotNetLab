@@ -1,7 +1,6 @@
 using AwesomeAssertions;
 using DotNetLab.Features.Documents;
 using DotNetLab.Lab;
-using Fluxor;
 
 namespace DotNetLab;
 
@@ -22,7 +21,7 @@ public sealed class DocumentTests
     [TestMethod]
     public void StartsWithCSharpProgram()
     {
-        var (documents, host, _) = Create();
+        var (documents, host) = Create();
         documents.Template.Should().Be("C#");
         documents.ActiveSource.Should().Be("Program.cs");
         documents.SourceFiles.Should().Equal("Program.cs");
@@ -33,7 +32,7 @@ public sealed class DocumentTests
     [TestMethod]
     public async Task SetTemplate_RazorReplacesUserFiles()
     {
-        var (documents, host, dispatcher) = Create();
+        var (documents, host) = Create();
         documents.SetTemplate("Razor");
         await host.LastAfterDocumentsChanged!;
 
@@ -43,13 +42,12 @@ public sealed class DocumentTests
         host.ActiveOutput.Should().Be("gcs");
         host.Stale.Should().BeTrue();
         host.PersistCount.Should().Be(1);
-        dispatcher.Actions.Should().ContainItemsAssignableTo<SetDocumentsAction>();
     }
 
     [TestMethod]
     public void SetTemplate_Cshtml()
     {
-        var (documents, host, _) = Create();
+        var (documents, host) = Create();
         documents.SetTemplate("CSHTML");
         documents.ActiveSource.Should().Be("TestPage.cshtml");
         documents.SourceFiles.Should().Equal("TestPage.cshtml");
@@ -59,7 +57,7 @@ public sealed class DocumentTests
     [TestMethod]
     public void AddAndCloseFile()
     {
-        var (documents, host, _) = Create();
+        var (documents, host) = Create();
         documents.AddFile(".cs");
         documents.ActiveSource.Should().Be("File1.cs");
         documents.SourceFiles.Should().Equal("Program.cs", "File1.cs");
@@ -76,7 +74,7 @@ public sealed class DocumentTests
     [TestMethod]
     public void RenameFile_AcceptsAndRejects()
     {
-        var (documents, host, _) = Create();
+        var (documents, host) = Create();
         documents.RenameFile("Program.cs", "Hello.cs");
         documents.ActiveSource.Should().Be("Hello.cs");
         documents.SourceFiles.Should().Equal("Hello.cs");
@@ -94,7 +92,7 @@ public sealed class DocumentTests
     [TestMethod]
     public void SetSource_MarksStaleOnce()
     {
-        var (documents, host, _) = Create();
+        var (documents, host) = Create();
         host.Stale = false;
         documents.SetSource("Program.cs", "class C;");
         host.Stale.Should().BeTrue();
@@ -108,7 +106,7 @@ public sealed class DocumentTests
     [TestMethod]
     public void LoadFromSavedState_InfersRazorTemplate()
     {
-        var (documents, _, _) = Create();
+        var (documents, _) = Create();
         documents.LoadFromSavedState(SavedState.Razor);
         documents.Template.Should().Be("Razor");
         documents.ActiveSource.Should().Be("TestComponent.razor");
@@ -118,7 +116,7 @@ public sealed class DocumentTests
     [TestMethod]
     public void LoadImportedFiles_ReplacesUserFiles()
     {
-        var (documents, host, _) = Create();
+        var (documents, host) = Create();
         documents.LoadImportedFiles(new Dictionary<string, string>
         {
             ["sub/App.cs"] = "class App;",
@@ -131,11 +129,10 @@ public sealed class DocumentTests
         host.PersistCount.Should().Be(1);
     }
 
-    private static (LabDocuments Documents, FakeDocumentWorkspace Host, FakeDispatcher Dispatcher) Create()
+    private static (LabDocuments Documents, FakeDocumentWorkspace Host) Create()
     {
         var host = new FakeDocumentWorkspace();
-        var dispatcher = new FakeDispatcher();
-        return (new LabDocuments(host, dispatcher), host, dispatcher);
+        return (new LabDocuments(host), host);
     }
 
     private sealed class FakeDocumentWorkspace : IDocumentWorkspace
@@ -173,18 +170,5 @@ public sealed class DocumentTests
         {
             PersistCount++;
         }
-    }
-
-    private sealed class FakeDispatcher : IDispatcher
-    {
-        public List<object> Actions { get; } = [];
-
-        public event EventHandler<ActionDispatchedEventArgs>? ActionDispatched
-        {
-            add { }
-            remove { }
-        }
-
-        public void Dispatch(object action) => Actions.Add(action);
     }
 }

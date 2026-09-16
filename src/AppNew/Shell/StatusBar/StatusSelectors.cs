@@ -26,7 +26,8 @@ public static class StatusSelectors
 
     public static IReadOnlyList<string> Left(
         string side,
-        DocumentsState documents,
+        string template,
+        string activeSource,
         int cursorLine,
         int cursorColumn,
         CompilationState compilation)
@@ -39,8 +40,8 @@ public static class StatusSelectors
         ];
         var diagnostics = DiagnosticParts(compilation.ErrorCount, compilation.WarningCount);
         return IsOutput(side)
-            ? [LabDocuments.DisplayName(documents.ActiveSource), .. diagnostics]
-            : [.. cursor, documents.Template, .. diagnostics];
+            ? [LabDocuments.DisplayName(activeSource), .. diagnostics]
+            : [.. cursor, template, .. diagnostics];
     }
 
     private static IReadOnlyList<string> DiagnosticParts(int errorCount, int warningCount)

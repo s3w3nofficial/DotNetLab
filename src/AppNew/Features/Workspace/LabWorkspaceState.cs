@@ -23,7 +23,6 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
     private readonly IState<CompilerState> _compiler;
     private readonly IState<PreferencesState> _preferences;
     private readonly IState<CompilationState> _compilation;
-    private readonly IState<DocumentsState> _documents;
     private readonly IState<WorkspaceState> _workspace;
     private readonly IDispatcher _dispatcher;
     private bool _suppressUrlPersist;
@@ -42,7 +41,6 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
         IState<CompilerState> compiler,
         IState<PreferencesState> preferences,
         IState<CompilationState> compilation,
-        IState<DocumentsState> documents,
         IState<WorkspaceState> workspace,
         IDispatcher dispatcher,
         ILogger<LabWorkspaceState> logger)
@@ -54,10 +52,9 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
         _compiler = compiler;
         _preferences = preferences;
         _compilation = compilation;
-        _documents = documents;
         _workspace = workspace;
         _dispatcher = dispatcher;
-        Documents = new LabDocuments(this, dispatcher);
+        Documents = new LabDocuments(this);
         Tabs = new OutputTabLayout(this);
         OutputCache = new OutputLoadCache(this);
         Compilation = new CompilationSession(
@@ -73,7 +70,6 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
         _compiler.StateChanged += OnCompilerStoreChanged;
         _preferences.StateChanged += OnPreferencesChanged;
         _compilation.StateChanged += OnCompilationChanged;
-        _documents.StateChanged += OnDocumentsChanged;
         _workspace.StateChanged += OnWorkspaceChanged;
         _worker.Failed += OnWorkerFailed;
     }
@@ -98,15 +94,7 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
         set => _dispatcher.Dispatch(new SetStaleAction(value));
     }
 
-    public string ActiveSource
-    {
-        get => DocumentsSnapshot.ActiveSource;
-        set
-        {
-            Documents.ActiveSource = value;
-            Documents.Publish();
-        }
-    }
+    public string ActiveSource => Documents.ActiveSource;
 
     public string ActiveOutput
     {
@@ -155,7 +143,6 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
         _compiler.StateChanged -= OnCompilerStoreChanged;
         _preferences.StateChanged -= OnPreferencesChanged;
         _compilation.StateChanged -= OnCompilationChanged;
-        _documents.StateChanged -= OnDocumentsChanged;
         _workspace.StateChanged -= OnWorkspaceChanged;
         _worker.Failed -= OnWorkerFailed;
     }
@@ -163,8 +150,6 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
     private void OnPreferencesChanged(object? sender, EventArgs e) => Notify();
 
     private void OnCompilationChanged(object? sender, EventArgs e) => Notify();
-
-    private void OnDocumentsChanged(object? sender, EventArgs e) => Notify();
 
     private void OnWorkspaceChanged(object? sender, EventArgs e) => Notify();
 
@@ -609,8 +594,6 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
     private CompilerState Compiler => _compiler.Value;
 
     private PreferencesState Preferences => _preferences.Value;
-
-    private DocumentsState DocumentsSnapshot => _documents.Value;
 
     private WorkspaceState WorkspaceSnapshot => _workspace.Value;
 

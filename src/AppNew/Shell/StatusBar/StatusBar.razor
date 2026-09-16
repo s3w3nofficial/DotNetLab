@@ -1,8 +1,8 @@
 @inherits FluxorComponent
 @inject EditorCursor Cursor
+@inject LabDocuments Docs
 @inject IState<CompilationState> Compilation
 @inject IState<CompilerState> Compiler
-@inject IState<DocumentsState> Documents
 
 <div class="lab-statusbar">
     @foreach (var (item, index) in Left.Select((value, i) => (value, i)))
@@ -21,7 +21,8 @@
 
     private IReadOnlyList<string> Left => StatusSelectors.Left(
         Side,
-        Documents.Value,
+        Docs.Template,
+        Docs.ActiveSource,
         Cursor.Line,
         Cursor.Column,
         Compilation.Value);

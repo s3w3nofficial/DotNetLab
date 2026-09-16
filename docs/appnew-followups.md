@@ -2,8 +2,9 @@
 
 Track remaining work after the UI folder split and the first ISP cuts
 (`ILabStatus`, `ILabBrand`, `ILabCommands`, `ILabPalette`, `ILabSettings`,
-`ILabShell`). AppNew stays a WASM rewrite behind `WebAssemblyNew` until
-host-neutral `src/App` replacement is an explicit goal.
+`ILabShell`). AppNew is a WASM rewrite behind `WebAssemblyNew`. DI is host-neutral
+(`AddDotNetLabApp`); `AppNew` still references WASM packages because
+`WorkerHost` uses `JSHost`. `ServerNew` still serves WASM static files.
 
 Keep the current chrome folders until feature stores exist, then move into
 [Target folders](#target-folders). `Lab/` is empty. `LabWorkspaceState` lives in
@@ -29,9 +30,10 @@ the current god object; see [State direction](#state-direction).
 - [x] Fluxor `Features/Preferences` with `PreferenceSettings`; persist in effects, language-services apply on the workspace
 - [x] `CompilationStore` under `Lab/` (`CompilationState`; worker compile and `CompiledAssembly` stay on the workspace)
 - [x] Fluxor `Features/Compilation` (`Running` / `Stale` / diagnostic counts; worker compile and `CompiledAssembly` stay on the workspace)
-- [x] `StatusSelectors` (`CompilationState` + `CompilerState` → right pill / ready / diagnostic counts; `DocumentsState` → template / active file; cursor on `EditorCursor`)
+- [x] `StatusSelectors` (`CompilationState` + `CompilerState` → right pill / ready / diagnostic counts; `LabDocuments` → template / active file; cursor on `EditorCursor`)
 - [x] `DocumentsStore` under `Lab/` (`DocumentsState`; file contents stay on `LabDocuments`; Monaco stays source of truth)
 - [x] Fluxor `Features/Documents` (template / active file / file list / URIs; file contents stay on `LabDocuments`)
+- [x] Document metadata is session-only (`LabDocuments`; `SetDocumentsAction` snapshot bus deleted)
 - [x] `LayoutStore` under `Lab/` (`LayoutState.Split`; pointer-move stays in JS; output tabs stay on `OutputTabLayout`)
 - [x] Fluxor `Features/Workspace` (`Split`; pointer-move stays in JS; `LabWorkspace` still injects `LabWorkspaceState`)
 - [x] `OutputsStore` under `Lab/` (`OutputsState`; `OutputTabLayout` still mutates; worker output stays on the workspace)
@@ -59,7 +61,8 @@ the current god object; see [State direction](#state-direction).
 - [x] Split `LabTypes` into `Features/Compiler` (`SdkOption`), `Features/Outputs` (`OutputTab` / `OutputFileKind`), and `Features/Workspace` (`DropZone` / `TabRename`)
 - [x] Move `LabLinks` into `Features/Sharing` (`NewIssue` / gist snapshot take compiler + prefs + `LabDocuments`)
 - [x] Delete unused `StateStore<T>` and `ElementRect` (Fluxor replaced the Lab stores; `ElementRect` had no callers)
-- [x] Move `ILabEnvironment` / `LabEnvironment` into `Infrastructure/Browser/` (`AppBuilder` still wires the WASM host; no `AddDotNetLabApp`)
+- [x] Move `ILabEnvironment` / `LabEnvironment` into `Infrastructure/Browser/` (`AddDotNetLabApp` takes it; WASM host still constructs `LabEnvironment`)
+- [x] Host-neutral `AddDotNetLabApp` (`IServiceCollection` + `RegisterRootComponents`; WASM host in `WebAssemblyNew`; `IUpdateChecker` host-supplied)
 - [x] Move `ILab*` interfaces next to the chrome that injects them (`LabWorkspaceState` still implements them)
 - [x] `LabWorkspace` injects `ILabWorkspace` (`LabCodeEditor` still injects `LabWorkspaceState`; catalog/fixture statics come from `LabCatalog` / `LabFixtures`)
 - [x] `LabCodeEditor` injects `ILabEditor` (file stays in `Workspace/`; Monaco stays source of truth; apply stays on the workspace)
@@ -89,6 +92,7 @@ the current god object; see [State direction](#state-direction).
 - [x] Output layout session-only (`OutputTabLayout`; `ActiveOutput` on the workspace; no `SetOutputsAction`)
 - [x] `Monaco/` → `Editor/Monaco/` (`IUpdateChecker` colocated with Updates; no `DotNetLab.Editor.Monaco` project)
 - [x] Invalid share URL UX (`TryUncompress`; banner + C# default; `Uncompress` still does not throw)
+- [x] Document metadata session-only (`LabDocuments`; `SetDocumentsAction` snapshot deleted)
 
 ## P0
 
@@ -159,12 +163,10 @@ file list owner     compile generations    LS lifecycle
                     output caches
 ```
 
-`DocumentsState` is still a snapshot bus (`SetDocumentsAction` replaces the
-whole record). Pick one owner: semantic reducers for file list / template /
-active file, **or** chrome reads the session. Do not keep both. Output layout
-is session-only (`OutputTabLayout`; `ActiveOutput` is a field on the
-workspace). Source text, Monaco URIs, and `CompiledAssembly` stay on the
-session.
+`DocumentsState` snapshot bus is gone; chrome reads `LabDocuments` (template /
+active file / file list). Output layout is session-only (`OutputTabLayout`;
+`ActiveOutput` is a field on the workspace). Source text, Monaco URIs, and
+`CompiledAssembly` stay on the session.
 
 Status is derived (`Compilation` + `Compiler` + `Documents` → selector). Do
 not Fluxor cursor or keystrokes. Diagnostic **counts** (ints, not the
@@ -200,14 +202,15 @@ compile is a session. Do **not** extract a `WorkspaceCommands` junk drawer.
 5. When a store is real, colocate its UI with it (e.g. `CompilerPicker` +
    `CompilerSection` move with `CompilerStore`, not before) and optionally
    convert that slice to Fluxor the same way Updates was converted.
-6. Shrink `LabWorkspaceState` / `Lab/` until both disappear. *(Lab/ empty; catalog/tab pass-throughs gone; output-load cache in `Features/Outputs`; Fluxor getters gone; document commands on `LabDocuments`; compile on `CompilationSession`; output tabs session-only; facade remains)*
+6. Shrink `LabWorkspaceState` / `Lab/` until both disappear. *(Lab/ empty; catalog/tab pass-throughs gone; output-load cache in `Features/Outputs`; Fluxor getters gone; document commands on `LabDocuments`; compile on `CompilationSession`; output tabs session-only; document metadata session-only; facade remains)*
 7. Cosmetic leftover: `Header/` → `Shell/Header/` for brand / command / memory
    only. *(done)*
 8. Remaining façade cut (do not add more Fluxor first):
    1. Fix `CompilerEffects` generations (P1). *(done; `CompilerApplyGenerations` per SDK / Roslyn / Razor)*
    2. Fold document commands (`Rename` / `Close` / `Add` + persist + LS sync)
       into `LabDocuments` / `DocumentSession`. Decide metadata Fluxor vs
-      session-only; stop `SetDocumentsAction` as a full snapshot. *(persist/LS on `LabDocuments`; snapshot bus remains)*
+      session-only; stop `SetDocumentsAction` as a full snapshot. *(done;
+      persist/LS on `LabDocuments`; session-only, no Documents Fluxor store)*
    3. `StatusBar` off the façade: `ErrorCount` / `WarningCount` on
       `CompilationState`; cursor stays off Fluxor. *(done; `EditorCursor`)*
    4. `CompilationSession` for `CompileAsync` / `Compiled` / generations /
@@ -217,8 +220,8 @@ compile is a session. Do **not** extract a `WorkspaceCommands` junk drawer.
       `HandleAndGetOutputAsync` finishes). Default path is the web worker.
       *(done; `InProcessRequestCount`, not a mutex — Cancel still overlaps)*
    6. Cosmetic last: `Monaco/` → `Editor/Monaco/`; `IUpdateChecker` next to
-      Updates or infrastructure. No `AddDotNetLabApp` / `IWorkerTransport` /
-      `DotNetLab.Editor.Monaco` yet. *(done; `Editor/Monaco/` + `Features/Updates/IUpdateChecker.cs`)*
+      Updates or infrastructure. No `IWorkerTransport` /
+      `DotNetLab.Editor.Monaco` yet. *(done; `Editor/Monaco/` + `Features/Updates/IUpdateChecker.cs`; `AddDotNetLabApp` is host-neutral DI)*
 
 Fluxor constraints: no keystrokes, no Monaco handles, no worker handles, no
 `CompiledAssembly` in the store. Effects for async; reducers for
@@ -273,7 +276,7 @@ Three kinds of code:
 `SettingsDialog` composes `<CompilerSettings />`, `<ThemeSettings />`, etc. It
 does not own every setting. `CompilerPicker` lives with Compiler even if the
 header renders it. Status is
-`CompilationState` + `CompilerState` + `DocumentsState` → `Shell/StatusBar/StatusSelectors.cs`
+`CompilationState` + `CompilerState` + `LabDocuments` → `Shell/StatusBar/StatusSelectors.cs`
 (pure function). Cursor line/col come from `EditorCursor`; diagnostic counts
 are on `CompilationState`.
 
@@ -288,7 +291,7 @@ Keep feature files flat (`CompilerState.cs`, `CompilerActions.cs`, … plus
 |---|---|
 | `LabWorkspaceState.cs` | `Features/Workspace/` (facade remains; compile on `CompilationSession`; do not Fluxor the leftover) |
 | `CompilationSession.cs` | `Features/Compilation/` (`Compiled` / generations / caches; not Fluxor) |
-| `LabDocuments.cs` | `Features/Documents/` |
+| `LabDocuments.cs` | `Features/Documents/` (session-only; no Documents Fluxor store) |
 | `OutputTabLayout.cs` | `Features/Outputs/` (session-only; no Outputs Fluxor store) |
 | `OutputLoadCache.cs` | `Features/Outputs/` (lazy worker load still on the workspace) |
 | `LabSettings.cs` | `Features/Preferences/` |
@@ -346,13 +349,15 @@ Namespaces carry the rest (`DotNetLab.Features.Documents`).
 - [x] Move output-load cache off `LabWorkspaceState` (`OutputLoadCache`; worker `GetOutput` still on the workspace)
 - [x] Drop Fluxor getter pass-throughs on `LabWorkspaceState` (`LabWorkspace` / `LabCodeEditor` / `LabLinks` read `IState<T>` / `Documents` / `Tabs`)
 - [x] `CompilerEffects` independent generations / operation ids (shared `_generation` can stick `RoslynLoading`)
-- [x] Document commands + persist/LS sync off the façade (`LabDocuments`; `SetDocumentsAction` snapshot bus remains)
+- [x] Document commands + persist/LS sync off the façade (`LabDocuments`; session-only, no `SetDocumentsAction`)
 - [x] `StatusBar` drops `LabWorkspaceState` (`ErrorCount` / `WarningCount` on `CompilationState`; `EditorCursor`; no cursor Fluxor)
 - [x] `CompilationSession` (`CompileAsync`, `Compiled`, generations, caches; compiler actions mark `Stale`; not Fluxor)
 - [x] `WorkerHost` in-process request refcount (epoch already drops results; `InProcessRequestCount` drains before dispose)
 - [x] Output layout: session-only (`OutputTabLayout`; `SetOutputsAction` snapshot deleted)
 - [x] `Monaco/` → `Editor/Monaco/`; colocate `IUpdateChecker` (`Features/Updates/`; no extra Monaco project)
 - [x] Invalid share URL UX (`TryUncompress`; banner + C# default; `Uncompress` still does not throw)
-- Host-neutral `AddDotNetLabApp()` and a true Server vs WASM split
-- `IWorkerTransport` (do not invent a new worker protocol)
-- Extract `Editor/Monaco` to `DotNetLab.Editor.Monaco` (`LabCodeEditor` already injects `LabWorkspaceState`)
+- [x] Document metadata: session-only (`LabDocuments`; `SetDocumentsAction` snapshot deleted)
+- [x] Host-neutral `AddDotNetLabApp()` (`IServiceCollection`; WASM host in `WebAssemblyNew`; `ILabEnvironment` / `IUpdateChecker` host-supplied)
+- [ ] True Server vs WASM split (`AppNew` still references WASM packages / `JSHost`; `ServerNew` still static files; interactive Blazor Server later)
+- [ ] `IWorkerTransport` (do not invent a new worker protocol)
+- [ ] Extract `Editor/Monaco` to `DotNetLab.Editor.Monaco` (`LabCodeEditor` already injects `LabWorkspaceState`)

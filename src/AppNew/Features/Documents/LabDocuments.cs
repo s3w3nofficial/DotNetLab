@@ -1,20 +1,16 @@
 using DotNetLab.Lab;
-using Fluxor;
 
 namespace DotNetLab.Features.Documents;
 
 public sealed class LabDocuments
 {
     private readonly IDocumentWorkspace _state;
-    private readonly IDispatcher _dispatcher;
     private readonly Dictionary<string, string> _modelUris = new(StringComparer.Ordinal);
 
-    internal LabDocuments(IDocumentWorkspace state, IDispatcher dispatcher)
+    internal LabDocuments(IDocumentWorkspace state)
     {
         _state = state;
-        _dispatcher = dispatcher;
         EnsureUri(InitialCode.CSharp.SuggestedFileName);
-        Publish();
     }
 
     public string Template { get; private set; } = "C#";
@@ -36,7 +32,6 @@ public sealed class LabDocuments
         {
             uri = CompiledAssembly.GetInputModelUri(fileName);
             _modelUris[fileName] = uri;
-            Publish();
         }
 
         return uri;
@@ -111,7 +106,6 @@ public sealed class LabDocuments
             ActiveSource = "Program.cs";
         }
 
-        Publish();
         _state.ActiveOutput = template is "Razor" or "CSHTML" ? "gcs" : "cs";
         _state.Stale = true;
         _state.EnsureActiveOutput();
@@ -181,12 +175,7 @@ public sealed class LabDocuments
         if (string.Equals(ActiveSource, oldName, StringComparison.Ordinal))
         {
             ActiveSource = normalized;
-            Publish();
             _state.EnsureActiveOutput();
-        }
-        else
-        {
-            Publish();
         }
 
         _state.Stale = true;
@@ -227,12 +216,7 @@ public sealed class LabDocuments
         if (ActiveSource == file)
         {
             ActiveSource = _sourceFiles.FirstOrDefault(name => !IsSpecialSource(name)) ?? _sourceFiles[0];
-            Publish();
             _state.EnsureActiveOutput();
-        }
-        else
-        {
-            Publish();
         }
 
         _state.Stale = true;
@@ -267,7 +251,6 @@ public sealed class LabDocuments
         _sources[name] = contents;
         EnsureUri(name);
         ActiveSource = name;
-        Publish();
         _state.EnsureActiveOutput();
         _state.Stale = true;
         _state.Notify();
@@ -293,7 +276,6 @@ public sealed class LabDocuments
         }
 
         ActiveSource = fileName;
-        Publish();
         _state.EnsureActiveOutput();
         _state.Notify();
         AfterChanged(before);
@@ -377,7 +359,6 @@ public sealed class LabDocuments
         }
 
         ActiveSource = _sourceFiles.FirstOrDefault(name => !IsSpecialSource(name)) ?? _sourceFiles[0];
-        Publish();
         _state.EnsureActiveOutput();
         _state.Stale = true;
         _state.Notify();
@@ -392,7 +373,6 @@ public sealed class LabDocuments
         }
 
         ActiveSource = file;
-        Publish();
         _state.EnsureActiveOutput();
         _state.Notify();
         _state.AfterActiveSourceChanged();
@@ -475,21 +455,10 @@ public sealed class LabDocuments
                 ? "CSHTML"
                 : "C#";
 
-        Publish();
         _state.EnsureActiveOutput();
         _state.Notify();
     }
 
-    internal void Publish()
-    {
-        _dispatcher.Dispatch(new SetDocumentsAction(new DocumentsState
-        {
-            Template = Template,
-            ActiveSource = ActiveSource,
-            SourceFiles = [.. _sourceFiles],
-            ModelUris = new Dictionary<string, string>(_modelUris, StringComparer.Ordinal),
-        }));
-    }
 }
 
 internal interface IDocumentWorkspace

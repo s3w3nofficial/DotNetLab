@@ -5,7 +5,6 @@
 @inject LabShare Share
 @inject IState<UpdateState> Updates
 @inject IState<PreferencesState> Prefs
-@inject IState<DocumentsState> Documents
 
 <div class="lab-brand-bar">
     <span class="lab-brand-mark" aria-hidden="true">
@@ -19,7 +18,7 @@
                           Size="ButtonSize.Small"
                           Color="@BrandForeground"
                           IconStart="@(new Icons.Regular.Size20.Braces())">
-            Template: @Documents.Value.Template
+            Template: @Docs.Template
         </FluentMenuButton>
         <FluentMenuList>
             @foreach (var template in LabCatalog.Templates)
@@ -106,4 +105,22 @@
 
     private Task ToggleThemeAsync()
         => Theme.SetPreferenceAsync(Prefs.Value.ResolvedDark ? "light" : "dark");
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        Workspace.Changed += OnWorkspaceChanged;
+    }
+
+    private void OnWorkspaceChanged() => InvokeAsync(StateHasChanged);
+
+    protected override ValueTask DisposeAsyncCore(bool disposing)
+    {
+        if (disposing)
+        {
+            Workspace.Changed -= OnWorkspaceChanged;
+        }
+
+        return base.DisposeAsyncCore(disposing);
+    }
 }

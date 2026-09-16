@@ -2,7 +2,6 @@ using AwesomeAssertions;
 using DotNetLab.Editor;
 using DotNetLab.Features.Compilation;
 using DotNetLab.Features.Compiler;
-using DotNetLab.Features.Documents;
 using DotNetLab.Features.Workspace;
 using DotNetLab.Lab;
 using DotNetLab.Shell.StatusBar;
@@ -123,10 +122,9 @@ public sealed class CompileGenerationTests
         var compiler = new CompilerState { Sdk = "built-in", Roslyn = "built-in" };
         StatusSelectors.OutputRight(compiler).Should().Contain(".NET");
 
-        var documents = new DocumentsState();
-        StatusSelectors.Left("source", documents, 3, 5, new CompilationState { ErrorCount = 1, WarningCount = 2 }).Should().Equal(
+        StatusSelectors.Left("source", "C#", "Program.cs", 3, 5, new CompilationState { ErrorCount = 1, WarningCount = 2 }).Should().Equal(
             "Ln 3, Col 5", "Spaces: 4", "UTF-8", "C#", "1 error", "2 warnings");
-        StatusSelectors.Left("output", documents, 3, 5, new CompilationState { WarningCount = 1 }).Should().Equal(
+        StatusSelectors.Left("output", "C#", "Program.cs", 3, 5, new CompilationState { WarningCount = 1 }).Should().Equal(
             "Program.cs", "1 warning");
     }
 }
