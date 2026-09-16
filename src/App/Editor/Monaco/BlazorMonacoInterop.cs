@@ -18,7 +18,7 @@ public sealed partial class BlazorMonacoInterop : IAsyncDisposable
 
     public BlazorMonacoInterop(IJSRuntime jsRuntime)
     {
-        initialize = new(() => jsRuntime.InvokeAsync<IJSObjectReference>("import", "../_content/DotNetLab.App/js/BlazorMonacoInterop.js?v=ls-2").AsTask());
+        initialize = new(() => jsRuntime.InvokeAsync<IJSObjectReference>("import", "../_content/DotNetLab.App/js/BlazorMonacoInterop.js?v=ls-5").AsTask());
     }
 
     public async ValueTask DisposeAsync()
@@ -54,7 +54,9 @@ public sealed partial class BlazorMonacoInterop : IAsyncDisposable
             JsonSerializer.Deserialize(position, BlazorMonacoJsonContext.Default.Position)!,
             JsonSerializer.Deserialize(context, BlazorMonacoJsonContext.Default.CompletionContext)!,
             tokenWrapper.Token);
-        return json;
+        return json.Length > 64 * 1024
+            ? """{"suggestions":[]}"""
+            : json;
     }
 
     [JSInvokable]

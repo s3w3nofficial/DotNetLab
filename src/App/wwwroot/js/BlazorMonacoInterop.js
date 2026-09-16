@@ -51,6 +51,19 @@ export function getAlternativeVersionId(modelUri) {
     return model?.getAlternativeVersionId() ?? -1;
 }
 
+const maxCompletionItems = 200;
+
+function limitCompletionList(result) {
+    if (!result?.suggestions || result.suggestions.length <= maxCompletionItems) {
+        return result;
+    }
+
+    result.suggestions = result.suggestions.slice(0, maxCompletionItems);
+    result.incomplete = true;
+    result.isIncomplete = true;
+    return result;
+}
+
 /**
  * @param {string} language
  * @param {string[] | undefined} triggerCharacters
@@ -60,18 +73,27 @@ export function registerCompletionProvider(language, triggerCharacters, completi
     return monaco.languages.registerCompletionItemProvider(JSON.parse(language), {
         triggerCharacters: triggerCharacters,
         provideCompletionItems: async (model, position, context, token) => {
+            // Invoke/space/Enter ask Roslyn for every type (~6700 items) and freeze the UI
+            // on JSON.parse. Keep the worker round-trip for cheap member/argument triggers.
+            const triggerCharacter = context?.triggerCharacter;
+            if (context?.triggerKind !== 1 /* TriggerCharacter */ ||
+                (triggerCharacter !== '.' && triggerCharacter !== '(' && triggerCharacter !== '<' &&
+                    triggerCharacter !== '#' && triggerCharacter !== '[')) {
+                return { suggestions: [] };
+            }
+
             const versionId = model.getAlternativeVersionId();
             const tokenRef = wrapToken(token);
             try {
                 /** @type {monaco.languages.CompletionList} */
-                const result = JSON.parse(await DotNet.invokeMethodAsync('DotNetLab.App', 'ProvideCompletionItemsAsync',
-                    completionItemProvider, decodeURI(model.uri.toString()), JSON.stringify(position), JSON.stringify(context), tokenRef));
+                const result = limitCompletionList(JSON.parse(await DotNet.invokeMethodAsync('DotNetLab.App', 'ProvideCompletionItemsAsync',
+                    completionItemProvider, decodeURI(model.uri.toString()), JSON.stringify(position), JSON.stringify(context), tokenRef)));
 
                 if (versionId != model.getAlternativeVersionId()) {
                     ignoredProviderRequest();
                 }
 
-                for (const item of result.suggestions) {
+                for (const item of result.suggestions ?? []) {
                     // `insertText` is missing if it's equal to `label` to save bandwidth
                     // but monaco editor expects it to be always present.
                     item.insertText ??= item.label;
@@ -116,19 +138,25 @@ let semanticHighlightingHooked = false;
 function applySemanticHighlighting(editor) {
     editor.updateOptions({
         'semanticHighlighting.enabled': true,
+        quickSuggestions: false,
+        wordBasedSuggestions: 'off',
     });
     if (editor.getAction('debug-semantic-token')) {
         return;
     }
 
-    editor.addAction({
-        id: 'debug-semantic-token',
-        label: 'Debug Semantic Tokens (See Browser Console)',
-        run: () => {
-            debugSemanticTokens = !debugSemanticTokens;
-            console.log('Debugging semantic tokens ' + (debugSemanticTokens ? 'enabled' : 'disabled'));
-        },
-    });
+    try {
+        editor.addAction({
+            id: 'debug-semantic-token',
+            label: 'Debug Semantic Tokens (See Browser Console)',
+            run: () => {
+                debugSemanticTokens = !debugSemanticTokens;
+                console.log('Debugging semantic tokens ' + (debugSemanticTokens ? 'enabled' : 'disabled'));
+            },
+        });
+    } catch {
+        // Some Monaco instances (output / nested) have no KeybindingService.
+    }
 }
 
 export function enableSemanticHighlighting() {

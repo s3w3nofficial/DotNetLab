@@ -26,6 +26,7 @@ public sealed class LabLanguageServices(
     private int _outputRegistered;
     private DebounceInfo _completionDebounce = new(new CancellationTokenSource());
     private DebounceInfo _diagnosticsDebounce = new(new CancellationTokenSource());
+    private Task? _mutation;
     private (string ModelUri, string? RangeJson, Task<string?> Result)? _lastCodeActions;
     private (CompiledFileOutputMetadata Metadata, DocumentMapping OutputToOutput)? _outputCache;
 
@@ -109,9 +110,9 @@ public sealed class LabLanguageServices(
         }
 
         InvalidateCaches();
-        var update = SendAsync(
+        _mutation = SendAsync(
             new WorkerInputMessage.OnDidChangeWorkspace(models, refresh) { Id = _worker.NextMessageId() });
-        _ = UpdateDiagnosticsAfterMutationAsync(update, activeModelUri);
+        _ = UpdateDiagnosticsAfterMutationAsync(_mutation, activeModelUri);
         if (!refresh)
         {
             return Task.CompletedTask;
@@ -128,9 +129,9 @@ public sealed class LabLanguageServices(
         }
 
         InvalidateCaches();
-        var update = SendAsync(
+        _mutation = SendAsync(
             new WorkerInputMessage.OnDidChangeModelContent(modelUri, args) { Id = _worker.NextMessageId() });
-        _ = UpdateDiagnosticsAfterMutationAsync(update, modelUri);
+        _ = UpdateDiagnosticsAfterMutationAsync(_mutation, modelUri);
         return Task.CompletedTask;
     }
 
@@ -314,19 +315,33 @@ public sealed class LabLanguageServices(
 
         _completionProvider = await blazorMonacoInterop.RegisterCompletionProviderAsync(_cSharpLanguageSelector, new(loggerFactory)
         {
-            TriggerCharacters = [" ", "(", "=", "#", ".", "<", "[", "{", "\"", "/", ":", ">", "~"],
+            TriggerCharacters = [".", "(", "<", "#", "["],
             ProvideCompletionItemsFunc = (modelUri, position, context, cancellationToken) =>
             {
+                if (!IsMemberOrArgumentCompletion(context))
+                {
+                    return Task.FromResult("""{"suggestions":[]}""");
+                }
+
                 return DebounceAsync(
                     ref _completionDebounce,
                     (this, modelUri, position, context),
-                    """{"suggestions":[],"isIncomplete":true}""",
-                    static (args, cancellationToken) => args.Item1.SendAsync(
-                        new WorkerInputMessage.ProvideCompletionItems(args.modelUri, args.position, args.context)
+                    """{"suggestions":[]}""",
+                    static async (args, cancellationToken) =>
+                    {
+                        if (args.Item1._mutation is { } mutation)
                         {
-                            Id = args.Item1._worker.NextMessageId(),
-                        },
-                        cancellationToken),
+                            await mutation.WaitAsync(cancellationToken);
+                        }
+
+                        return await args.Item1.SendAsync(
+                            new WorkerInputMessage.ProvideCompletionItems(args.modelUri, args.position, args.context)
+                            {
+                                Id = args.Item1._worker.NextMessageId(),
+                            },
+                            cancellationToken);
+                    },
+                    skipDebounce: true,
                     cancellationToken: cancellationToken);
             },
             ResolveCompletionItemFunc = (item, cancellationToken) =>
@@ -383,6 +398,7 @@ public sealed class LabLanguageServices(
                 {
                     Id = _worker.NextMessageId(),
                 }, cancellationToken),
+            RegisterRangeProvider = false,
         });
     }
 
@@ -426,6 +442,14 @@ public sealed class LabLanguageServices(
     }
 
     private void InvalidateCaches() => _lastCodeActions = null;
+
+    /// <summary>
+    /// Identifier / space / Enter completions are unfiltered (~6700 types) and freeze
+    /// the UI when the JSON is parsed. Only member/argument-style triggers stay cheap.
+    /// </summary>
+    private static bool IsMemberOrArgumentCompletion(CompletionContext context)
+        => context.TriggerKind == CompletionTriggerKind.TriggerCharacter
+            && context.TriggerCharacter is "." or "(" or "<" or "#" or "[";
 
     private async Task<bool> UpdateDiagnosticsAsync(string? modelUri, bool afterCompilation = false)
     {

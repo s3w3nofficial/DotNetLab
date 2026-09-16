@@ -131,7 +131,7 @@ public sealed class WorkerHost : IAsyncDisposable
 
         try
         {
-            var incoming = await PostAsync(message);
+            var incoming = await PostAsync(message).WaitAsync(cancellationToken);
             return ReadResult<T>(incoming);
         }
         finally
@@ -371,6 +371,20 @@ public sealed class WorkerHost : IAsyncDisposable
                     return Task.CompletedTask;
                 }
 
+                if (TryCompleteOversizedCompletion(data, out var dropped))
+                {
+                    _logger.LogWarning(
+                        "Dropped oversized completion payload ({Size} bytes) for {Id}",
+                        data.Length.SeparateThousands(),
+                        dropped.Id);
+                    if (_pending.TryRemove(dropped.Id, out var droppedTcs))
+                    {
+                        droppedTcs.TrySetResult(dropped);
+                    }
+
+                    return Task.CompletedTask;
+                }
+
                 var message = JsonSerializer.Deserialize(data, WorkerJsonContext.Default.WorkerOutputMessage)!;
                 _logger.Log(
                     message.InputType == nameof(WorkerInputMessage.Ping) ? LogLevel.Trace : LogLevel.Debug,
@@ -507,6 +521,63 @@ public sealed class WorkerHost : IAsyncDisposable
         }
 
         return sb.ToString();
+    }
+
+    private const int OversizedCompletionBytes = 64 * 1024;
+
+    private static bool TryCompleteOversizedCompletion(string data, out WorkerOutputMessage.Success empty)
+    {
+        empty = null!;
+        if (data.Length <= OversizedCompletionBytes)
+        {
+            return false;
+        }
+
+        var tailStart = Math.Max(0, data.Length - 256);
+        if (!data.AsSpan(tailStart).Contains("ProvideCompletionItems", StringComparison.Ordinal) &&
+            !data.AsSpan(0, Math.Min(256, data.Length)).Contains("ProvideCompletionItems", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        if (!TryReadMessageId(data.AsSpan(tailStart), out var id) &&
+            !TryReadMessageId(data.AsSpan(0, Math.Min(256, data.Length)), out id))
+        {
+            return false;
+        }
+
+        empty = new WorkerOutputMessage.Success("""{"suggestions":[]}""")
+        {
+            Id = id,
+            InputType = nameof(WorkerInputMessage.ProvideCompletionItems),
+        };
+        return true;
+    }
+
+    private static bool TryReadMessageId(ReadOnlySpan<char> span, out int id)
+    {
+        id = 0;
+        var at = span.LastIndexOf("\"Id\":");
+        var markerLength = 5;
+        if (at < 0)
+        {
+            at = span.LastIndexOf("\"id\":");
+            markerLength = 5;
+        }
+
+        if (at < 0)
+        {
+            return false;
+        }
+
+        var digits = span[(at + markerLength)..].TrimStart();
+        var end = 0;
+        while (end < digits.Length && char.IsAsciiDigit(digits[end]))
+        {
+            end++;
+        }
+
+        return end > 0 && int.TryParse(digits[..end], out id);
     }
 
     private static async ValueTask DisposeServicesAsync(IServiceProvider services)
