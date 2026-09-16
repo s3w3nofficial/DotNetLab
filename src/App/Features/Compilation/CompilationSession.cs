@@ -10,7 +10,7 @@ using Fluxor;
 
 namespace DotNetLab.Features.Compilation;
 
-public sealed class CompilationSession
+public sealed class CompilationSession : IDisposable
 {
     private readonly ICompilationWorkspace _host;
     private readonly WorkerHost _worker;
@@ -21,6 +21,7 @@ public sealed class CompilationSession
     private readonly IState<CompilationState> _compilation;
     private readonly IDispatcher _dispatcher;
     private readonly ILogger _logger;
+    private readonly CompilationScheduler _scheduler;
     private GenerationCounter _compileGeneration;
     private GenerationCounter _applyGeneration;
     private int _compileInFlight;
@@ -49,7 +50,10 @@ public sealed class CompilationSession
         _compilation = compilation;
         _dispatcher = dispatcher;
         _logger = logger;
+        _scheduler = new CompilationScheduler(CompileCoreAsync, logger);
     }
+
+    public void Dispose() => _scheduler.Dispose();
 
     public CompilationInput? LastInput { get; private set; }
 
@@ -89,13 +93,18 @@ public sealed class CompilationSession
 
     public Task CompileAsync(bool storeInCache) => CompileAsync(storeInCache, updateDisplayedOutput: true);
 
-    public async Task CompileAsync(bool storeInCache, bool updateDisplayedOutput)
+    public Task CompileAsync(bool storeInCache, bool updateDisplayedOutput)
+        => _scheduler.EnqueueAsync(storeInCache, updateDisplayedOutput);
+
+    private async Task CompileCoreAsync(CompileRequest request, CancellationToken cancellationToken)
     {
-        if (Compiler.Loading || Interlocked.CompareExchange(ref _compileInFlight, 1, 0) != 0)
+        if (Compiler.Loading || !_scheduler.IsCurrent(request.Generation) || Interlocked.CompareExchange(ref _compileInFlight, 1, 0) != 0)
         {
             return;
         }
 
+        var storeInCache = request.StoreInCache;
+        var updateDisplayedOutput = request.UpdateDisplayedOutput;
         var appliedToDisplay = false;
         try
         {
@@ -120,26 +129,38 @@ public sealed class CompilationSession
             }
 
             var showBusy = storeInCache || (updateDisplayedOutput && Compiled is null);
-            if (showBusy)
-            {
-                SetRunning(true);
-                _host.Notify();
-                await Task.Yield();
-            }
-
             try
             {
+                if (showBusy)
+                {
+                    SetRunning(true);
+                    _host.Notify();
+                    await Task.Yield();
+                }
+
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!_scheduler.IsCurrent(request.Generation))
+                {
+                    return;
+                }
+
                 if (showBusy)
                 {
                     await _host.PersistUrlAsync(snapshot: true);
                 }
 
-                LastInput = input;
                 var compiled = await _worker.SendAsync(
                     new WorkerInputMessage.Compile(input, LanguageServicesEnabled: Preferences.LanguageServices)
                     {
                         Id = _worker.NextMessageId(),
-                    });
+                    },
+                    cancellationToken);
+                if (!_scheduler.IsCurrent(request.Generation))
+                {
+                    return;
+                }
+
+                LastInput = input;
                 _liveCompiledInput = input;
                 _compiledCompilerKey = Compiler.Key;
 
@@ -162,8 +183,16 @@ public sealed class CompilationSession
                     }
                 }
             }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+            }
             catch (Exception ex)
             {
+                if (!_scheduler.IsCurrent(request.Generation))
+                {
+                    return;
+                }
+
                 if (storeInCache || (updateDisplayedOutput && Compiled is null))
                 {
                     Compiled = CompiledAssembly.Fail(ex.ToString());
@@ -193,7 +222,10 @@ public sealed class CompilationSession
                 _ = _host.OutputCache.LoadDisplayedAsync();
             }
 
-            await _host.RefreshLanguageServicesAfterCompileAsync();
+            if (_scheduler.IsCurrent(request.Generation))
+            {
+                await _host.RefreshLanguageServicesAfterCompileAsync();
+            }
         }
         finally
         {

@@ -167,25 +167,15 @@ longer overlap another compile and both write `LastInput` /
 
 `ApplySavedStateCoreAsync` still fire-and-forgets `AfterDocumentsChangedAsync`
 then template cache / compile; the in-flight gate is the mutex those races
-needed. A latest-wins scheduler is the next item.
+needed.
 
-### 4. Optional compilation scheduler Channel
+### 4. Compilation scheduler Channel — done
 
-`CompilationInput` is a full snapshot, so latest-wins is valid. Only after
-the in-flight guard:
-
-```
-Channel      → what executes next (bounded 1, DropOldest)
-Cancel       → stop work that is no longer interesting
-Generation   → do not commit a stale result
-```
-
-`DropOldest` does not cancel the running compile; cancel `A` when `C`
-arrives. Fluxor still only records requested / running / completed / failed /
-stale. Do not compile from a reducer.
-
-Do not route every `CompileAsync` through `CompileRequestedAction` until the
-session is already gated.
+`CompilationScheduler` is bounded 1 / `DropOldest`. `CompileAsync` enqueues;
+the session still executes. A mailbox coalesces flags so DropOldest does not
+lose a user `storeInCache`. In-flight work is cancelled when a newer request
+arrives; generation skips committing a stale result. Callers are not routed
+through `CompileRequestedAction`.
 
 ### 5. `ICompilationCache` (HybridCache later, maybe never in WASM)
 
@@ -249,8 +239,8 @@ delete it in the same pass as the language queue.
 - [ ] Persistence Channel for URL / settings / tab writes
 - [ ] HybridCache L1 in front of the remote compilation cache (WASM: only if
       measured; server Redis `IDistributedCache` is a host concern)
-- [ ] Compile Fluxor `CompileRequestedAction` → scheduler after the in-flight
-      guard exists
+- [ ] Compile Fluxor `CompileRequestedAction` → existing scheduler (session
+      is already gated)
 - [ ] Rename `OutputLoadCache` → `OutputSession` if the name still misleads
 - [ ] Drop `LabWorkspaceState` entirely once it is only glue — decide then,
       do not pre-delete

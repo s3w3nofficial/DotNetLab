@@ -27,19 +27,23 @@ public sealed class CompilationSessionTests
         await using var worker = CreateWorker(transport);
         var compilation = new Store<CompilationState>(new CompilationState());
         var dispatcher = new RecordingDispatcher(compilation);
-        var session = CreateSession(worker, compilation, dispatcher);
+        var created = CreateSession(worker, compilation, dispatcher);
+        using var session = created.Session;
 
         var first = session.CompileAsync(storeInCache: false, updateDisplayedOutput: false);
-        await transport.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await transport.WaitStartedAsync(0).WaitAsync(TimeSpan.FromSeconds(2));
 
         var second = session.CompileAsync(storeInCache: false, updateDisplayedOutput: false);
-        await second.WaitAsync(TimeSpan.FromSeconds(1));
+        second.IsCompleted.Should().BeFalse();
         transport.CompileCount.Should().Be(1);
 
-        transport.Release.SetResult();
+        transport.Release(0);
+        await transport.WaitStartedAsync(1).WaitAsync(TimeSpan.FromSeconds(2));
+        transport.CompileCount.Should().Be(2);
+        transport.Release(1);
+
         await first.WaitAsync(TimeSpan.FromSeconds(2));
-        transport.CompileCount.Should().Be(1);
-
+        await second.WaitAsync(TimeSpan.FromSeconds(2));
         dispatcher.Actions.OfType<SetRunningAction>().Should().BeEmpty();
     }
 
@@ -51,15 +55,47 @@ public sealed class CompilationSessionTests
         await using var worker = CreateWorker(transport);
         var compilation = new Store<CompilationState>(new CompilationState());
         var dispatcher = new RecordingDispatcher(compilation);
-        var session = CreateSession(worker, compilation, dispatcher);
+        var created = CreateSession(worker, compilation, dispatcher);
+        using var session = created.Session;
 
         var compile = session.CompileAsync(storeInCache: true, updateDisplayedOutput: true);
-        await transport.Started.Task.WaitAsync(TimeSpan.FromSeconds(2));
+        await transport.WaitStartedAsync(0).WaitAsync(TimeSpan.FromSeconds(2));
         compilation.Value.Running.Should().BeTrue();
 
-        transport.Release.SetResult();
+        transport.Release(0);
         await compile.WaitAsync(TimeSpan.FromSeconds(2));
         compilation.Value.Running.Should().BeFalse();
+    }
+
+    [TestMethod]
+    public async Task LatestCompile_IsPreferredOverQueuedMiddle()
+    {
+        using var context = ImmediateSynchronizationContext.Install();
+        var transport = new DelayedCompileTransport();
+        await using var worker = CreateWorker(transport);
+        var compilation = new Store<CompilationState>(new CompilationState());
+        var dispatcher = new RecordingDispatcher(compilation);
+        var created = CreateSession(worker, compilation, dispatcher);
+        using var session = created.Session;
+        var host = created.Host;
+
+        host.SourceText = "A";
+        var first = session.CompileAsync(storeInCache: true, updateDisplayedOutput: true);
+        await transport.WaitStartedAsync(0).WaitAsync(TimeSpan.FromSeconds(2));
+
+        host.SourceText = "B";
+        var middle = session.CompileAsync(storeInCache: true, updateDisplayedOutput: true);
+        host.SourceText = "C";
+        var latest = session.CompileAsync(storeInCache: true, updateDisplayedOutput: true);
+
+        transport.CompileCount.Should().Be(1);
+        transport.Release(0);
+        await transport.WaitStartedAsync(1).WaitAsync(TimeSpan.FromSeconds(2));
+        transport.Texts.Should().Equal("A", "C");
+        transport.Release(1);
+
+        await Task.WhenAll(first, middle, latest).WaitAsync(TimeSpan.FromSeconds(2));
+        FailText(session.Compiled).Should().Be("C");
     }
 
     private static WorkerHost CreateWorker(IWorkerTransport transport)
@@ -70,13 +106,13 @@ public sealed class CompilationSessionTests
             transport,
             NullLogger<WorkerHost>.Instance);
 
-    private static CompilationSession CreateSession(
+    private static (CompilationSession Session, FakeWorkspace Host) CreateSession(
         WorkerHost worker,
         IState<CompilationState> compilation,
         IDispatcher dispatcher)
     {
         var host = new FakeWorkspace();
-        return new CompilationSession(
+        var session = new CompilationSession(
             host,
             worker,
             new TemplateCache(),
@@ -86,17 +122,26 @@ public sealed class CompilationSessionTests
             compilation,
             dispatcher,
             NullLogger.Instance);
+        return (session, host);
     }
+
+    private static string FailText(CompiledAssembly? compiled)
+        => compiled?.GetGlobalOutput("fail")?.Text
+           ?? throw new InvalidOperationException("Missing fail output.");
 
     private sealed class DelayedCompileTransport : IWorkerTransport
     {
         private Action<string>? _onMessage;
-
-        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly List<Gate> _gates = [];
+        private readonly object _lock = new();
 
         public int CompileCount { get; private set; }
+
+        public List<string> Texts { get; } = [];
+
+        public Task WaitStartedAsync(int index) => GetGate(index).Started.Task;
+
+        public void Release(int index) => GetGate(index).Release.TrySetResult();
 
         public Task EnsureControllerAsync() => Task.CompletedTask;
 
@@ -127,9 +172,18 @@ public sealed class CompilationSessionTests
                 return;
             }
 
-            CompileCount++;
-            Started.TrySetResult();
-            _ = ReplyAsync(compile.Id);
+            var text = compile.Input.Inputs.Value[0].Text;
+            int index;
+            lock (_lock)
+            {
+                index = CompileCount;
+                CompileCount++;
+                Texts.Add(text);
+            }
+
+            var gate = GetGate(index);
+            gate.Started.TrySetResult();
+            _ = ReplyAsync(compile.Id, text, gate);
         }
 
         public void PostSideMessage(IWorkerHandle worker, string message)
@@ -142,10 +196,23 @@ public sealed class CompilationSessionTests
         {
         }
 
-        private async Task ReplyAsync(int id)
+        private Gate GetGate(int index)
         {
-            await Release.Task;
-            _onMessage!(Serialize(new WorkerOutputMessage.Success(CompiledAssembly.Fail("ok"))
+            lock (_lock)
+            {
+                while (_gates.Count <= index)
+                {
+                    _gates.Add(new Gate());
+                }
+
+                return _gates[index];
+            }
+        }
+
+        private async Task ReplyAsync(int id, string text, Gate gate)
+        {
+            await gate.Release.Task;
+            _onMessage!(Serialize(new WorkerOutputMessage.Success(CompiledAssembly.Fail(text))
             {
                 Id = id,
                 InputType = nameof(WorkerInputMessage.Compile),
@@ -154,6 +221,13 @@ public sealed class CompilationSessionTests
 
         private static string Serialize(WorkerOutputMessage message)
             => JsonSerializer.Serialize(message, WorkerJsonContext.Default.WorkerOutputMessage);
+
+        private sealed class Gate
+        {
+            public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
 
         private sealed class Handle : IWorkerHandle
         {
@@ -171,12 +245,14 @@ public sealed class CompilationSessionTests
             Tabs = new OutputTabLayout(this);
         }
 
+        public string SourceText { get; set; } = "class C;";
+
         public OutputLoadCache OutputCache { get; }
 
         public OutputTabLayout Tabs { get; }
 
         public CompilationInput CreateCompilationInput()
-            => new(new([new() { FileName = "Program.cs", Text = "class C;" }]));
+            => new(new([new() { FileName = "Program.cs", Text = SourceText }]));
 
         public SavedState CaptureSavedState() => SavedState.CSharp;
 

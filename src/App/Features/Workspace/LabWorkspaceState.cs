@@ -141,6 +141,7 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
         _workspace.StateChanged -= OnWorkspaceChanged;
         _output.StateChanged -= OnOutputChanged;
         _worker.Failed -= OnWorkerFailed;
+        Compilation.Dispose();
     }
 
     private void OnPreferencesChanged(object? sender, EventArgs e) => Notify();
