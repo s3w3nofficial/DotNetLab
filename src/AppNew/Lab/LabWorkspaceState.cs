@@ -4,6 +4,7 @@ using DotNetLab.Features.Compiler;
 using DotNetLab.Features.Compilation;
 using DotNetLab.Features.Documents;
 using DotNetLab.Features.Preferences;
+using DotNetLab.Features.Workspace;
 using Fluxor;
 using Microsoft.JSInterop;
 
@@ -21,7 +22,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     private readonly IState<PreferencesState> _preferences;
     private readonly IState<CompilationState> _compilation;
     private readonly IState<DocumentsState> _documents;
-    private readonly LayoutStore _layout;
+    private readonly IState<WorkspaceState> _workspace;
     private readonly IDispatcher _dispatcher;
     private readonly ILogger<LabWorkspaceState> _logger;
     private readonly Dictionary<string, OutputSnapshot> _outputCache = new(StringComparer.Ordinal);
@@ -51,7 +52,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
         IState<PreferencesState> preferences,
         IState<CompilationState> compilation,
         IState<DocumentsState> documents,
-        LayoutStore layout,
+        IState<WorkspaceState> workspace,
         IDispatcher dispatcher,
         ILogger<LabWorkspaceState> logger)
     {
@@ -65,7 +66,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
         _preferences = preferences;
         _compilation = compilation;
         _documents = documents;
-        _layout = layout;
+        _workspace = workspace;
         _dispatcher = dispatcher;
         _logger = logger;
         Documents = new LabDocuments(this, dispatcher);
@@ -75,6 +76,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
         _preferences.StateChanged += OnPreferencesChanged;
         _compilation.StateChanged += OnCompilationChanged;
         _documents.StateChanged += OnDocumentsChanged;
+        _workspace.StateChanged += OnWorkspaceChanged;
         _worker.Failed += OnWorkerFailed;
     }
 
@@ -106,7 +108,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     public event Func<Task>? UrlPersistRequested;
 
     public bool Stacked => Preferences.Stacked;
-    public double Split => Layout.Split;
+    public double Split => WorkspaceSnapshot.Split;
     public bool Running
     {
         get => Compilation.Running;
@@ -256,6 +258,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
         _preferences.StateChanged -= OnPreferencesChanged;
         _compilation.StateChanged -= OnCompilationChanged;
         _documents.StateChanged -= OnDocumentsChanged;
+        _workspace.StateChanged -= OnWorkspaceChanged;
         _worker.Failed -= OnWorkerFailed;
     }
 
@@ -264,6 +267,8 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
     private void OnCompilationChanged(object? sender, EventArgs e) => Notify();
 
     private void OnDocumentsChanged(object? sender, EventArgs e) => Notify();
+
+    private void OnWorkspaceChanged(object? sender, EventArgs e) => Notify();
 
     private void OnCompilerStoreChanged(object? sender, EventArgs e)
     {
@@ -692,7 +697,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
             return;
         }
 
-        _layout.Update(state => state with { Split = next });
+        _dispatcher.Dispatch(new SetSplitAction(next));
         if (notify)
         {
             Notify();
@@ -935,7 +940,7 @@ public sealed class LabWorkspaceState : ILabStatus, ILabBrand, ILabCommands, ILa
 
     private DocumentsState DocumentsSnapshot => _documents.Value;
 
-    private LayoutState Layout => _layout.Value;
+    private WorkspaceState WorkspaceSnapshot => _workspace.Value;
 
     private void BeginNewOutputGeneration()
     {
