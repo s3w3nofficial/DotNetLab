@@ -8,19 +8,9 @@ namespace DotNetLab;
 public sealed class WorkerExecutor(
     IServiceProvider services,
     ILogger<WorkerExecutor> logger)
-    : WorkerInputMessage.IExecutor, IDisposable
+    : WorkerInputMessage.IExecutor
 {
-    private readonly LanguageSession _language = new();
     private readonly Dictionary<int, CancellationTokenSource> cancellationTokenSources = [];
-
-    public void Dispose() => _language.Dispose();
-
-    /// <summary>
-    /// Language-service messages run in arrival order. Cancel, compile, and
-    /// other work bypass the session so they can overlap.
-    /// </summary>
-    public Task<WorkerOutputMessage> DispatchAsync(WorkerInputMessage message)
-        => _language.RunAsync(message, () => message.HandleAndGetOutputAsync(this));
 
     private CancellationTokenSourceScope GetCancellationToken(WorkerInputMessage message, out CancellationToken cancellationToken)
     {

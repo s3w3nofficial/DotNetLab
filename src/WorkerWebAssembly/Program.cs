@@ -31,8 +31,8 @@ Imports.RegisterOnMessage(async data =>
     try
     {
         var incoming = JsonSerializer.Deserialize(data, WorkerJsonContext.Default.WorkerInputMessage);
-        var executor = services.GetRequiredService<WorkerExecutor>();
-        PostMessage(await executor.DispatchAsync(incoming!));
+        var executor = services.GetRequiredService<WorkerInputMessage.IExecutor>();
+        PostMessage(await incoming!.HandleAndGetOutputAsync(executor));
     }
     catch (Exception ex)
     {

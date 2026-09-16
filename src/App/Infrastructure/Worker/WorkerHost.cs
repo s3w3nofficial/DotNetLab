@@ -165,16 +165,16 @@ public sealed class WorkerHost : IAsyncDisposable
                 return DisposedFailure(message);
             }
 
-            var executor = services.GetRequiredService<WorkerExecutor>();
-            // Language-service messages are ordered inside the worker. Cancel still
-            // overlaps the request it aborts (DispatchAsync does not queue it).
+            var executor = services.GetRequiredService<WorkerInputMessage.IExecutor>();
+            // Do not serialize in-process messages: Cancel must overlap the request it aborts,
+            // matching src/App WorkerController (ungated HandleAndGetOutputAsync / Task.Run).
             // Recreate waits for _inProcessRequests to drain before disposing this provider.
             _logger.Log(
                 message is WorkerInputMessage.Ping ? LogLevel.Trace : LogLevel.Debug,
                 "=> {Id}: {Type} (fg)",
                 message.Id,
                 message.GetType().Name);
-            var incoming = await executor.DispatchAsync((WorkerInputMessage)message);
+            var incoming = await message.HandleAndGetOutputAsync(executor);
             return epoch == Volatile.Read(ref _epoch) ? incoming : DisposedFailure(message);
         }
 

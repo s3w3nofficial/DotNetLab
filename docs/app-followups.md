@@ -73,14 +73,14 @@ Channels     Sessions          caches
 |---|---|---|
 | Fluxor | Serializable UI facts, stale/running flags | Handles, deltas, `CompiledAssembly` |
 | Channels | Latest-wins compile / persist coalescing | Incremental LS deltas, query overlap, Cancel overlap |
-| Worker `LanguageSession` | Arrival order of LS mutations and queries | Cancel, compile, SDK, ping |
 | Sessions | Documents, compiled output, Monaco, LS | Share-URL fields |
 | `ICompilationCache` | IndexedDB L1 + remote HTTP L2 reuse | TemplateCache, OutputLoadCache, HybridCache |
 
 `Cancel` still goes straight to `WorkerHost` (serializing it against the
-request it aborts is wrong). Incremental document mutations are **posted
-immediately**. Language-service arrival order is enforced **inside the worker**
-(`LanguageSession`), not in front of `postMessage`.
+request it aborts is wrong). Incremental document mutations must be **posted
+immediately**, like master — not parked on an app-side Channel that queries
+bypass. Do not put an ordered queue in the worker either. Language services
+stay as close to master as possible.
 
 ## Do not
 
@@ -103,6 +103,8 @@ immediately**. Language-service arrival order is enforced **inside the worker**
 - Inject `HybridCache` or IndexedDB into `CompilationSession`
 - Invent interactive Blazor Server
 - Extract `DotNetLab.Editor.Monaco`
+- Add a worker `LanguageSession` or otherwise serialize LS work in the worker
+- Change language services further — keep them as close to master as possible
 - Commit / push unless asked
 
 Keep `WasmEnableWebcil=false` and Fluent UI 5. Native `<button>` stays for
@@ -273,16 +275,8 @@ IntelliSense.
       results via `model.getAlternativeVersionId()` in JS. Master has no
       diagnostics version guard either — add it here.
 
-A query-side Channel barrier is only a debugging experiment. After this
-baseline, if ordering comes back, put it **inside the worker**:
-
-```
-UI: post edit / completion / hover immediately
-Worker: versioned / ordered LS session → Roslyn
-```
-
-Do not reopen HybridCache, `DropOldest` on LS deltas, or deleting the facade
-in this pass.
+Do not reopen HybridCache, `DropOldest` on LS deltas, a worker LS session,
+or deleting the facade. Do not change language services further.
 
 ### 8. Remaining Channel races — done
 
@@ -306,18 +300,8 @@ when JSON stays backward compatible (`InputOutputCacheTests.BackwardsCompatibili
 The IDB database name still wipes the browser on bump; the key prefix versions
 the shared HTTP cache. SHA-256 instead of `XxHash128` stays optional later.
 
-### 10. Worker-side LS session — done
-
-`LanguageSession` in the worker serializes LS mutations and queries in arrival
-order. The UI still posts immediately. Cancel, compile, ping, and SDK work
-bypass the queue. In-process `WorkerHost` uses the same `DispatchAsync` path.
-Not `DropOldest`. Versioned query messages stay later if we need wait/cancel
-beyond FIFO.
-
 ## Later (not now)
 
-- [ ] Versioned LS queries (`DocumentChanged` version + wait/stale) if FIFO
-      is not enough
 - [ ] Profile `LabCodeEditor` reconstructing the full source with
       `string.Concat` per Monaco change (O(document) per edit)
 - [ ] `EnableSemanticHighlightingAsync` once globally — today each

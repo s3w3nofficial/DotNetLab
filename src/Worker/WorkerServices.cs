@@ -85,8 +85,7 @@ public static class WorkerServices
         services.AddScoped<ICompilerDependencyResolver, BuiltInCompilerProvider>(static sp => sp.GetRequiredService<BuiltInCompilerProvider>());
         services.AddScoped<IRefAssemblyDownloader, RefAssemblyDownloader>();
         services.AddScoped<INuGetDownloader>(static sp => sp.GetRequiredService<NuGetDownloaderPlugin>());
-        services.AddScoped<WorkerExecutor>();
-        services.AddScoped<WorkerInputMessage.IExecutor>(static sp => sp.GetRequiredService<WorkerExecutor>());
+        services.AddScoped<WorkerInputMessage.IExecutor, WorkerExecutor>();
         services.AddScoped<Func<DotNetBootConfig?>>(static _ => static () => null);
         configureServices?.Invoke(services);
         return services.BuildServiceProvider();
