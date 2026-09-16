@@ -73,14 +73,14 @@ Channels     Sessions          caches
 |---|---|---|
 | Fluxor | Serializable UI facts, stale/running flags | Handles, deltas, `CompiledAssembly` |
 | Channels | Latest-wins compile / persist coalescing | Incremental LS deltas, query overlap, Cancel overlap |
+| Worker `LanguageSession` | Arrival order of LS mutations and queries | Cancel, compile, SDK, ping |
 | Sessions | Documents, compiled output, Monaco, LS | Share-URL fields |
 | `ICompilationCache` | IndexedDB L1 + remote HTTP L2 reuse | TemplateCache, OutputLoadCache, HybridCache |
 
 `Cancel` still goes straight to `WorkerHost` (serializing it against the
-request it aborts is wrong). Incremental document mutations must be **posted
-immediately**, like master — not parked on an app-side Channel that queries
-bypass. If LS ordering comes back, it belongs in the worker (versioned
-messages or a worker-side session queue), not in front of `postMessage`.
+request it aborts is wrong). Incremental document mutations are **posted
+immediately**. Language-service arrival order is enforced **inside the worker**
+(`LanguageSession`), not in front of `postMessage`.
 
 ## Do not
 
@@ -212,8 +212,8 @@ Do **not** negative-cache every `null` — `GetAsync` returns null for miss
 **and** HTTP/parse/IDB errors. Do not write those to IndexedDB. `EnableCaching`
 still gates Get/Store at the session. Evict IndexedDB by LRU (max entries);
 quota failure is a miss. The IDB **database** name is versioned
-(`netlab-compile-v1` in `lab-persist.js`). The **key** is still
-`XxHash128(ToCacheSlug())` with no schema prefix — item 9. Native/store later
+(`netlab-compile-v1` in `lab-persist.js`). The **key** is
+`v{Schema}-` + `XxHash128(ToCacheSlug())` (item 9). Native/store later
 no-ops L1 behind the same interface.
 
 There is no in-process map of *previous* slugs, so sequential hits after
@@ -296,20 +296,28 @@ Compile / persist leftovers. Independent of the LS undo.
       consumed the pulse; dropping it completed waiters and lost the click.
       `_compileInFlight` is gone — the scheduler is the only gate.
 
-### 9. Compilation cache key schema — next
+### 9. Compilation cache key schema — done
 
-Prefix the hashed key (or `ToCacheSlug`) with an explicit schema version so a
-`CompiledAssembly` / serialization change does not serve structurally valid
-stale IndexedDB or remote entries. Bumping the IDB database name already wipes
-the browser; it does not version the shared HTTP cache. SHA-256 instead of
-`XxHash128` is optional hardening for the public remote namespace, not a
-substitute for a version prefix.
+`CompilationCacheKey.Schema` (currently 1) prefixes the hashed slug as
+`v1-{hex}` — one path segment for `/api/cache/add/{key}`. Unprefixed HTTP /
+IndexedDB rows miss and are replaced on the next store. Bump `Schema` when
+`CompiledAssembly` / Worker JSON cannot safely reuse older entries; keep it
+when JSON stays backward compatible (`InputOutputCacheTests.BackwardsCompatibility`).
+The IDB database name still wipes the browser on bump; the key prefix versions
+the shared HTTP cache. SHA-256 instead of `XxHash128` stays optional later.
+
+### 10. Worker-side LS session — done
+
+`LanguageSession` in the worker serializes LS mutations and queries in arrival
+order. The UI still posts immediately. Cancel, compile, ping, and SDK work
+bypass the queue. In-process `WorkerHost` uses the same `DispatchAsync` path.
+Not `DropOldest`. Versioned query messages stay later if we need wait/cancel
+beyond FIFO.
 
 ## Later (not now)
 
-- [ ] Worker-side LS session: versioned `DocumentChanged` / queries, or an
-      ordered queue **inside** the web worker. UI only posts. Do not put the
-      unbounded round-trip Channel back in `LabLanguageServices`.
+- [ ] Versioned LS queries (`DocumentChanged` version + wait/stale) if FIFO
+      is not enough
 - [ ] Profile `LabCodeEditor` reconstructing the full source with
       `string.Concat` per Monaco change (O(document) per edit)
 - [ ] `EnableSemanticHighlightingAsync` once globally — today each

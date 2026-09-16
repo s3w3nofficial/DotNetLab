@@ -121,6 +121,16 @@ public sealed class CompilationCacheTests
         CompilationCacheKey.Create(SavedState.CSharp).Should().NotBe(CompilationCacheKey.Create(SavedState.Razor));
     }
 
+    [TestMethod]
+    public void CacheKey_IncludesSchemaPrefix()
+    {
+        var key = CompilationCacheKey.Create(SavedState.CSharp);
+        var prefix = $"v{CompilationCacheKey.Schema}-";
+        key.Should().StartWith(prefix);
+        key.Length.Should().Be(prefix.Length + 32);
+        key.Should().NotBe(key[prefix.Length..]);
+    }
+
     private sealed class FakeStore : ICompilationCacheStore
     {
         public Dictionary<string, CachedCompilation> Items { get; } = new(StringComparer.Ordinal);
