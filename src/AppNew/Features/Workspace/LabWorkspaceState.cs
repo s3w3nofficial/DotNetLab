@@ -99,8 +99,6 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
     public event Func<Task>? SnapshotRequested;
     public event Func<Task>? UrlPersistRequested;
 
-    public bool Stacked => Preferences.Stacked;
-    public double Split => WorkspaceSnapshot.Split;
     public bool Running
     {
         get => Compilation.Running;
@@ -111,7 +109,6 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
         get => Compilation.Stale;
         set => _dispatcher.Dispatch(new SetStaleAction(value));
     }
-    public string Template => DocumentsSnapshot.Template;
 
     public string ActiveSource
     {
@@ -145,29 +142,8 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
         }
     }
 
-    public string Sdk => Compiler.Sdk;
-    public string Roslyn => Compiler.Roslyn;
-    public string Razor => Compiler.Razor;
-    public string RoslynConfig => Compiler.RoslynConfig;
-    public string RazorConfig => Compiler.RazorConfig;
-    public bool CompilerLoading => Compiler.Loading;
-    public bool Busy => Running || CompilerLoading;
     public string RazorToolchain { get; set; } = "Auto";
     public string RazorStrategy { get; set; } = "Runtime";
-    public bool WordWrap => Preferences.WordWrap;
-    public bool UseVim => Preferences.UseVim;
-    public bool DisableInputVirtualKeyboard => Preferences.DisableInputVirtualKeyboard;
-    public bool LanguageServices => Preferences.LanguageServices;
-    public bool DebugLogs => Preferences.DebugLogs;
-    public bool TraceLogs => Preferences.TraceLogs;
-    public bool MemoryUsageView => Preferences.MemoryUsageView;
-    public bool BackgroundWorker => Preferences.BackgroundWorker;
-    public bool DisplayHintSquiggles => Preferences.DisplayHintSquiggles;
-    public bool EnableCaching => Preferences.EnableCaching;
-    public bool AutomaticCompilation => Preferences.AutomaticCompilation;
-    public string AppTheme => Preferences.AppTheme;
-    public bool ResolvedDark => Preferences.ResolvedDark;
-    public string MonacoTheme => Preferences.MonacoTheme;
     public bool DecodeCustomAttributeBlobs { get; set; }
     public bool ShowSequencePoints { get; set; }
     public bool FullIl { get; set; }
@@ -185,13 +161,6 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
     public int ErrorCount => Compiled?.NumErrors ?? 0;
     public int WarningCount => Compiled?.NumWarnings ?? 0;
     public bool HasDiagnosticCounts => ErrorCount > 0 || WarningCount > 0;
-
-    public IReadOnlyDictionary<string, string> Sources => Documents.Sources;
-    public IReadOnlyList<string> SourceFiles => DocumentsSnapshot.SourceFiles;
-    public string UriFor(string fileName) => Documents.UriFor(fileName);
-    public int OutputLayoutRevision => OutputsSnapshot.Revision;
-
-    public IReadOnlyList<string> CurrentOutputTabIds => OutputsSnapshot.CurrentOutputTabIds;
 
     public void Notify() => Changed?.Invoke();
 
@@ -267,7 +236,7 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
 
         if (_languageInit is not null)
         {
-            await SetLanguageServicesAsync(LanguageServices, persist: false);
+            await SetLanguageServicesAsync(Preferences.LanguageServices, persist: false);
         }
 
         Tabs.ApplySavedOutputTabs(await _settings.ReadOutputTabsAsync());
@@ -285,18 +254,18 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
         _dispatcher.Dispatch(new ResetSdkListAction());
         _languageInit = null;
 
-        if (CompilerSpec.ToSpecifier(Sdk) is null)
+        if (CompilerSpec.ToSpecifier(Compiler.Sdk) is null)
         {
             _dispatcher.Dispatch(new RestoreCompilersAction(
-                Sdk,
-                Roslyn,
+                Compiler.Sdk,
+                Compiler.Roslyn,
                 Compiler.RoslynConfig,
-                Razor,
+                Compiler.Razor,
                 Compiler.RazorConfig));
         }
         else
         {
-            _dispatcher.Dispatch(new ApplySdkAction(Sdk));
+            _dispatcher.Dispatch(new ApplySdkAction(Compiler.Sdk));
         }
 
         await WaitUntilCompilerIdleAsync();
@@ -329,7 +298,7 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
     }
 
     public Task InitializeLanguageServicesAsync()
-        => _languageInit ??= SetLanguageServicesAsync(LanguageServices, persist: false);
+        => _languageInit ??= SetLanguageServicesAsync(Preferences.LanguageServices, persist: false);
 
     public Task SetLanguageServicesAsync(bool enabled)
         => SetLanguageServicesAsync(enabled, persist: true);
@@ -520,10 +489,10 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
             FullIl = FullIl,
             ExcludeSingleFileNameInDiagnostics = ExcludeSingleFileNameInDiagnostics,
             IncludeHiddenDiagnostics = IncludeHiddenDiagnostics,
-            SdkVersion = CompilerSpec.ToSpecifier(Sdk),
-            RoslynVersion = CompilerSpec.ToSpecifier(Roslyn),
+            SdkVersion = CompilerSpec.ToSpecifier(Compiler.Sdk),
+            RoslynVersion = CompilerSpec.ToSpecifier(Compiler.Roslyn),
             RoslynConfiguration = CompilerSpec.ToBuildConfiguration(Compiler.RoslynConfig),
-            RazorVersion = CompilerSpec.ToSpecifier(Razor),
+            RazorVersion = CompilerSpec.ToSpecifier(Compiler.Razor),
             RazorConfiguration = CompilerSpec.ToBuildConfiguration(Compiler.RazorConfig),
         };
     }
@@ -597,7 +566,7 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
         var compilers = WaitUntilCompilerIdleAsync();
 
         var usedTemplateCache = TryApplyTemplateCache(state);
-        if (!usedTemplateCache && EnableCaching)
+        if (!usedTemplateCache && Preferences.EnableCaching)
         {
             _ = TryLoadServerCacheAsync(state, applyGeneration);
         }
@@ -607,7 +576,7 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
         // Template/server cache already has displayable output. Compiling again
         // (e.g. after URL/settings apply Public Symbols) reloads Tree at ~45k LOC.
         // Still run a worker compile so language services pick up #:package references.
-        if (AutomaticCompilation)
+        if (Preferences.AutomaticCompilation)
         {
             // Do not block URL/state application on the compile itself — editors should
             // mount with the loaded sources rather than waiting for the worker.
@@ -622,7 +591,7 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
     public void SetSplit(double value, bool notify = true)
     {
         var next = Math.Clamp(value, 25, 75);
-        if (Math.Abs(next - Split) < 0.05)
+        if (Math.Abs(next - WorkspaceSnapshot.Split) < 0.05)
         {
             return;
         }
@@ -741,7 +710,7 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
 
     public async Task CompileAsync(bool storeInCache, bool updateDisplayedOutput)
     {
-        if (Running || CompilerLoading)
+        if (Running || Compiler.Loading)
         {
             return;
         }
@@ -785,7 +754,7 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
 
             LastInput = input;
             var compiled = await _worker.SendAsync(
-                new WorkerInputMessage.Compile(input, LanguageServicesEnabled: LanguageServices)
+                new WorkerInputMessage.Compile(input, LanguageServicesEnabled: Preferences.LanguageServices)
                 {
                     Id = _worker.NextMessageId(),
                 });
@@ -1115,7 +1084,7 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
 
     private void TryStoreInCache(SavedState state, CompiledAssembly output)
     {
-        if (!EnableCaching || _templates.HasInput(state))
+        if (!Preferences.EnableCaching || _templates.HasInput(state))
         {
             return;
         }

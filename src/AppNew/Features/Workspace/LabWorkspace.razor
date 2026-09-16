@@ -1,10 +1,12 @@
 @inject LabWorkspaceState State
+@inject IState<PreferencesState> Prefs
+@inject IState<WorkspaceState> Layout
 @inject IJSRuntime JS
 @implements IDisposable
 
 <main @ref="_workspace"
-      class="lab-workspace @(State.Stacked ? "stacked" : null) @(State.DisplayHintSquiggles ? null : "no-squiggly-hint")"
-      style="@($"--pane-split: {State.Split.ToString(System.Globalization.CultureInfo.InvariantCulture)}%")">
+      class="lab-workspace @(Prefs.Value.Stacked ? "stacked" : null) @(Prefs.Value.DisplayHintSquiggles ? null : "no-squiggly-hint")"
+      style="@($"--pane-split: {Layout.Value.Split.ToString(System.Globalization.CultureInfo.InvariantCulture)}%")">
     @foreach (var paneId in new[] { "source", "output" })
     {
         var isPrimary = paneId == "source";
@@ -12,7 +14,7 @@
             @if (paneId == "source")
             {
                 <EditorGroups PaneId="source"
-                              Items="State.SourceFiles"
+                              Items="State.Documents.SourceFiles"
                               Active="@State.ActiveSource"
                               ActiveChanged="OnSourceSelected"
                               ItemClosed="State.CloseFile"
@@ -79,10 +81,10 @@
                     <ItemContent>
                         <LabCodeEditor @key="@($"source-{context}")"
                                        FileName="@context"
-                                       Value="@State.Sources.GetValueOrDefault(context, "")"
+                                       Value="@State.Documents.Sources.GetValueOrDefault(context, "")"
                                        Language="@LabCatalog.LanguageFor(context)"
-                                       ModelUri="@State.UriFor(context)"
-                                       WordWrap="State.WordWrap"
+                                       ModelUri="@State.Documents.UriFor(context)"
+                                       WordWrap="Prefs.Value.WordWrap"
                                        OnCursorChanged="OnCursorChanged"
                                        OnFocused="@(() => OnSourceSelected(context))" />
                     </ItemContent>
@@ -104,12 +106,12 @@
                 }
                 <EditorGroups @ref="_outputGroups"
                               PaneId="output"
-                              Items="State.CurrentOutputTabIds"
+                              Items="State.Tabs.CurrentOutputTabIds"
                               Active="@State.OutputCache.DisplayType"
                               ActiveChanged="OnOutputSelected"
                               ItemClosed="OnOutputClosed"
                               LockedItems="_lockedOutputTabs"
-                              LayoutRevision="State.OutputLayoutRevision"
+                              LayoutRevision="State.Tabs.Revision"
                               TabsChanged="OnOutputTabsChanged">
                     <Actions>
                         @{
@@ -225,7 +227,7 @@
                                            Language="@State.OutputCache.OutputLanguage(context)"
                                            ModelUri="@State.OutputCache.OutputUriFor(context)"
                                            ReadOnly="true"
-                                           WordWrap="State.WordWrap" />
+                                           WordWrap="Prefs.Value.WordWrap" />
                         }
                     </ItemContent>
                 </EditorGroups>
@@ -240,7 +242,7 @@
                  role="separator"
                  tabindex="0"
                  aria-label="Resize source and output panes"
-                 aria-orientation="@(State.Stacked ? "horizontal" : "vertical")"
+                 aria-orientation="@(Prefs.Value.Stacked ? "horizontal" : "vertical")"
                  @onpointerdown="OnSplitterPointerDown"
                  @onpointerdown:preventDefault
                  @onpointerup="OnSplitterPointerUp"
@@ -292,7 +294,7 @@
     private IReadOnlyList<string> OutputStripIds()
         => _outputGroups?.CurrentTabIds() is { Count: > 0 } ids
             ? ids
-            : State.CurrentOutputTabIds;
+            : State.Tabs.CurrentOutputTabIds;
 
     private void CaptureOutputStrip()
         => State.Tabs.CaptureOpenOutputTabs(OutputStripIds());
@@ -402,7 +404,7 @@
         var delta = args.Key is "ArrowLeft" or "ArrowUp" ? -2 : args.Key is "ArrowRight" or "ArrowDown" ? 2 : 0;
         if (delta != 0)
         {
-            State.SetSplit(State.Split + delta);
+            State.SetSplit(Layout.Value.Split + delta);
         }
     }
 

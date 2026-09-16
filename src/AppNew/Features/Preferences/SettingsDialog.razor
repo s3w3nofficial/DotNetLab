@@ -210,7 +210,7 @@
             return;
         }
 
-        _outputKind = LabCatalog.OutputKindFor(Workspace.ActiveSource);
+        _outputKind = LabCatalog.OutputKindFor(Workspace.Documents.ActiveSource);
         Dispatcher.Dispatch(new EnsureSdkVersionsAction());
         try
         {

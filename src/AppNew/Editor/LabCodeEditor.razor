@@ -46,6 +46,7 @@
     [Parameter] public EventCallback OnFocused { get; set; }
 
     [Inject] private LabWorkspaceState State { get; set; } = default!;
+    [Inject] private IState<PreferencesState> Prefs { get; set; } = default!;
 
     protected override void OnInitialized()
     {
@@ -122,7 +123,7 @@
             AutomaticLayout = true,
             Language = Language,
             Value = Value,
-            Theme = State.MonacoTheme,
+            Theme = Prefs.Value.MonacoTheme,
             ReadOnly = ReadOnly,
             DomReadOnly = ReadOnly,
             FontSize = 13,
@@ -346,7 +347,7 @@
             return;
         }
 
-        if (!string.Equals(_appliedMonacoTheme, State.MonacoTheme, StringComparison.Ordinal))
+        if (!string.Equals(_appliedMonacoTheme, Prefs.Value.MonacoTheme, StringComparison.Ordinal))
         {
             _ = ApplyMonacoThemeAsync();
         }
@@ -357,7 +358,7 @@
 
     private async Task ApplyVirtualKeyboardAsync()
     {
-        var disabled = ReadOnly || State.DisableInputVirtualKeyboard;
+        var disabled = ReadOnly || Prefs.Value.DisableInputVirtualKeyboard;
         if (_appliedKeyboardDisabled == disabled)
         {
             return;
@@ -381,7 +382,7 @@
 
     private async Task ApplyVimAsync()
     {
-        var enabled = !ReadOnly && State.UseVim;
+        var enabled = !ReadOnly && Prefs.Value.UseVim;
         if (_appliedVim == enabled)
         {
             return;
@@ -415,8 +416,8 @@
     {
         try
         {
-            _appliedMonacoTheme = State.MonacoTheme;
-            await JS.InvokeVoidAsync("netLabMonaco.applyTheme", State.ResolvedDark);
+            _appliedMonacoTheme = Prefs.Value.MonacoTheme;
+            await JS.InvokeVoidAsync("netLabMonaco.applyTheme", Prefs.Value.ResolvedDark);
         }
         catch (JSException)
         {

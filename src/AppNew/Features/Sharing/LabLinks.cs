@@ -1,4 +1,7 @@
-using DotNetLab.Features.Workspace;
+using System.Text;
+using DotNetLab.Features.Compiler;
+using DotNetLab.Features.Documents;
+using DotNetLab.Features.Preferences;
 
 namespace DotNetLab.Features.Sharing;
 
@@ -10,15 +13,15 @@ public static class LabLinks
     public const string GistNew = "https://gist.github.com/";
     public const string GitHubApi = "https://api.github.com";
 
-    public static string NewIssue(LabWorkspaceState state)
+    public static string NewIssue(CompilerState compiler, PreferencesState prefs, LabDocuments documents)
     {
         var body = $"""
             ### Environment
-            - Template: {state.Template}
-            - SDK: {state.Sdk}
-            - Roslyn: {state.Roslyn} ({state.RoslynConfig})
-            - Razor: {state.Razor} ({state.RazorConfig})
-            - Theme: {state.AppTheme}
+            - Template: {documents.Template}
+            - SDK: {compiler.Sdk}
+            - Roslyn: {compiler.Roslyn} ({compiler.RoslynConfig})
+            - Razor: {compiler.Razor} ({compiler.RazorConfig})
+            - Theme: {prefs.AppTheme}
 
             ### Description
 
@@ -28,15 +31,15 @@ public static class LabLinks
         return $"{Repository}/issues/new?title={Uri.EscapeDataString("[.NET Lab] ")}&body={Uri.EscapeDataString(body)}";
     }
 
-    public static string GistSnapshot(LabWorkspaceState state)
+    public static string GistSnapshot(CompilerState compiler, LabDocuments documents)
     {
         var text = new StringBuilder();
-        text.AppendLine($"// .NET Lab snapshot · SDK {state.Sdk} · Roslyn {state.Roslyn} · Razor {state.Razor}");
+        text.AppendLine($"// .NET Lab snapshot · SDK {compiler.Sdk} · Roslyn {compiler.Roslyn} · Razor {compiler.Razor}");
         text.AppendLine();
-        foreach (var file in state.SourceFiles)
+        foreach (var file in documents.SourceFiles)
         {
             text.AppendLine($"=== {file} ===");
-            text.AppendLine(state.Sources.GetValueOrDefault(file, ""));
+            text.AppendLine(documents.Sources.GetValueOrDefault(file, ""));
             text.AppendLine();
         }
 
