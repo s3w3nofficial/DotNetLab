@@ -276,7 +276,13 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
     }
 
     public Task InitializeLanguageServicesAsync()
-        => _languageInit ??= SetLanguageServicesAsync(Preferences.LanguageServices, persist: false);
+        => _languageInit ??= EnableLanguageServicesOnceAsync();
+
+    private async Task EnableLanguageServicesOnceAsync()
+    {
+        await _language.EnableSemanticHighlightingAsync();
+        await SetLanguageServicesAsync(Preferences.LanguageServices, persist: false);
+    }
 
     public Task SetLanguageServicesAsync(bool enabled)
         => SetLanguageServicesAsync(enabled, persist: true);
@@ -322,8 +328,6 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
 
     public Task OnSourceModelContentChangedAsync(string modelUri, ModelContentChangedEvent args)
         => _language.OnDidChangeModelContentAsync(modelUri, args);
-
-    public Task EnableSemanticHighlightingAsync() => _language.EnableSemanticHighlightingAsync();
 
     public async Task OnEditorReadyAsync(string editorId, string? modelUri, bool readOnly, bool fold)
     {

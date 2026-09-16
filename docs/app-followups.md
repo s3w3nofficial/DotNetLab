@@ -222,8 +222,7 @@ There is no in-process map of *previous* slugs, so sequential hits after
 stampede ends go to IndexedDB. That is acceptable. Do **not** add the
 HybridCache package for an in-process map.
 
-`IDistributedCache` belongs on a **server** host (Redis) later, not as a
-wrapper around IndexedDB or the Azure HTTP cache API.
+Do not wrap IndexedDB or the Azure HTTP cache as `IDistributedCache`.
 
 Leave `OutputLoadCache` as session state (current compiled assembly + tab +
 generation + Monaco URIs). Rename to `OutputSession` only if useful.
@@ -316,16 +315,20 @@ A rope / gap buffer is not worth it. The real cost was **N full copies in one
 Monaco event** (format, multi-cursor, paste). `MonacoTextPatch` walks original
 offsets once; the single-edit path keeps Concat.
 
+### 11. Semantic highlighting once — done
+
+`InitializeLanguageServicesAsync` enables semantic highlighting once. The JS
+hook (`onDidCreateEditor`) covers editors created later. `addAction` is skipped
+when `debug-semantic-token` is already present. `LabCodeEditor` init no longer
+walks every Monaco instance.
+
 ## Later (not now)
 
-- [ ] `EnableSemanticHighlightingAsync` once globally — today each
-      `LabCodeEditor` init loops every Monaco instance and `addAction`s again
 - [ ] Native host (`IWorkerTransport` in-process; default
       `UnsupportedWorkerTransport.CreateWorker` throws)
 - [ ] Document metadata Fluxor (`ActiveDocument` / template / open names)
       only with a real consumer
 - [ ] `WorkerState` for `WorkerError` only if more than one UI surface needs it
-- [ ] Server-host Redis `IDistributedCache` (not WASM HybridCache / IndexedDB)
 - [ ] Compile Fluxor `CompileRequestedAction` → existing scheduler (session
       is already gated)
 - [ ] Rename `OutputLoadCache` → `OutputSession` if the name still misleads

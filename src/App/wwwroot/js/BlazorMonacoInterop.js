@@ -111,20 +111,34 @@ export function registerCompletionProvider(language, triggerCharacters, completi
 }
 
 let debugSemanticTokens = false;
+let semanticHighlightingHooked = false;
+
+function applySemanticHighlighting(editor) {
+    editor.updateOptions({
+        'semanticHighlighting.enabled': true,
+    });
+    if (editor.getAction('debug-semantic-token')) {
+        return;
+    }
+
+    editor.addAction({
+        id: 'debug-semantic-token',
+        label: 'Debug Semantic Tokens (See Browser Console)',
+        run: () => {
+            debugSemanticTokens = !debugSemanticTokens;
+            console.log('Debugging semantic tokens ' + (debugSemanticTokens ? 'enabled' : 'disabled'));
+        },
+    });
+}
 
 export function enableSemanticHighlighting() {
+    if (!semanticHighlightingHooked) {
+        semanticHighlightingHooked = true;
+        monaco.editor.onDidCreateEditor(applySemanticHighlighting);
+    }
+
     for (const editor of window.blazorMonaco.editors.map(x => x.editor)) {
-        editor.updateOptions({
-            'semanticHighlighting.enabled': true,
-        });
-        editor.addAction({
-            id: 'debug-semantic-token',
-            label: 'Debug Semantic Tokens (See Browser Console)',
-            run: () => {
-                debugSemanticTokens = !debugSemanticTokens;
-                console.log('Debugging semantic tokens ' + (debugSemanticTokens ? 'enabled' : 'disabled'));
-            },
-        });
+        applySemanticHighlighting(editor);
     }
 }
 
