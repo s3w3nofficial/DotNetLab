@@ -4,9 +4,10 @@ using System.Runtime.Versioning;
 using System.Text;
 using System.Text.Json;
 using DotNetLab.Features.Preferences;
+using DotNetLab.Lab;
 using Timer = System.Timers.Timer;
 
-namespace DotNetLab.Lab;
+namespace DotNetLab.Infrastructure.Worker;
 
 /// <summary>
 /// Owns the compiler/worker, either in-process via <see cref="WorkerServices"/>

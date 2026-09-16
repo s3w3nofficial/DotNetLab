@@ -1,7 +1,10 @@
+using DotNetLab.Editor.LanguageServices;
 using DotNetLab.Features.Preferences;
 using DotNetLab.Features.Sharing;
 using DotNetLab.Features.Theme;
 using DotNetLab.Features.Workspace;
+using DotNetLab.Infrastructure.Persistence;
+using DotNetLab.Infrastructure.Worker;
 using DotNetLab.Lab;
 using Fluxor;
 using Fluxor.Blazor.Web.ReduxDevTools;

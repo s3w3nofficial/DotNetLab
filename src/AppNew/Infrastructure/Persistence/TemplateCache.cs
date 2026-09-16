@@ -1,7 +1,8 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
+using DotNetLab.Lab;
 
-namespace DotNetLab.Lab;
+namespace DotNetLab.Infrastructure.Persistence;
 
 /// <summary>
 /// Caches outputs of a pre-defined set of templates so they are faster to load

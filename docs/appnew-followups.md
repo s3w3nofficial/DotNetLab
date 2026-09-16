@@ -47,6 +47,9 @@ Keep the current chrome folders until feature stores exist, then move into
 - [x] Move `Header/` into `Shell/Header/` (`LabBrandBar` / `LabCommandBar` / `MemoryUsageView`; `StatusBar` and `CommandPalette` stay put)
 - [x] Move `CommandPalette` into `Shell/CommandPalette/` (`StatusBar` stays put; `ILabPalette` stays on the workspace)
 - [x] Move `StatusBar` / `StatusSelectors` into `Shell/StatusBar/` (cursor and diagnostics stay on `ILabStatus`)
+- [x] Move `LabLanguageServices` / `LabCursorSync` into `Editor/LanguageServices/` (`LabCodeEditor` and Monaco stay put; apply stays on the workspace)
+- [x] Move `WorkerHost` into `Infrastructure/Worker/` (same worker protocol; no `IWorkerTransport`)
+- [x] Move `TemplateCache` / `InputOutputCache` into `Infrastructure/Persistence/` (compiled output stays off Fluxor)
 
 ## P0
 

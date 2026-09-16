@@ -1,6 +1,7 @@
+using DotNetLab.Lab;
 using Microsoft.JSInterop;
 
-namespace DotNetLab.Lab;
+namespace DotNetLab.Editor.LanguageServices;
 
 public sealed class LabCursorSync(BlazorMonacoInterop interop) : IAsyncDisposable
 {

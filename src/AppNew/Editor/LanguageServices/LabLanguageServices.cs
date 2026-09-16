@@ -1,10 +1,12 @@
 using BlazorMonaco.Editor;
 using BlazorMonaco.Languages;
 using DotNetLab.Features.Documents;
+using DotNetLab.Infrastructure.Worker;
+using DotNetLab.Lab;
 using Microsoft.JSInterop;
 using System.IO.Compression;
 
-namespace DotNetLab.Lab;
+namespace DotNetLab.Editor.LanguageServices;
 
 public sealed class LabLanguageServices(
     ILoggerFactory loggerFactory,

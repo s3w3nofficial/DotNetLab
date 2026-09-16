@@ -2,8 +2,9 @@ using System.IO.Hashing;
 using System.Net.Http.Json;
 using System.Runtime.InteropServices;
 using System.Text.Json;
+using DotNetLab.Lab;
 
-namespace DotNetLab.Lab;
+namespace DotNetLab.Infrastructure.Persistence;
 
 /// <summary>
 /// Caches input/output pairs on a server, so that sharing and opening a lab link loads fast

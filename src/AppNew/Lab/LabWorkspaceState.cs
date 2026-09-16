@@ -1,11 +1,14 @@
 using System.Collections.Immutable;
 using BlazorMonaco.Editor;
+using DotNetLab.Editor.LanguageServices;
 using DotNetLab.Features.Compiler;
 using DotNetLab.Features.Compilation;
 using DotNetLab.Features.Documents;
 using DotNetLab.Features.Outputs;
 using DotNetLab.Features.Preferences;
 using DotNetLab.Features.Workspace;
+using DotNetLab.Infrastructure.Persistence;
+using DotNetLab.Infrastructure.Worker;
 using Fluxor;
 using Microsoft.JSInterop;
 
