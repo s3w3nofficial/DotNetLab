@@ -25,7 +25,6 @@ public static class AppBuilder
         });
         builder.Services.AddSingleton<ILabEnvironment>(
             new LabEnvironment(builder.HostEnvironment.IsDevelopment(), builder.HostEnvironment.BaseAddress));
-        builder.Services.AddScoped<OutputsStore>();
         builder.Services.AddScoped<LabWorkspaceState>();
         builder.Services.AddScoped<ILabStatus>(sp => sp.GetRequiredService<LabWorkspaceState>());
         builder.Services.AddScoped<ILabBrand>(sp => sp.GetRequiredService<LabWorkspaceState>());
