@@ -14,14 +14,12 @@ using Microsoft.JSInterop;
 
 namespace DotNetLab.Features.Workspace;
 
-public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IOutputLoadHost, IDisposable
+public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IOutputLoadHost, ICompilationWorkspace, IDisposable
 {
     private readonly WorkerHost _worker;
     private readonly LabLanguageServices _language;
     private readonly LabCursorSync _cursors;
     private readonly LabSettings _settings;
-    private readonly TemplateCache _templates;
-    private readonly InputOutputCache _cache;
     private readonly IState<CompilerState> _compiler;
     private readonly IState<PreferencesState> _preferences;
     private readonly IState<CompilationState> _compilation;
@@ -29,16 +27,8 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
     private readonly IState<WorkspaceState> _workspace;
     private readonly IState<OutputsState> _outputs;
     private readonly IDispatcher _dispatcher;
-    private readonly ILogger<LabWorkspaceState> _logger;
-    private GenerationCounter _compileGeneration;
-    private GenerationCounter _applyGeneration;
     private bool _suppressUrlPersist;
     private bool _settingsReady;
-    private bool _storeInCache;
-    private CompilationInput? _liveCompiledInput;
-    private string? _compiledCompilerKey;
-    private CompiledAssembly? _compiled;
-    private string _compilerKey;
     private bool _compilerWasLoading;
     private Task? _languageInit;
 
@@ -62,8 +52,6 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
         _language = language;
         _cursors = cursors;
         _settings = settings;
-        _templates = templates;
-        _cache = cache;
         _compiler = compiler;
         _preferences = preferences;
         _compilation = compilation;
@@ -71,12 +59,20 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
         _workspace = workspace;
         _outputs = outputs;
         _dispatcher = dispatcher;
-        _logger = logger;
         Documents = new LabDocuments(this, dispatcher);
         Tabs = new OutputTabLayout(this);
         OutputCache = new OutputLoadCache(this);
+        Compilation = new CompilationSession(
+            this,
+            worker,
+            templates,
+            cache,
+            compiler,
+            preferences,
+            compilation,
+            dispatcher,
+            logger);
         PublishOutputs();
-        _compilerKey = Compiler.Key;
         _compiler.StateChanged += OnCompilerStoreChanged;
         _preferences.StateChanged += OnPreferencesChanged;
         _compilation.StateChanged += OnCompilationChanged;
@@ -89,25 +85,7 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
     public LabDocuments Documents { get; }
     public OutputTabLayout Tabs { get; }
     public OutputLoadCache OutputCache { get; }
-    public CompilationInput? LastInput { get; private set; }
-
-    public CompiledAssembly? Compiled
-    {
-        get => _compiled;
-        private set
-        {
-            _compiled = value;
-            var errors = value?.NumErrors ?? 0;
-            var warnings = value?.NumWarnings ?? 0;
-            var current = Compilation;
-            if (current.ErrorCount == errors && current.WarningCount == warnings)
-            {
-                return;
-            }
-
-            _dispatcher.Dispatch(new SetDiagnosticCountsAction(errors, warnings));
-        }
-    }
+    public CompilationSession Compilation { get; }
 
     public event Action? Changed;
     public event Action? StatusChanged;
@@ -117,14 +95,10 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
     public event Func<Task>? SnapshotRequested;
     public event Func<Task>? UrlPersistRequested;
 
-    public bool Running
-    {
-        get => Compilation.Running;
-        private set => _dispatcher.Dispatch(new SetRunningAction(value));
-    }
+    public bool Running => _compilation.Value.Running;
     public bool Stale
     {
-        get => Compilation.Stale;
+        get => _compilation.Value.Stale;
         set => _dispatcher.Dispatch(new SetStaleAction(value));
     }
 
@@ -203,17 +177,6 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
     private void OnCompilerStoreChanged(object? sender, EventArgs e)
     {
         var compiler = Compiler;
-        if (!string.Equals(_compilerKey, compiler.Key, StringComparison.Ordinal))
-        {
-            _compilerKey = compiler.Key;
-            Stale = true;
-        }
-
-        if (compiler.Loading && !_compilerWasLoading)
-        {
-            Stale = true;
-        }
-
         var loadingFinished = _compilerWasLoading && !compiler.Loading;
         _compilerWasLoading = compiler.Loading;
         Notify();
@@ -259,9 +222,7 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
     public async Task ReloadWorkerAsync()
     {
         WorkerError = null;
-        LastInput = null;
-        _liveCompiledInput = null;
-        _compiledCompilerKey = null;
+        Compilation.ResetWorkerState();
         Notify();
         await _worker.RecreateAsync();
         _dispatcher.Dispatch(new ResetSdkListAction());
@@ -325,11 +286,11 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
             if (enabled)
             {
                 await SyncLanguageWorkspaceAsync(refresh: true);
-                if (_liveCompiledInput is not null)
+                if (Compilation.HasLiveInput)
                 {
                     await _language.UpdateDiagnosticsAfterCompilationAsync(Documents.UriFor(ActiveSource));
                 }
-                else if (Compiled is { } compiled)
+                else if (Compilation.Compiled is { } compiled)
                 {
                     await _language.OnCachedCompilationLoadedAsync(
                         CaptureSavedState().GetCompilerConfiguration(),
@@ -340,7 +301,7 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
             else
             {
                 await _language.ApplyCompileDiagnosticsAsync(
-                    Compiled,
+                    Compilation.Compiled,
                     Documents.SourceFiles.Select(file => (file, Documents.UriFor(file))));
             }
         }
@@ -570,30 +531,22 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
             state.RoslynConfiguration == BuildConfiguration.Debug ? "Debug" : "Release",
             CompilerSpec.Display(state.RazorVersion),
             state.RazorConfiguration == BuildConfiguration.Debug ? "Debug" : "Release"));
-        Stale = true;
-        _liveCompiledInput = null;
-        BeginNewOutputGeneration();
+        var applyGeneration = Compilation.InvalidateForNewState();
         Notify();
 
-        var applyGeneration = _applyGeneration.Begin();
         var compilers = WaitUntilCompilerIdleAsync();
 
-        var usedTemplateCache = TryApplyTemplateCache(state);
+        var usedTemplateCache = Compilation.TryApplyTemplateCache(state);
         if (!usedTemplateCache && Preferences.EnableCaching)
         {
-            _ = TryLoadServerCacheAsync(state, applyGeneration);
+            _ = Compilation.TryLoadServerCacheAsync(state, applyGeneration);
         }
 
         await compilers;
 
-        // Template/server cache already has displayable output. Compiling again
-        // (e.g. after URL/settings apply Public Symbols) reloads Tree at ~45k LOC.
-        // Still run a worker compile so language services pick up #:package references.
         if (Preferences.AutomaticCompilation)
         {
-            // Do not block URL/state application on the compile itself — editors should
-            // mount with the loaded sources rather than waiting for the worker.
-            _ = CompileAsync(storeInCache: false, updateDisplayedOutput: Compiled is null);
+            _ = Compilation.CompileAsync(storeInCache: false, updateDisplayedOutput: Compilation.Compiled is null);
         }
     }
 
@@ -659,132 +612,9 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
         }
     }
 
-    public Task CompileAsync() => CompileAsync(storeInCache: true);
-
-    public Task CompileAsync(bool storeInCache) => CompileAsync(storeInCache, updateDisplayedOutput: true);
-
-    public async Task CompileAsync(bool storeInCache, bool updateDisplayedOutput)
-    {
-        if (Running || Compiler.Loading)
-        {
-            return;
-        }
-
-        var input = CreateCompilationInput();
-        if (CanReuseLastCompile(input))
-        {
-            Stale = false;
-            Notify();
-            await PersistUrlAsync(snapshot: true);
-            if (storeInCache && Compiled is { } reused)
-            {
-                TryStoreInCache(CaptureSavedState(), reused);
-            }
-
-            if (updateDisplayedOutput && OutputCache.IsEmpty)
-            {
-                _ = OutputCache.LoadDisplayedAsync();
-            }
-
-            _ = RefreshLanguageServicesAfterCompileAsync();
-            return;
-        }
-
-        var showBusy = storeInCache || (updateDisplayedOutput && Compiled is null);
-        var appliedToDisplay = false;
-        if (showBusy)
-        {
-            Running = true;
-            Notify();
-            // Cached same-input compiles can finish synchronously; yield so Busy UI can paint.
-            await Task.Yield();
-        }
-
-        try
-        {
-            if (showBusy)
-            {
-                await PersistUrlAsync(snapshot: true);
-            }
-
-            LastInput = input;
-            var compiled = await _worker.SendAsync(
-                new WorkerInputMessage.Compile(input, LanguageServicesEnabled: Preferences.LanguageServices)
-                {
-                    Id = _worker.NextMessageId(),
-                });
-            _liveCompiledInput = input;
-            _compiledCompilerKey = CompilerKey();
-
-            // Keep template/server-cache Tree on screen after refresh. A live compile
-            // is still required so language services get #:package references.
-            var applyToDisplay = storeInCache || (updateDisplayedOutput && Compiled is null);
-            if (applyToDisplay)
-            {
-                var sameAssembly = ReferenceEquals(Compiled, compiled);
-                Compiled = compiled;
-                _storeInCache = storeInCache;
-                Stale = false;
-                appliedToDisplay = true;
-                // The worker reuses LastResult for identical input. Keep the output cache so
-                // the editor is not forced through Compiling/Loading for an unchanged assembly.
-                if (!sameAssembly)
-                {
-                    BeginNewOutputGeneration();
-                }
-
-                if (storeInCache)
-                {
-                    TryStoreInCache(CaptureSavedState(), compiled);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            if (storeInCache || (updateDisplayedOutput && Compiled is null))
-            {
-                Compiled = CompiledAssembly.Fail(ex.ToString());
-                LastInput = input;
-                _liveCompiledInput = input;
-                _compiledCompilerKey = CompilerKey();
-                BeginNewOutputGeneration();
-                appliedToDisplay = true;
-            }
-            else
-            {
-                _logger.LogError(ex, "Language services compile after cached output failed.");
-            }
-        }
-        finally
-        {
-            if (showBusy)
-            {
-                Running = false;
-                Notify();
-            }
-        }
-
-        if (appliedToDisplay)
-        {
-            RefreshTemporaryErrorList();
-            _ = OutputCache.LoadDisplayedAsync();
-        }
-
-        await RefreshLanguageServicesAfterCompileAsync();
-    }
-
-    private bool CanReuseLastCompile(CompilationInput input)
-        => _liveCompiledInput is { } live
-           && live.Equals(input)
-           && string.Equals(_compiledCompilerKey, CompilerKey(), StringComparison.Ordinal);
-
-    private string CompilerKey() => Compiler.Key;
-
     private CompilerState Compiler => _compiler.Value;
 
     private PreferencesState Preferences => _preferences.Value;
-
-    private CompilationState Compilation => _compilation.Value;
 
     private DocumentsState DocumentsSnapshot => _documents.Value;
 
@@ -803,12 +633,6 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
     }
 
     void IOutputWorkspace.PublishOutputs() => PublishOutputs();
-
-    private void BeginNewOutputGeneration()
-    {
-        _compileGeneration.Begin();
-        OutputCache.Clear();
-    }
 
     public CompilationInput CreateCompilationInput()
     {
@@ -859,18 +683,15 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
             IncludeHiddenDiagnostics = IncludeHiddenDiagnostics,
         };
 
-    private void RefreshTemporaryErrorList()
-    {
-        Tabs.EnsureActiveOutput();
-        OutputCache.SetTemporaryErrorList(Compiled is { NumErrors: > 0 });
-        Notify();
-    }
+    CompiledAssembly? IOutputLoadHost.Compiled => Compilation.Compiled;
 
-    int IOutputLoadHost.CompileGeneration => _compileGeneration.Current;
+    CompilationInput? IOutputLoadHost.LastInput => Compilation.LastInput;
 
-    bool IOutputLoadHost.IsCurrentCompile(int generation) => _compileGeneration.IsCurrent(generation);
+    int IOutputLoadHost.CompileGeneration => Compilation.CompileGeneration;
 
-    bool IOutputLoadHost.StoreInCache => _storeInCache;
+    bool IOutputLoadHost.IsCurrentCompile(int generation) => Compilation.IsCurrentCompile(generation);
+
+    bool IOutputLoadHost.StoreInCache => Compilation.StoreInCache;
 
     string IOutputLoadHost.OutputLabel(string tab) => Tabs.OutputLabel(tab);
 
@@ -878,12 +699,12 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
         => LoadOutputFromWorkerAsync(file, tab);
 
     void IOutputLoadHost.StoreCompiledOutput(CompiledAssembly compiled)
-        => TryStoreInCache(CaptureSavedState(), compiled);
+        => Compilation.StoreCompiledOutput(compiled);
 
     private async ValueTask<CompiledFileLazyResult> LoadOutputFromWorkerAsync(string? file, string tab)
     {
         return await _worker.SendAsync(
-            new WorkerInputMessage.GetOutput(LastInput!, file, tab)
+            new WorkerInputMessage.GetOutput(Compilation.LastInput!, file, tab)
             {
                 Id = _worker.NextMessageId(),
             });
@@ -898,7 +719,7 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
     void IDocumentWorkspace.AfterActiveSourceChanged()
     {
         _ = SyncLanguageWorkspaceAsync();
-        RefreshTemporaryErrorList();
+        Compilation.RefreshTemporaryErrorList();
         _ = OutputCache.LoadDisplayedAsync();
         _ = PersistUrlAsync();
     }
@@ -925,13 +746,13 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
         }
     }
 
-    private async Task RefreshLanguageServicesAfterCompileAsync()
+    public async Task RefreshLanguageServicesAfterCompileAsync()
     {
         var uri = Documents.UriFor(ActiveSource);
         if (!_language.Enabled || !await _language.UpdateDiagnosticsAfterCompilationAsync(uri))
         {
             await _language.ApplyCompileDiagnosticsAsync(
-                Compiled,
+                Compilation.Compiled,
                 Documents.SourceFiles.Select(file => (file, Documents.UriFor(file))));
         }
 
@@ -941,128 +762,14 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
         }
     }
 
-    private bool TryApplyTemplateCache(SavedState state)
-    {
-        try
-        {
-            var preferencesDiffer = state.GetPreferences() != CompilationPreferences.Default;
-            if (TryGetTemplateOutput(state, out var input, out var output))
-            {
-                ApplyCachedCompilation(input, output, stale: preferencesDiffer);
-                return true;
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to apply template cache.");
-        }
-
-        return false;
-    }
-
-    private bool TryGetTemplateOutput(
-        SavedState state,
-        [NotNullWhen(true)] out CompilationInput? input,
-        [NotNullWhen(true)] out CompiledAssembly? output)
-    {
-        var lookup = state.WithPreferences(CompilationPreferences.Default);
-        if (_templates.TryGetOutput(lookup, out input, out output) && output is not null)
-        {
-            return true;
-        }
-
-        foreach (var wellKnown in (ReadOnlySpan<SavedState>)[SavedState.CSharp, SavedState.Razor, SavedState.Cshtml])
-        {
-            if (!SourcesEqual(lookup, wellKnown))
-            {
-                continue;
-            }
-
-            if (_templates.TryGetOutput(wellKnown, out input, out output) && output is not null)
-            {
-                return true;
-            }
-        }
-
-        input = null;
-        output = null;
-        return false;
-    }
-
-    private static bool SourcesEqual(SavedState left, SavedState right)
-    {
-        if (left.Inputs.IsDefault || right.Inputs.IsDefault || left.Inputs.Length != right.Inputs.Length)
-        {
-            return false;
-        }
-
-        for (var i = 0; i < left.Inputs.Length; i++)
-        {
-            if (!string.Equals(left.Inputs[i].FileName, right.Inputs[i].FileName, StringComparison.Ordinal) ||
-                !string.Equals(left.Inputs[i].Text, right.Inputs[i].Text, StringComparison.Ordinal))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private async Task TryLoadServerCacheAsync(SavedState state, int applyGeneration)
-    {
-        var result = await _cache.LoadAsync(state);
-        if (!_applyGeneration.IsCurrent(applyGeneration) || result is null)
-        {
-            return;
-        }
-
-        var (output, _) = result.Value;
-
-        var input = state.ToCompilationInput();
-        if (_liveCompiledInput is { } live && live.Equals(input))
-        {
-            return;
-        }
-
-        ApplyCachedCompilation(input, output, stale: false);
-    }
-
-    private void ApplyCachedCompilation(CompilationInput input, CompiledAssembly output, bool stale)
-    {
-        if (_liveCompiledInput is { } live && live.Equals(input))
-        {
-            return;
-        }
-
-        LastInput = input;
-        Compiled = output;
-        _compiledCompilerKey = CompilerKey();
-        Stale = stale;
-        BeginNewOutputGeneration();
-        RefreshTemporaryErrorList();
-        Notify();
-        _ = OutputCache.LoadDisplayedAsync();
-        _ = RefreshLanguageServicesAfterCachedCompileAsync(output);
-    }
-
-    private void TryStoreInCache(SavedState state, CompiledAssembly output)
-    {
-        if (!Preferences.EnableCaching || _templates.HasInput(state))
-        {
-            return;
-        }
-
-        _ = _cache.StoreAsync(state, output);
-    }
-
-    private async Task RefreshLanguageServicesAfterCachedCompileAsync(CompiledAssembly output)
+    public async Task RefreshLanguageServicesAfterCachedCompileAsync(CompiledAssembly output)
     {
         var uri = Documents.UriFor(ActiveSource);
         var config = CaptureSavedState().GetCompilerConfiguration();
         if (!_language.Enabled || !await _language.OnCachedCompilationLoadedAsync(config, output, uri))
         {
             await _language.ApplyCompileDiagnosticsAsync(
-                Compiled,
+                Compilation.Compiled,
                 Documents.SourceFiles.Select(file => (file, Documents.UriFor(file))));
         }
 

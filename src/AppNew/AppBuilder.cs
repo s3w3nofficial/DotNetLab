@@ -36,6 +36,7 @@ public static class AppBuilder
             new LabEnvironment(builder.HostEnvironment.IsDevelopment(), builder.HostEnvironment.BaseAddress));
         builder.Services.AddScoped<LabWorkspaceState>();
         builder.Services.AddScoped(sp => sp.GetRequiredService<LabWorkspaceState>().Documents);
+        builder.Services.AddScoped(sp => sp.GetRequiredService<LabWorkspaceState>().Compilation);
         builder.Services.AddScoped<LabUrlSync>();
         builder.Services.AddScoped<LabThemeService>();
         builder.Services.AddScoped<LabPlatform>();

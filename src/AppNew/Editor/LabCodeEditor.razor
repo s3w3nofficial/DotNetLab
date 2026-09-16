@@ -46,6 +46,7 @@
     [Parameter] public EventCallback OnFocused { get; set; }
 
     [Inject] private LabWorkspaceState State { get; set; } = default!;
+    [Inject] private CompilationSession Compile { get; set; } = default!;
     [Inject] private IState<PreferencesState> Prefs { get; set; } = default!;
 
     protected override void OnInitialized()
@@ -551,7 +552,7 @@
             || keyboardEvent.MetaKey && string.Equals(keyboardEvent.Code, "KeyS", StringComparison.OrdinalIgnoreCase)
             || keyboardEvent.CtrlKey && string.Equals(keyboardEvent.Code, "KeyS", StringComparison.OrdinalIgnoreCase))
         {
-            await State.CompileAsync();
+            await Compile.CompileAsync();
         }
     }
 }

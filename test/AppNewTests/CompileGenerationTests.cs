@@ -69,6 +69,18 @@ public sealed class CompileGenerationTests
     }
 
     [TestMethod]
+    public void CompilationReducers_CompilerActionsMarkStale()
+    {
+        var fresh = new CompilationState { Stale = false };
+        CompilationReducers.Reduce(fresh, new ApplySdkAction("10.0")).Stale.Should().BeTrue();
+        CompilationReducers.Reduce(fresh, new SdkApplyStartedAction("10.0")).Stale.Should().BeTrue();
+        CompilationReducers.Reduce(fresh, new SdkResolvedAction("10.0")).Stale.Should().BeTrue();
+        CompilationReducers.Reduce(fresh, new RestoreCompilersAction("built-in", "built-in", "Release", "built-in", "Release")).Stale.Should().BeTrue();
+        CompilationReducers.Reduce(fresh, new CompilerApplyStartedAction(CompilerKind.Roslyn, "built-in", "Release")).Stale.Should().BeTrue();
+        CompilationReducers.Reduce(new CompilationState { Stale = true }, new ApplySdkAction("10.0")).Stale.Should().BeTrue();
+    }
+
+    [TestMethod]
     public void CompilationReducers_SetDiagnosticCounts()
     {
         var updated = CompilationReducers.Reduce(

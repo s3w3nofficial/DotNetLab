@@ -1,5 +1,6 @@
 @inherits FluxorComponent
 @inject LabWorkspaceState Workspace
+@inject CompilationSession Compile
 @inject LabPlatform Platform
 @inject IState<CompilerState> Compiler
 @inject IState<CompilationState> Compilation
@@ -26,7 +27,7 @@
                       Color="@Success"
                       IconStart="@(new Icons.Filled.Size20.Play())"
                       Label="Compile"
-                      OnClick="Workspace.CompileAsync" />
+                      OnClick="Compile.CompileAsync" />
     }
 
     <span class="lab-vsep" aria-hidden="true"></span>

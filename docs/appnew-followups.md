@@ -81,6 +81,7 @@ the current god object; see [State direction](#state-direction).
 - [x] Drop Fluxor getter pass-throughs on `LabWorkspaceState` (`LabWorkspace` / `LabCodeEditor` / `LabLinks` read `IState<T>` / `Documents` / `Tabs`; `Notify` still pulses runtime)
 - [x] Document commands persist/LS sync live on `LabDocuments` (`LabWorkspace` calls `Documents.*`; `AfterActiveSourceChanged` still on the host)
 - [x] `StatusBar` drops `LabWorkspaceState` (`CompilationState` diagnostic counts; `EditorCursor` for line/col; no cursor Fluxor)
+- [x] `CompilationSession` for compile / `Compiled` / generations / caches (`Stale` from compiler actions is a reducer; worker `GetOutput` still on the workspace)
 
 ## P0
 
@@ -162,9 +163,9 @@ not Fluxor cursor or keystrokes. Diagnostic **counts** (ints, not the
 assembly) live on `CompilationState`; cursor is `EditorCursor` (scoped, not
 Fluxor). `StatusBar` does not inject `LabWorkspaceState`.
 
-`OnCompilerStoreChanged` mapping compiler key/loading into `Stale` should
-become a compilation reducer on compiler/document actions, not a
-`StateChanged` subscription.
+`OnCompilerStoreChanged` still notifies and persists the URL when compiler
+loading finishes. Compiler key/loading → `Stale` is a compilation reducer on
+compiler start actions, not a `SetStaleAction` from that subscription.
 
 `Compressor.Uncompress` does **not** throw (garbage slug → `(error)` source
 file). `MainLayout` `finally` is enough for a blank page. Invalid-URL UX
@@ -190,7 +191,7 @@ compile is a session. Do **not** extract a `WorkspaceCommands` junk drawer.
 5. When a store is real, colocate its UI with it (e.g. `CompilerPicker` +
    `CompilerSection` move with `CompilerStore`, not before) and optionally
    convert that slice to Fluxor the same way Updates was converted.
-6. Shrink `LabWorkspaceState` / `Lab/` until both disappear. *(Lab/ empty; catalog/tab pass-throughs gone; output-load cache in `Features/Outputs`; Fluxor getters gone; document commands on `LabDocuments`; facade remains)*
+6. Shrink `LabWorkspaceState` / `Lab/` until both disappear. *(Lab/ empty; catalog/tab pass-throughs gone; output-load cache in `Features/Outputs`; Fluxor getters gone; document commands on `LabDocuments`; compile on `CompilationSession`; facade remains)*
 7. Cosmetic leftover: `Header/` → `Shell/Header/` for brand / command / memory
    only. *(done)*
 8. Remaining façade cut (do not add more Fluxor first):
@@ -201,7 +202,8 @@ compile is a session. Do **not** extract a `WorkspaceCommands` junk drawer.
    3. `StatusBar` off the façade: `ErrorCount` / `WarningCount` on
       `CompilationState`; cursor stays off Fluxor. *(done; `EditorCursor`)*
    4. `CompilationSession` for `CompileAsync` / `Compiled` / generations /
-      caches. Then `Stale` from compiler actions is a reducer.
+      caches. Then `Stale` from compiler actions is a reducer. *(done; chrome
+      injects `CompilationSession`; compiler start actions mark `Stale`)*
    5. `WorkerHost` in-process refcount (keep provider until in-flight
       `HandleAndGetOutputAsync` finishes). Default path is the web worker.
    6. Cosmetic last: `Monaco/` → `Editor/Monaco/`; `IUpdateChecker` next to
@@ -274,7 +276,8 @@ Keep feature files flat (`CompilerState.cs`, `CompilerActions.cs`, … plus
 
 | Current | Target |
 |---|---|
-| `LabWorkspaceState.cs` | `Features/Workspace/` (facade remains; Fluxor getters gone; do not Fluxor the leftover) |
+| `LabWorkspaceState.cs` | `Features/Workspace/` (facade remains; compile on `CompilationSession`; do not Fluxor the leftover) |
+| `CompilationSession.cs` | `Features/Compilation/` (`Compiled` / generations / caches; not Fluxor) |
 | `LabDocuments.cs` | `Features/Documents/` |
 | `OutputTabLayout.cs` | `Features/Outputs/` |
 | `OutputLoadCache.cs` | `Features/Outputs/` (lazy worker load still on the workspace) |
@@ -333,7 +336,7 @@ Namespaces carry the rest (`DotNetLab.Features.Documents`).
 - [x] `CompilerEffects` independent generations / operation ids (shared `_generation` can stick `RoslynLoading`)
 - [x] Document commands + persist/LS sync off the façade (`LabDocuments`; `SetDocumentsAction` snapshot bus remains)
 - [x] `StatusBar` drops `LabWorkspaceState` (`ErrorCount` / `WarningCount` on `CompilationState`; `EditorCursor`; no cursor Fluxor)
-- [ ] `CompilationSession` (`CompileAsync`, `Compiled`, generations, caches; not Fluxor)
+- [x] `CompilationSession` (`CompileAsync`, `Compiled`, generations, caches; compiler actions mark `Stale`; not Fluxor)
 - [ ] `WorkerHost` in-process request refcount (epoch already drops results)
 - [ ] Output layout: semantic Fluxor actions **or** session-only; stop `SetOutputsAction` snapshot
 - [ ] Invalid share URL UX (`Uncompress` already does not throw)
