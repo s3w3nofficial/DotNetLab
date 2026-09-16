@@ -1,5 +1,5 @@
 @inherits FluxorComponent
-@inject ILabShell Shell
+@inject LabWorkspaceState Workspace
 @inject LabDocuments Docs
 @inject LabThemeService Theme
 @inject LabShare Share
@@ -47,7 +47,7 @@
                       Color="@BrandForeground"
                       AriaLabel="Paste"
                       IconStart="@(new Icons.Regular.Size20.ClipboardPaste())"
-                      OnClick="Shell.ShowPasteUrlAsync">
+                      OnClick="Workspace.ShowPasteUrlAsync">
             Paste
         </FluentButton>
     </div>
@@ -88,7 +88,7 @@
                   Size="ButtonSize.Small"
                   Color="@BrandForeground"
                   IconStart="@(new Icons.Regular.Size20.Settings())"
-                  OnClick="Shell.ShowSettingsAsync">
+                  OnClick="Workspace.ShowSettingsAsync">
         Settings
         @if (Updates.Value.Available)
         {

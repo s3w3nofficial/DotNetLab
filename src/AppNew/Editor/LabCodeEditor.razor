@@ -45,7 +45,7 @@
     [Parameter] public EventCallback<CursorPositionChangedEvent> OnCursorChanged { get; set; }
     [Parameter] public EventCallback OnFocused { get; set; }
 
-    [Inject] private ILabEditor State { get; set; } = default!;
+    [Inject] private LabWorkspaceState State { get; set; } = default!;
 
     protected override void OnInitialized()
     {

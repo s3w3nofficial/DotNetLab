@@ -1,6 +1,5 @@
 @inherits FluxorComponent
-@inject ILabEditor Editor
-@inject ILabShell Shell
+@inject LabWorkspaceState Workspace
 @inject LabThemeService Theme
 @inject LabShare Share
 @inject LabPlatform Platform
@@ -256,12 +255,12 @@
 
     private IEnumerable<CommandItem> Commands()
     {
-        yield return new("Compile", "compile run build", Platform.SaveChord, () => Editor.CompileAsync());
-        yield return new("Format document", "format indent", "", () => Editor.FormatActiveSource());
+        yield return new("Compile", "compile run build", Platform.SaveChord, () => Workspace.CompileAsync());
+        yield return new("Format document", "format indent", "", () => Workspace.FormatActiveSource());
         yield return new("Copy link", "copy share url link", "", Share.CopyLinkAsync);
         yield return new("Create gist", "gist github share", "", Share.CreateGistAsync);
-        yield return new("Load from URL", "paste gist url load", "", () => Shell.ShowPasteUrlAsync());
-        yield return new("Settings", "settings preferences options", "", () => Shell.ShowSettingsAsync());
+        yield return new("Load from URL", "paste gist url load", "", () => Workspace.ShowPasteUrlAsync());
+        yield return new("Settings", "settings preferences options", "", () => Workspace.ShowSettingsAsync());
         yield return new("Toggle word wrap", "wrap word-wrap", "Alt+Z", () =>
         {
             Dispatcher.Dispatch(new ToggleWordWrapAction());

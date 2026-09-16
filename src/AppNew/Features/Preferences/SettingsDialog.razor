@@ -1,6 +1,5 @@
 @inherits FluxorComponent
-@inject ILabWorkspace Workspace
-@inject ILabEditor Editor
+@inject LabWorkspaceState Workspace
 @inject LabThemeService Theme
 @inject IUpdateChecker Updates
 @inject IState<UpdateState> UpdateStore
@@ -277,7 +276,7 @@
 
     private async Task LoadUpdateAsync(Action loadUpdate)
     {
-        await Editor.PersistUrlAsync();
+        await Workspace.PersistUrlAsync();
         loadUpdate();
     }
 }

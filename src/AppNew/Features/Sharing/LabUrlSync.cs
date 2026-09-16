@@ -2,6 +2,7 @@ using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Routing;
 using Microsoft.JSInterop;
 using DotNetLab.Features.Preferences;
+using DotNetLab.Features.Workspace;
 using DotNetLab.Lab;
 
 namespace DotNetLab.Features.Sharing;
@@ -9,14 +10,14 @@ namespace DotNetLab.Features.Sharing;
 public sealed class LabUrlSync : IDisposable
 {
     private readonly NavigationManager _navigation;
-    private readonly ILabSharing _state;
+    private readonly LabWorkspaceState _state;
     private readonly LabSettings _settings;
     private readonly IJSRuntime _js;
     private bool _ignoreNextLocation;
     private bool _loaded;
     private string? _appliedSlug;
 
-    public LabUrlSync(NavigationManager navigation, ILabSharing state, LabSettings settings, IJSRuntime js)
+    public LabUrlSync(NavigationManager navigation, LabWorkspaceState state, LabSettings settings, IJSRuntime js)
     {
         _navigation = navigation;
         _state = state;

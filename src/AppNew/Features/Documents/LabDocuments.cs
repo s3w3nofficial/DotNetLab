@@ -1,3 +1,4 @@
+using DotNetLab.Features.Workspace;
 using DotNetLab.Lab;
 using Fluxor;
 
@@ -5,11 +6,11 @@ namespace DotNetLab.Features.Documents;
 
 public sealed class LabDocuments
 {
-    private readonly ILabDocumentHost _state;
+    private readonly LabWorkspaceState _state;
     private readonly IDispatcher _dispatcher;
     private readonly Dictionary<string, string> _modelUris = new(StringComparer.Ordinal);
 
-    public LabDocuments(ILabDocumentHost state, IDispatcher dispatcher)
+    public LabDocuments(LabWorkspaceState state, IDispatcher dispatcher)
     {
         _state = state;
         _dispatcher = dispatcher;

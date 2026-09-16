@@ -1,4 +1,3 @@
-using DotNetLab.Editor;
 using DotNetLab.Editor.LanguageServices;
 using DotNetLab.Features.Documents;
 using DotNetLab.Features.Preferences;
@@ -9,7 +8,6 @@ using DotNetLab.Infrastructure.Browser;
 using DotNetLab.Infrastructure.Logging;
 using DotNetLab.Infrastructure.Persistence;
 using DotNetLab.Infrastructure.Worker;
-using DotNetLab.Layout;
 using Fluxor;
 using Fluxor.Blazor.Web.ReduxDevTools;
 using Microsoft.AspNetCore.Components.Web;
@@ -36,10 +34,6 @@ public static class AppBuilder
         builder.Services.AddSingleton<ILabEnvironment>(
             new LabEnvironment(builder.HostEnvironment.IsDevelopment(), builder.HostEnvironment.BaseAddress));
         builder.Services.AddScoped<LabWorkspaceState>();
-        builder.Services.AddScoped<ILabShell>(sp => sp.GetRequiredService<LabWorkspaceState>());
-        builder.Services.AddScoped<ILabWorkspace>(sp => sp.GetRequiredService<LabWorkspaceState>());
-        builder.Services.AddScoped<ILabEditor>(sp => sp.GetRequiredService<LabWorkspaceState>());
-        builder.Services.AddScoped<ILabSharing>(sp => sp.GetRequiredService<LabWorkspaceState>());
         builder.Services.AddScoped(sp => sp.GetRequiredService<LabWorkspaceState>().Documents);
         builder.Services.AddScoped<LabUrlSync>();
         builder.Services.AddScoped<LabThemeService>();

@@ -1,18 +1,19 @@
 using System.Text;
 using System.Text.Json;
 using DotNetLab.Features.Compiler;
+using DotNetLab.Features.Workspace;
 
 namespace DotNetLab.Features.Outputs;
 
 public sealed class OutputTabLayout
 {
-    private readonly ILabOutputHost _state;
+    private readonly LabWorkspaceState _state;
     private readonly Dictionary<OutputFileKind, List<string>> _outputTabOrder = CreateDefaultOutputTabOrder();
     private readonly Dictionary<OutputFileKind, HashSet<string>> _hiddenOutputTabs = CreateDefaultHiddenOutputTabs();
     private readonly Dictionary<OutputFileKind, List<string>> _openOutputTabs = new();
     private OutputFileKind? _syncedOutputKind;
 
-    public OutputTabLayout(ILabOutputHost state)
+    public OutputTabLayout(LabWorkspaceState state)
     {
         _state = state;
     }

@@ -1,7 +1,5 @@
 @inherits FluxorComponent
-@inject ILabShell Shell
-@inject ILabWorkspace Workspace
-@inject ILabEditor Editor
+@inject LabWorkspaceState Workspace
 @inject LabPlatform Platform
 @inject IState<CompilerState> Compiler
 @inject IState<CompilationState> Compilation
@@ -28,7 +26,7 @@
                       Color="@Success"
                       IconStart="@(new Icons.Filled.Size20.Play())"
                       Label="Compile"
-                      OnClick="Editor.CompileAsync" />
+                      OnClick="Workspace.CompileAsync" />
     }
 
     <span class="lab-vsep" aria-hidden="true"></span>
@@ -41,7 +39,7 @@
                         Options="@SdkOptions"
                         Selected="SelectSdk">
             <Trailing>
-                <FluentMenuItem Label="More SDK versions…" OnClick="Shell.ShowSettingsAsync" />
+                <FluentMenuItem Label="More SDK versions…" OnClick="Workspace.ShowSettingsAsync" />
             </Trailing>
         </CompilerPicker>
 
@@ -52,7 +50,7 @@
                         Options="@CompilerRefOptions"
                         Selected="SelectRoslyn">
             <Trailing>
-                <FluentMenuItem Label="Version, PR, branch or build…" OnClick="Shell.ShowSettingsAsync" />
+                <FluentMenuItem Label="Version, PR, branch or build…" OnClick="Workspace.ShowSettingsAsync" />
             </Trailing>
         </CompilerPicker>
 
@@ -91,7 +89,7 @@
                       Title="@Platform.PaletteLabel"
                       AriaLabel="@Platform.PaletteLabel"
                       IconStart="@(new Icons.Regular.Size20.KeyCommand())"
-                      OnClick="Shell.ShowPaletteAsync" />
+                      OnClick="Workspace.ShowPaletteAsync" />
         <FluentTooltip Anchor="lab-cmd-palette"
                        Class="lab-command-tooltip"
                        Positioning="Positioning.Below"
