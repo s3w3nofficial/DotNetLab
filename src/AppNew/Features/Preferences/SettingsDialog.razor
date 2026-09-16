@@ -50,9 +50,9 @@
                         }
                     </div>
                     <div class="lab-output-tab-list">
-                        @foreach (var tab in Workspace.SettingsRowsFor(_outputKind))
+                        @foreach (var tab in Workspace.Tabs.SettingsRowsFor(_outputKind))
                         {
-                            var visible = Workspace.IsOutputTabVisible(_outputKind, tab.Type);
+                            var visible = Workspace.Tabs.IsOutputTabVisible(_outputKind, tab.Type);
                             var locked = LabCatalog.IsOutputTabLocked(tab.Type);
                             <div @key="@($"{tab.Type}:{visible}")" class="lab-output-tab-row @(visible ? null : "is-hidden")">
                                 <div>
@@ -65,7 +65,7 @@
                                                   IconOnly="true"
                                                   Title="Move up"
                                                   AriaLabel="@($"Move {tab.Label} up")"
-                                                  Disabled="@(!Workspace.CanMoveOutputTab(_outputKind, tab.Type, -1))"
+                                                  Disabled="@(!Workspace.Tabs.CanMoveOutputTab(_outputKind, tab.Type, -1))"
                                                   IconStart="@(new Icons.Regular.Size16.ChevronUp())"
                                                   OnClick="@(() => MoveOutputTabAsync(tab.Type, -1))" />
                                     <FluentButton Appearance="ButtonAppearance.Subtle"
@@ -73,7 +73,7 @@
                                                   IconOnly="true"
                                                   Title="Move down"
                                                   AriaLabel="@($"Move {tab.Label} down")"
-                                                  Disabled="@(!Workspace.CanMoveOutputTab(_outputKind, tab.Type, 1))"
+                                                  Disabled="@(!Workspace.Tabs.CanMoveOutputTab(_outputKind, tab.Type, 1))"
                                                   IconStart="@(new Icons.Regular.Size16.ChevronDown())"
                                                   OnClick="@(() => MoveOutputTabAsync(tab.Type, 1))" />
                                     <FluentSwitch Value="@visible"
@@ -251,19 +251,19 @@
 
     private async Task SetOutputTabVisibleAsync(string type, bool visible)
     {
-        Workspace.SetOutputTabVisible(_outputKind, type, visible);
+        Workspace.Tabs.SetOutputTabVisible(_outputKind, type, visible);
         await PersistOutputTabsAsync();
     }
 
     private async Task MoveOutputTabAsync(string type, int delta)
     {
-        Workspace.MoveOutputTab(_outputKind, type, delta);
+        Workspace.Tabs.MoveOutputTab(_outputKind, type, delta);
         await PersistOutputTabsAsync();
     }
 
     private async Task ResetOutputTabsAsync()
     {
-        Workspace.ResetOutputTabs(_outputKind);
+        Workspace.Tabs.ResetOutputTabs(_outputKind);
         await PersistOutputTabsAsync();
     }
 

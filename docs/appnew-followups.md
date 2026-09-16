@@ -76,6 +76,8 @@ the current god object; see [State direction](#state-direction).
 - [x] `ILabOutputHost` gone (`OutputTabLayout` takes `IOutputWorkspace`)
 - [x] `ILabWorkspace` / `ILabEditor` gone (`LabWorkspace`, `LabCodeEditor`, sharing, documents, outputs, and chrome inject `LabWorkspaceState`)
 - [x] Tests for URL state, documents, tabs, and compile generations (`test/AppNewTests`; `LabDocuments` / `OutputTabLayout` take internal host seams; `GenerationCounter` on the workspace)
+- [x] Drop catalog and tab-layout pass-throughs on `LabWorkspaceState` (`LabWorkspace` / `SettingsDialog` use `Tabs` and `LabCatalog`; persist still on the workspace)
+- [x] Move output-load cache off `LabWorkspaceState` (`OutputLoadCache` + `IOutputLoadHost`; worker `GetOutput` still on the workspace)
 
 ## P0
 
@@ -153,7 +155,7 @@ delete the facade in one pass.
 5. When a store is real, colocate its UI with it (e.g. `CompilerPicker` +
    `CompilerSection` move with `CompilerStore`, not before) and optionally
    convert that slice to Fluxor the same way Updates was converted.
-6. Shrink `LabWorkspaceState` / `Lab/` until both disappear. *(Lab/ empty; facade remains)*
+6. Shrink `LabWorkspaceState` / `Lab/` until both disappear. *(Lab/ empty; catalog/tab pass-throughs gone; output-load cache in `Features/Outputs`; facade remains)*
 7. Cosmetic leftover: `Header/` → `Shell/Header/` for brand / command / memory
    only. *(done)*
 
@@ -222,9 +224,10 @@ Keep feature files flat (`CompilerState.cs`, `CompilerActions.cs`, … plus
 
 | Current | Target |
 |---|---|
-| `LabWorkspaceState.cs` | `Features/Workspace/` (facade remains; `ILab*` gone; do not Fluxor) |
+| `LabWorkspaceState.cs` | `Features/Workspace/` (facade remains; catalog/tab pass-throughs gone; do not Fluxor) |
 | `LabDocuments.cs` | `Features/Documents/` |
-| `OutputTabLayout.cs` | `Features/Outputs/` or `Features/Workspace/` |
+| `OutputTabLayout.cs` | `Features/Outputs/` |
+| `OutputLoadCache.cs` | `Features/Outputs/` (lazy worker load still on the workspace) |
 | `LabSettings.cs` | `Features/Preferences/` |
 | `LabTheme*.cs` | `Features/Theme/` |
 | `LabUrlSync.cs`, `LabShare.cs` | `Features/Sharing/` |
@@ -274,6 +277,8 @@ Namespaces carry the rest (`DotNetLab.Features.Documents`).
 - [x] `ILabOutputHost` gone (`OutputTabLayout` takes `IOutputWorkspace`)
 - [x] `ILabWorkspace` / `ILabEditor` gone (`LabWorkspaceState` is the remaining facade; not Fluxor)
 - [x] Tests for URL state, documents, tabs, and compile generations (`test/AppNewTests`; generation cancel is `GenerationCounter`)
+- [x] Drop catalog and tab-layout pass-throughs on `LabWorkspaceState` (`LabWorkspace` / `SettingsDialog` use `Tabs` and `LabCatalog`)
+- [x] Move output-load cache off `LabWorkspaceState` (`OutputLoadCache`; worker `GetOutput` still on the workspace)
 - Host-neutral `AddDotNetLabApp()` and a true Server vs WASM split
 - `IWorkerTransport` (do not invent a new worker protocol)
 - Extract `Editor/Monaco` to `DotNetLab.Editor.Monaco` (`LabCodeEditor` already injects `LabWorkspaceState`)

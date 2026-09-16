@@ -80,7 +80,7 @@
                         <LabCodeEditor @key="@($"source-{context}")"
                                        FileName="@context"
                                        Value="@State.Sources.GetValueOrDefault(context, "")"
-                                       Language="@State.LanguageFor(context)"
+                                       Language="@LabCatalog.LanguageFor(context)"
                                        ModelUri="@State.UriFor(context)"
                                        WordWrap="State.WordWrap"
                                        OnCursorChanged="OnCursorChanged"
@@ -105,7 +105,7 @@
                 <EditorGroups @ref="_outputGroups"
                               PaneId="output"
                               Items="State.CurrentOutputTabIds"
-                              Active="@State.DisplayOutputType"
+                              Active="@State.OutputCache.DisplayType"
                               ActiveChanged="OnOutputSelected"
                               ItemClosed="OnOutputClosed"
                               LockedItems="_lockedOutputTabs"
@@ -114,7 +114,7 @@
                     <Actions>
                         @{
                             var stripIds = OutputStripIds();
-                            var addableTabs = State.AddableOutputTabsFor(stripIds);
+                            var addableTabs = State.Tabs.AddableOutputTabsFor(stripIds);
                         }
                         <FluentMenu>
                             <FluentMenuButton Appearance="ButtonAppearance.Subtle"
@@ -137,10 +137,10 @@
                                 }
                                 <FluentDivider />
                                 <FluentMenuItem Label="Restore tab order"
-                                                Disabled="@(!State.OutputTabOrderDiffers(stripIds))"
+                                                Disabled="@(!State.Tabs.OutputTabOrderDiffers(stripIds))"
                                                 OnClick="RestoreOutputTabOrder" />
                                 <FluentMenuItem Label="Restore closed tabs"
-                                                Disabled="@(!State.HasClosedOutputTabs(stripIds))"
+                                                Disabled="@(!State.Tabs.HasClosedOutputTabs(stripIds))"
                                                 OnClick="RestoreClosedOutputTabs" />
                                 <FluentDivider />
                                 <FluentMenuItem Label="@($"Save for {LabCatalog.OutputKindLabel(LabCatalog.OutputKindFor(State.ActiveSource))}")"
@@ -151,7 +151,7 @@
                     <ItemLabel>
                         @if (context == "errors")
                         {
-                            <span title="@State.OutputTabTitle(context)" style="display:inline-flex;align-items:center;gap:6px;">
+                            <span title="@State.Tabs.OutputTabTitle(context)" style="display:inline-flex;align-items:center;gap:6px;">
                                 Error List
                                 @if (State.HasDiagnosticCounts)
                                 {
@@ -164,7 +164,7 @@
                         }
                         else
                         {
-                            <span title="@State.OutputTabTitle(context)">@State.OutputLabel(context)</span>
+                            <span title="@State.Tabs.OutputTabTitle(context)">@State.Tabs.OutputLabel(context)</span>
                         }
                     </ItemLabel>
                     <Toolbar>
@@ -216,14 +216,14 @@
                                     class="lab-html-preview"
                                     title="Rendered HTML"
                                     sandbox=""
-                                    srcdoc="@State.GetOutput("html")"></iframe>
+                                    srcdoc="@State.OutputCache.GetOutput("html")"></iframe>
                         }
                         else
                         {
                             <LabCodeEditor @key="@($"output-{context}")"
-                                           Value="@State.GetOutput(context)"
-                                           Language="@State.OutputLanguage(context)"
-                                           ModelUri="@State.OutputUriFor(context)"
+                                           Value="@State.OutputCache.GetOutput(context)"
+                                           Language="@State.OutputCache.OutputLanguage(context)"
+                                           ModelUri="@State.OutputCache.OutputUriFor(context)"
                                            ReadOnly="true"
                                            WordWrap="State.WordWrap" />
                         }
@@ -285,7 +285,7 @@
     private void OnOutputClosed(string _)
     {
         CaptureOutputStrip();
-        State.EnsureActiveOutput();
+        State.Tabs.EnsureActiveOutput();
         State.Notify();
     }
 
@@ -295,33 +295,33 @@
             : State.CurrentOutputTabIds;
 
     private void CaptureOutputStrip()
-        => State.CaptureOpenOutputTabs(OutputStripIds());
+        => State.Tabs.CaptureOpenOutputTabs(OutputStripIds());
 
     private void OnOutputTabsChanged(IReadOnlyList<string> ids)
-        => State.CaptureOpenOutputTabs(ids);
+        => State.Tabs.CaptureOpenOutputTabs(ids);
 
     private void AddOutputTab(string type)
     {
         CaptureOutputStrip();
-        State.AddOutputTab(type);
+        State.Tabs.AddOutputTab(type);
     }
 
     private void RestoreOutputTabOrder()
     {
         CaptureOutputStrip();
-        State.RestoreOutputTabOrder();
+        State.Tabs.RestoreOutputTabOrder();
     }
 
     private void RestoreClosedOutputTabs()
     {
         CaptureOutputStrip();
-        State.RestoreClosedOutputTabs();
+        State.Tabs.RestoreClosedOutputTabs();
     }
 
     private async Task SaveOutputTabsAsync()
     {
         CaptureOutputStrip();
-        State.SaveOpenOutputTabsAsSettings();
+        State.Tabs.SaveOpenOutputTabsAsSettings();
         await State.PersistOutputTabsAsync();
     }
 

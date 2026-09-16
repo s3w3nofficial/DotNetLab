@@ -14,7 +14,7 @@ using Microsoft.JSInterop;
 
 namespace DotNetLab.Features.Workspace;
 
-public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IDisposable
+public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IOutputLoadHost, IDisposable
 {
     private readonly WorkerHost _worker;
     private readonly LabLanguageServices _language;
@@ -30,10 +30,6 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, ID
     private readonly IState<OutputsState> _outputs;
     private readonly IDispatcher _dispatcher;
     private readonly ILogger<LabWorkspaceState> _logger;
-    private readonly Dictionary<string, OutputSnapshot> _outputCache = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, string> _outputModelUris = new(StringComparer.Ordinal);
-    private readonly HashSet<string> _outputLoading = new(StringComparer.Ordinal);
-    private bool _showErrorListIfOutputEmpty;
     private GenerationCounter _compileGeneration;
     private GenerationCounter _applyGeneration;
     private bool _suppressUrlPersist;
@@ -77,6 +73,7 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, ID
         _logger = logger;
         Documents = new LabDocuments(this, dispatcher);
         Tabs = new OutputTabLayout(this);
+        OutputCache = new OutputLoadCache(this);
         PublishOutputs();
         _compilerKey = Compiler.Key;
         _compiler.StateChanged += OnCompilerStoreChanged;
@@ -90,6 +87,7 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, ID
 
     public LabDocuments Documents { get; }
     public OutputTabLayout Tabs { get; }
+    public OutputLoadCache OutputCache { get; }
     public CompiledAssembly? Compiled { get; private set; }
     public CompilationInput? LastInput { get; private set; }
 
@@ -130,8 +128,7 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, ID
         get => OutputsSnapshot.ActiveOutput;
         set
         {
-            var dismiss = _showErrorListIfOutputEmpty;
-            _showErrorListIfOutputEmpty = false;
+            var dismiss = OutputCache.DismissTemporaryErrorList();
             if (string.Equals(OutputsSnapshot.ActiveOutput, value, StringComparison.Ordinal))
             {
                 if (dismiss)
@@ -143,15 +140,11 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, ID
             }
 
             PublishOutputs(value);
-            _ = EnsureOutputLoadedAsync(value);
+            _ = OutputCache.EnsureOutputLoadedAsync(value);
             _ = PersistUrlAsync();
         }
     }
 
-    public string DisplayOutputType
-        => _showErrorListIfOutputEmpty && HasEmptyOutputText(ActiveOutput) == true
-            ? ErrorsOutputType
-            : ActiveOutput;
     public string Sdk => Compiler.Sdk;
     public string Roslyn => Compiler.Roslyn;
     public string Razor => Compiler.Razor;
@@ -199,25 +192,6 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, ID
     public int OutputLayoutRevision => OutputsSnapshot.Revision;
 
     public IReadOnlyList<string> CurrentOutputTabIds => OutputsSnapshot.CurrentOutputTabIds;
-    public IReadOnlyList<OutputTab> CurrentOutputTabs => Tabs.CurrentOutputTabs;
-
-    public static readonly SdkOption[] SdkVersions = LabCatalog.SdkVersions;
-    public static readonly string[] CompilerRefs = LabCatalog.CompilerRefs;
-    public static readonly string[] RazorToolchains = LabCatalog.RazorToolchains;
-    public static readonly string[] RazorStrategies = LabCatalog.RazorStrategies;
-    public static readonly string[] Templates = LabCatalog.Templates;
-    public static readonly string[] SymbolDisplayKinds = LabCatalog.SymbolDisplayKinds;
-    public const string ErrorsOutputType = LabCatalog.ErrorsOutputType;
-    public const string DirectivesFileName = LabFixtures.DirectivesFileName;
-    public const string ConfigurationFileName = LabFixtures.ConfigurationFileName;
-    public static readonly string[] SpecialSourceOrder = LabFixtures.SpecialSourceOrder;
-
-    public static string OutputKindLabel(OutputFileKind kind) => LabCatalog.OutputKindLabel(kind);
-    public static OutputFileKind OutputKindFor(string fileName) => LabCatalog.OutputKindFor(fileName);
-    public static bool IsOutputTabLocked(string type) => LabCatalog.IsOutputTabLocked(type);
-    public static bool IsSpecialSource(string fileName) => LabDocuments.IsSpecialSource(fileName);
-    public static string DisplayName(string fileName) => LabDocuments.DisplayName(fileName);
-    public static bool IsRazorLike(string fileName) => LabCatalog.IsRazorLike(fileName);
 
     public void Notify() => Changed?.Invoke();
 
@@ -296,7 +270,7 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, ID
             await SetLanguageServicesAsync(LanguageServices, persist: false);
         }
 
-        ApplySavedOutputTabs(await _settings.ReadOutputTabsAsync());
+        Tabs.ApplySavedOutputTabs(await _settings.ReadOutputTabsAsync());
         Notify();
     }
 
@@ -416,7 +390,7 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, ID
             if (readOnly)
             {
                 await _cursors.AttachOutputAsync(editorId);
-                if (TryGetOutputSnapshot(DisplayOutputType, out var snapshot) &&
+                if (OutputCache.TryGetSnapshot(OutputCache.DisplayType, out var snapshot) &&
                     string.Equals(snapshot.ModelUri, modelUri, StringComparison.Ordinal))
                 {
                     await _language.ApplyOutputEditorAsync(
@@ -473,27 +447,9 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, ID
         OnSavedStateChanged();
     }
 
-    public IReadOnlyList<OutputTab> SettingsRowsFor(OutputFileKind kind) => Tabs.SettingsRowsFor(kind);
-    public bool IsOutputTabVisible(OutputFileKind kind, string type) => Tabs.IsOutputTabVisible(kind, type);
-    public bool CanMoveOutputTab(OutputFileKind kind, string type, int delta) => Tabs.CanMoveOutputTab(kind, type, delta);
-    public void SetOutputTabVisible(OutputFileKind kind, string type, bool visible) => Tabs.SetOutputTabVisible(kind, type, visible);
-    public void MoveOutputTab(OutputFileKind kind, string type, int delta) => Tabs.MoveOutputTab(kind, type, delta);
-    public void ResetOutputTabs(OutputFileKind kind) => Tabs.ResetOutputTabs(kind);
-    public string SerializeOutputTabs() => Tabs.SerializeOutputTabs();
-    public void ApplySavedOutputTabs(string? json) => Tabs.ApplySavedOutputTabs(json);
     public Task PersistOutputTabsAsync() => _settings.PersistOutputTabsAsync(Tabs.SerializeOutputTabs());
-    public void CaptureOpenOutputTabs(IReadOnlyList<string> ids) => Tabs.CaptureOpenOutputTabs(ids);
-    public IReadOnlyList<OutputTab> AddableOutputTabsFor(IReadOnlyList<string> open) => Tabs.AddableOutputTabsFor(open);
-    public bool HasClosedOutputTabs(IReadOnlyList<string> open) => Tabs.HasClosedOutputTabs(open);
-    public bool OutputTabOrderDiffers(IReadOnlyList<string> open) => Tabs.OutputTabOrderDiffers(open);
-    public void AddOutputTab(string type) => Tabs.AddOutputTab(type);
-    public void RestoreOutputTabOrder() => Tabs.RestoreOutputTabOrder();
-    public void RestoreClosedOutputTabs() => Tabs.RestoreClosedOutputTabs();
-    public void SaveOpenOutputTabsAsSettings() => Tabs.SaveOpenOutputTabsAsSettings();
+
     public void EnsureActiveOutput() => Tabs.EnsureActiveOutput();
-    public IReadOnlyList<OutputTab> OutputTabsFor(string fileName) => Tabs.OutputTabsFor(fileName);
-    public string OutputLabel(string type) => Tabs.OutputLabel(type);
-    public string OutputTabTitle(string type) => Tabs.OutputTabTitle(type);
 
     public Task SnapshotEditorsAsync() => InvokeHandlersAsync(SnapshotRequested);
 
@@ -775,7 +731,7 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, ID
         Documents.SetActiveSource(file);
         _ = SyncLanguageWorkspaceAsync();
         RefreshTemporaryErrorList();
-        _ = LoadDisplayedOutputAsync();
+        _ = OutputCache.LoadDisplayedAsync();
         _ = PersistUrlAsync();
     }
 
@@ -801,9 +757,9 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, ID
                 TryStoreInCache(CaptureSavedState(), reused);
             }
 
-            if (updateDisplayedOutput && _outputCache.Count == 0)
+            if (updateDisplayedOutput && OutputCache.IsEmpty)
             {
-                _ = LoadDisplayedOutputAsync();
+                _ = OutputCache.LoadDisplayedAsync();
             }
 
             _ = RefreshLanguageServicesAfterCompileAsync();
@@ -887,7 +843,7 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, ID
         if (appliedToDisplay)
         {
             RefreshTemporaryErrorList();
-            _ = LoadDisplayedOutputAsync();
+            _ = OutputCache.LoadDisplayedAsync();
         }
 
         await RefreshLanguageServicesAfterCompileAsync();
@@ -927,8 +883,7 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, ID
     private void BeginNewOutputGeneration()
     {
         _compileGeneration.Begin();
-        _outputCache.Clear();
-        _outputLoading.Clear();
+        OutputCache.Clear();
     }
 
     public CompilationInput CreateCompilationInput()
@@ -980,176 +935,26 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, ID
             IncludeHiddenDiagnostics = IncludeHiddenDiagnostics,
         };
 
-    public string OutputLanguage(string type)
-        => TryGetOutputSnapshot(type, out var snapshot)
-            ? snapshot.Language
-            : "plaintext";
-
-    public string OutputUriFor(string tab)
-    {
-        if (!_outputModelUris.TryGetValue(tab, out var uri))
-        {
-            uri = CompiledAssembly.GetOutputModelUri(OutputFileName(tab), tab);
-            _outputModelUris[tab] = uri;
-        }
-
-        return uri;
-    }
-
-    public string LanguageFor(string fileName) => LabCatalog.LanguageFor(fileName);
-
-    public string GetOutput(string tab)
-    {
-        var key = OutputCacheKey(tab);
-        if (_outputCache.TryGetValue(key, out var cached))
-        {
-            return cached.Text;
-        }
-
-        if (Running)
-        {
-            // Keep the previous output in Monaco. Replacing it with "Compiling…" races
-            // with a cached recompile and can leave that placeholder stuck until a tab switch.
-            var runningOutput = FindOutput(tab);
-            if (runningOutput?.Text is { } runningText)
-            {
-                return runningText;
-            }
-
-            return "Compiling…";
-        }
-
-        if (Compiled is not { } compiled)
-        {
-            return "(press Compile to load this)";
-        }
-
-        if (compiled.GetGlobalOutput("fail") is { Text: { } failText })
-        {
-            return failText;
-        }
-
-        var output = FindOutput(tab);
-        if (output is null)
-        {
-            return $"(no {OutputLabel(tab)} output for this file)";
-        }
-
-        if (output.Text is { } eager)
-        {
-            _outputCache[key] = CreateSnapshot(tab, eager, output, output.Metadata);
-            return eager;
-        }
-
-        _ = EnsureOutputLoadedAsync(tab);
-        return "Loading…";
-    }
-
-    public async Task EnsureOutputLoadedAsync(string tab)
-    {
-        if (Compiled is null || LastInput is null || Running)
-        {
-            return;
-        }
-
-        var key = OutputCacheKey(tab);
-        if (_outputCache.ContainsKey(key) || !_outputLoading.Add(key))
-        {
-            return;
-        }
-
-        var generation = _compileGeneration.Current;
-        try
-        {
-            // LoadAsync is often already completed for a cached assembly. Yield so Notify
-            // does not run in the middle of a Blazor render (GetOutput is called from one).
-            await Task.Yield();
-            if (!_compileGeneration.IsCurrent(generation) || Running || Compiled is null)
-            {
-                return;
-            }
-
-            var output = FindOutput(tab);
-            if (output is null)
-            {
-                _outputCache[key] = Placeholder(tab, $"(no {OutputLabel(tab)} output for this file)");
-                return;
-            }
-
-            if (output.Text is { } eager)
-            {
-                _outputCache[key] = CreateSnapshot(tab, eager, output, output.Metadata);
-                return;
-            }
-
-            var file = OutputFileName(tab);
-            CompiledFileLazyResult result;
-            try
-            {
-                result = await output.LoadAsync(new()
-                {
-                    OutputFactory = () => LoadOutputFromWorkerAsync(file, tab),
-                });
-            }
-            catch (Exception ex)
-            {
-                result = new() { Text = ex.ToString(), Metadata = CompiledFileOutputMetadata.SpecialMessage };
-            }
-
-            if (!_compileGeneration.IsCurrent(generation))
-            {
-                return;
-            }
-
-            _outputCache[key] = CreateSnapshot(tab, result.Text, output, result.Metadata ?? output.Metadata);
-            if (_storeInCache && Compiled is { } compiled)
-            {
-                TryStoreInCache(CaptureSavedState(), compiled);
-            }
-        }
-        finally
-        {
-            _outputLoading.Remove(key);
-            Notify();
-        }
-    }
-
     private void RefreshTemporaryErrorList()
     {
         Tabs.EnsureActiveOutput();
-        _showErrorListIfOutputEmpty = Compiled is { NumErrors: > 0 };
+        OutputCache.SetTemporaryErrorList(Compiled is { NumErrors: > 0 });
         Notify();
     }
 
-    private async Task LoadDisplayedOutputAsync()
-    {
-        await EnsureOutputLoadedAsync(ActiveOutput);
-        if (!string.Equals(DisplayOutputType, ActiveOutput, StringComparison.Ordinal))
-        {
-            await EnsureOutputLoadedAsync(DisplayOutputType);
-        }
-    }
+    int IOutputLoadHost.CompileGeneration => _compileGeneration.Current;
 
-    private bool? HasEmptyOutputText(string tab)
-    {
-        var output = FindOutput(tab);
-        if (output is null)
-        {
-            return null;
-        }
+    bool IOutputLoadHost.IsCurrentCompile(int generation) => _compileGeneration.IsCurrent(generation);
 
-        if (output.Text is { } eager)
-        {
-            return string.IsNullOrEmpty(eager);
-        }
+    bool IOutputLoadHost.StoreInCache => _storeInCache;
 
-        if (_outputCache.TryGetValue(OutputCacheKey(tab), out var snapshot))
-        {
-            return string.IsNullOrEmpty(snapshot.Text);
-        }
+    string IOutputLoadHost.OutputLabel(string tab) => Tabs.OutputLabel(tab);
 
-        return null;
-    }
+    ValueTask<CompiledFileLazyResult> IOutputLoadHost.LoadFromWorkerAsync(string? file, string tab)
+        => LoadOutputFromWorkerAsync(file, tab);
+
+    void IOutputLoadHost.StoreCompiledOutput(CompiledAssembly compiled)
+        => TryStoreInCache(CaptureSavedState(), compiled);
 
     private async ValueTask<CompiledFileLazyResult> LoadOutputFromWorkerAsync(string? file, string tab)
     {
@@ -1159,55 +964,6 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, ID
                 Id = _worker.NextMessageId(),
             });
     }
-
-    private CompiledFileOutput? FindOutput(string tab)
-    {
-        if (Compiled is not { } compiled)
-        {
-            return null;
-        }
-
-        if (compiled.Files.TryGetValue(ActiveSource, out var file) &&
-            file.GetOutput(tab) is { } perFile)
-        {
-            return perFile;
-        }
-
-        return compiled.GetGlobalOutput(tab);
-    }
-
-    private string? OutputFileName(string tab)
-        => FindOutput(tab) is not null &&
-           Compiled?.Files.TryGetValue(ActiveSource, out var file) == true &&
-           file.GetOutput(tab) is not null
-            ? ActiveSource
-            : null;
-
-    private string OutputCacheKey(string tab) => $"{ActiveSource}\0{tab}";
-
-    private bool TryGetOutputSnapshot(string tab, out OutputSnapshot snapshot)
-        => _outputCache.TryGetValue(OutputCacheKey(tab), out snapshot!);
-
-    private OutputSnapshot Placeholder(string tab, string text)
-        => new(text, "plaintext", CompiledFileOutputMetadata.SpecialMessage, OutputUriFor(tab));
-
-    private OutputSnapshot CreateSnapshot(
-        string tab,
-        string text,
-        CompiledFileOutput? output,
-        CompiledFileOutputMetadata? metadata)
-    {
-        var language = metadata is { MessageKind: not MessageKind.Normal }
-            ? "plaintext"
-            : output?.Language ?? LabCatalog.OutputLanguage(tab);
-        return new(text, language, metadata, OutputUriFor(tab));
-    }
-
-    private sealed record OutputSnapshot(
-        string Text,
-        string Language,
-        CompiledFileOutputMetadata? Metadata,
-        string ModelUri);
 
     public async Task AfterDocumentsChangedAsync(IReadOnlyList<string> before)
     {
@@ -1353,7 +1109,7 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, ID
         BeginNewOutputGeneration();
         RefreshTemporaryErrorList();
         Notify();
-        _ = LoadDisplayedOutputAsync();
+        _ = OutputCache.LoadDisplayedAsync();
         _ = RefreshLanguageServicesAfterCachedCompileAsync(output);
     }
 
