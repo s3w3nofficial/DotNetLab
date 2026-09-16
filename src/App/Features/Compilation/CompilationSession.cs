@@ -15,7 +15,7 @@ public sealed class CompilationSession : IDisposable
     private readonly ICompilationWorkspace _host;
     private readonly WorkerHost _worker;
     private readonly TemplateCache _templates;
-    private readonly InputOutputCache _cache;
+    private readonly ICompilationCache _cache;
     private readonly IState<CompilerState> _compiler;
     private readonly IState<PreferencesState> _preferences;
     private readonly IState<CompilationState> _compilation;
@@ -34,7 +34,7 @@ public sealed class CompilationSession : IDisposable
         ICompilationWorkspace host,
         WorkerHost worker,
         TemplateCache templates,
-        InputOutputCache cache,
+        ICompilationCache cache,
         IState<CompilerState> compiler,
         IState<PreferencesState> preferences,
         IState<CompilationState> compilation,
@@ -266,9 +266,9 @@ public sealed class CompilationSession : IDisposable
         return false;
     }
 
-    internal async Task TryLoadServerCacheAsync(SavedState state, int applyGeneration)
+    internal async Task TryLoadCacheAsync(SavedState state, int applyGeneration)
     {
-        var result = await _cache.LoadAsync(state);
+        var result = await _cache.GetAsync(state);
         if (!_applyGeneration.IsCurrent(applyGeneration) || result is null)
         {
             return;

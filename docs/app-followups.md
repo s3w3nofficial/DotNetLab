@@ -73,7 +73,7 @@ Channels     Sessions          caches
 | Fluxor | Serializable UI facts, stale/running flags | Handles, deltas, `CompiledAssembly` |
 | Channels | Mutation order / latest-wins scheduling | Query overlap, Cancel overlap |
 | Sessions | Documents, compiled output, Monaco, LS | Share-URL fields |
-| `ICompilationCache` | Remote compiled-output reuse | TemplateCache, OutputLoadCache |
+| `ICompilationCache` | IndexedDB L1 + remote HTTP L2 reuse | TemplateCache, OutputLoadCache, HybridCache |
 
 Queries (completion, hover, definition, semantic tokens) and `Cancel` go
 straight to `WorkerHost`. Mutations do not.
@@ -86,9 +86,10 @@ straight to `WorkerHost`. Mutations do not.
   request it aborts)
 - `DropOldest` on language-service deltas (they are incremental)
 - Reintroduce Documents/Outputs Fluxor snapshot mirrors
-- Replace `TemplateCache` or `OutputLoadCache` with HybridCache
+- Replace `TemplateCache` or `OutputLoadCache` with HybridCache or IndexedDB
 - Pretend `vsinsertions.azurewebsites.net` is `IDistributedCache`
-- Inject `HybridCache` into `CompilationSession`
+- Pretend IndexedDB is HybridCache L1 or `IDistributedCache`
+- Inject `HybridCache` or IndexedDB into `CompilationSession`
 - Invent interactive Blazor Server
 - Extract `DotNetLab.Editor.Monaco`
 - Commit / push unless asked
@@ -177,36 +178,39 @@ lose a user `storeInCache`. In-flight work is cancelled when a newer request
 arrives; generation skips committing a stale result. Callers are not routed
 through `CompileRequestedAction`.
 
-### 5. `ICompilationCache` (HybridCache later, maybe never in WASM)
+### 5. `ICompilationCache` — done
+
+HybridCache L1 is in-process RAM. That duplicates `CompilationSession.Compiled`
+and dies on reload. IndexedDB is the browser L1; the Azure HTTP cache is L2.
+Stampede protection is a per-key in-flight `Get` on `ICompilationCache`, not
+the HybridCache package.
 
 ```
-Features/Compilation/ICompilationCache.cs
-Infrastructure/Caching/   (or Persistence/)
-    RemoteCompilationCache   ← rename of InputOutputCache
-    HybridCompilationCache   ← only if measured
+Features/Compilation/
+    ICompilationCache.cs
+Infrastructure/Caching/
+    CompilationCache            ← stampede + L1 then L2
+    IndexedDbCompilationCache   ← L1 (thin `netLabCompileCache` JS)
+    RemoteCompilationCache      ← L2 (rename of InputOutputCache)
 ```
-
-Lookup hierarchy:
 
 ```
 Compile request
  ├─ known template? → TemplateCache (keep; three gzipped payloads)
  └─ ICompilationCache
-      ├─ optional L1
-      └─ RemoteCompilationCache (HTTP)
-           └─ miss → WorkerHost compile → store remote
+      ├─ IndexedDB L1
+      └─ miss → RemoteCompilationCache (HTTP)
+           └─ miss → WorkerHost compile → StoreAsync to L1 + L2
 ```
 
-Do **not** put HybridCache in the WASM app unless you measure repeat HTTP or
-stampede. `CompiledAssembly` is large; L1 would duplicate
-`CompilationSession.Compiled`. Extra WASM payload for a server L1/L2 story.
-
-If L1 is added: `GetOrCreateAsync` stampede protection is the useful part.
-Do **not** negative-cache every `null` — current `LoadAsync` returns null for
-miss **and** HTTP/parse errors. Distinguish those before a short Miss TTL.
+Do **not** negative-cache every `null` — `GetAsync` returns null for miss
+**and** HTTP/parse/IDB errors. Do not write those to IndexedDB. `EnableCaching`
+still gates Get/Store at the session. Evict IndexedDB by LRU (max entries);
+quota failure is a miss. Schema version lives in the IDB name
+(`netlab-compile-v1`). Native/store later no-ops L1 behind the same interface.
 
 `IDistributedCache` belongs on a **server** host (Redis) later, not as a
-wrapper around the Azure HTTP cache API.
+wrapper around IndexedDB or the Azure HTTP cache API.
 
 Leave `OutputLoadCache` as session state (current compiled assembly + tab +
 generation + Monaco URIs). Rename to `OutputSession` only if useful.
@@ -237,8 +241,7 @@ delete it in the same pass as the language queue.
       only with a real consumer
 - [ ] `WorkerState` for `WorkerError` only if more than one UI surface needs it
 - [ ] Persistence Channel for URL / settings / tab writes
-- [ ] HybridCache L1 in front of the remote compilation cache (WASM: only if
-      measured; server Redis `IDistributedCache` is a host concern)
+- [ ] Server-host Redis `IDistributedCache` (not WASM HybridCache / IndexedDB)
 - [ ] Compile Fluxor `CompileRequestedAction` → existing scheduler (session
       is already gated)
 - [ ] Rename `OutputLoadCache` → `OutputSession` if the name still misleads

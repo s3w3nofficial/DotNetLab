@@ -38,7 +38,7 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
         LabCursorSync cursors,
         LabSettings settings,
         TemplateCache templates,
-        InputOutputCache cache,
+        ICompilationCache cache,
         IState<CompilerState> compiler,
         IState<PreferencesState> preferences,
         IState<CompilationState> compilation,
@@ -458,7 +458,7 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
         var usedTemplateCache = Compilation.TryApplyTemplateCache(state);
         if (!usedTemplateCache && Preferences.EnableCaching)
         {
-            _ = Compilation.TryLoadServerCacheAsync(state, applyGeneration);
+            _ = Compilation.TryLoadCacheAsync(state, applyGeneration);
         }
 
         await compilers;

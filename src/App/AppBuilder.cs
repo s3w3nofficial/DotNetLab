@@ -1,12 +1,14 @@
 using DotNetLab.Editor;
 using DotNetLab.Editor.LanguageServices;
 using DotNetLab.Editor.Monaco;
+using DotNetLab.Features.Compilation;
 using DotNetLab.Features.Preferences;
 using DotNetLab.Features.Sharing;
 using DotNetLab.Features.Theme;
 using DotNetLab.Features.Updates;
 using DotNetLab.Features.Workspace;
 using DotNetLab.Infrastructure.Browser;
+using DotNetLab.Infrastructure.Caching;
 using DotNetLab.Infrastructure.Logging;
 using DotNetLab.Infrastructure.Persistence;
 using DotNetLab.Infrastructure.Worker;
@@ -52,7 +54,9 @@ public static class AppBuilder
         services.AddScoped<LabShare>();
         services.AddScoped<LabSettings>();
         services.AddScoped<TemplateCache>();
-        services.AddScoped<InputOutputCache>();
+        services.AddScoped<IndexedDbCompilationCache>();
+        services.AddScoped<RemoteCompilationCache>();
+        services.AddScoped<ICompilationCache, CompilationCache>();
         services.AddScoped<BlazorMonacoInterop>();
         services.AddScoped<LabLanguageServices>();
         services.AddScoped<LabCursorSync>();

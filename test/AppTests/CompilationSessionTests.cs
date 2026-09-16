@@ -116,7 +116,7 @@ public sealed class CompilationSessionTests
             host,
             worker,
             new TemplateCache(),
-            new InputOutputCache(new HttpClient { BaseAddress = new Uri("http://localhost/") }, NullLogger<InputOutputCache>.Instance),
+            new NullCompilationCache(),
             new Store<CompilerState>(new CompilerState()),
             new Store<PreferencesState>(new PreferencesState { EnableCaching = false, LanguageServices = false }),
             compilation,
@@ -356,5 +356,14 @@ public sealed class CompilationSessionTests
         public override void Send(SendOrPostCallback d, object? state) => d(state);
 
         public void Dispose() => SetSynchronizationContext(_previous);
+    }
+
+    private sealed class NullCompilationCache : ICompilationCache
+    {
+        public ValueTask<CachedCompilation?> GetAsync(SavedState state, CancellationToken cancellationToken = default)
+            => ValueTask.FromResult<CachedCompilation?>(null);
+
+        public Task StoreAsync(SavedState state, CompiledAssembly output, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
     }
 }
