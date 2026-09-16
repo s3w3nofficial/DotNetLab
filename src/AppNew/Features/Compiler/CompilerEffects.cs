@@ -6,7 +6,7 @@ namespace DotNetLab.Features.Compiler;
 
 public sealed class CompilerEffects(WorkerHost worker, IState<CompilerState> state)
 {
-    private int _generation;
+    private CompilerApplyGenerations _generations;
 
     [EffectMethod]
     public async Task Handle(EnsureSdkVersionsAction _, IDispatcher dispatcher)
@@ -52,27 +52,27 @@ public sealed class CompilerEffects(WorkerHost worker, IState<CompilerState> sta
 
     [EffectMethod]
     public Task Handle(SetRoslynAction action, IDispatcher dispatcher)
-        => ApplyOneAsync(CompilerKind.Roslyn, action.Version, state.Value.RoslynConfig, Begin(), dispatcher);
+        => ApplyOneAsync(CompilerKind.Roslyn, action.Version, state.Value.RoslynConfig, dispatcher);
 
     [EffectMethod]
     public Task Handle(SetRazorAction action, IDispatcher dispatcher)
-        => ApplyOneAsync(CompilerKind.Razor, action.Version, state.Value.RazorConfig, Begin(), dispatcher);
+        => ApplyOneAsync(CompilerKind.Razor, action.Version, state.Value.RazorConfig, dispatcher);
 
     [EffectMethod]
     public Task Handle(SetRoslynConfigAction action, IDispatcher dispatcher)
-        => ApplyOneAsync(CompilerKind.Roslyn, state.Value.Roslyn, action.Config, Begin(), dispatcher);
+        => ApplyOneAsync(CompilerKind.Roslyn, state.Value.Roslyn, action.Config, dispatcher);
 
     [EffectMethod]
     public Task Handle(SetRazorConfigAction action, IDispatcher dispatcher)
-        => ApplyOneAsync(CompilerKind.Razor, state.Value.Razor, action.Config, Begin(), dispatcher);
+        => ApplyOneAsync(CompilerKind.Razor, state.Value.Razor, action.Config, dispatcher);
 
     [EffectMethod]
     public Task Handle(RestoreCompilersAction action, IDispatcher dispatcher)
-        => ApplyBothAsync(action.Roslyn, action.RoslynConfig, action.Razor, action.RazorConfig, Begin(), dispatcher);
+        => ApplyBothAsync(action.Roslyn, action.RoslynConfig, action.Razor, action.RazorConfig, dispatcher);
 
     private async Task ApplySdkAsync(string value, IDispatcher dispatcher)
     {
-        var generation = Begin();
+        var generation = _generations.BeginSdk();
         var sdk = CompilerSpec.Display(value);
         dispatcher.Dispatch(new SdkApplyStartedAction(sdk));
         try
@@ -80,7 +80,7 @@ public sealed class CompilerEffects(WorkerHost worker, IState<CompilerState> sta
             var current = state.Value;
             if (CompilerSpec.ToSpecifier(sdk) is null)
             {
-                await ApplyBothAsync("built-in", current.RoslynConfig, "built-in", current.RazorConfig, generation, dispatcher);
+                await ApplyBothAsync("built-in", current.RoslynConfig, "built-in", current.RazorConfig, dispatcher);
                 return;
             }
 
@@ -95,7 +95,7 @@ public sealed class CompilerEffects(WorkerHost worker, IState<CompilerState> sta
             }
             catch (Exception ex)
             {
-                if (!IsCurrent(generation))
+                if (!_generations.IsCurrentSdk(generation))
                 {
                     return;
                 }
@@ -112,12 +112,11 @@ public sealed class CompilerEffects(WorkerHost worker, IState<CompilerState> sta
                     current.RoslynConfig,
                     string.IsNullOrEmpty(found.Razor) ? current.Razor : found.Razor,
                     current.RazorConfig,
-                    generation,
                     dispatcher);
                 return;
             }
 
-            if (!IsCurrent(generation))
+            if (!_generations.IsCurrentSdk(generation))
             {
                 return;
             }
@@ -128,12 +127,11 @@ public sealed class CompilerEffects(WorkerHost worker, IState<CompilerState> sta
                 current.RoslynConfig,
                 info.RazorVersion ?? "built-in",
                 current.RazorConfig,
-                generation,
                 dispatcher);
         }
         finally
         {
-            if (IsCurrent(generation))
+            if (_generations.IsCurrentSdk(generation))
             {
                 dispatcher.Dispatch(new SdkApplyFinishedAction());
             }
@@ -145,19 +143,18 @@ public sealed class CompilerEffects(WorkerHost worker, IState<CompilerState> sta
         string roslynConfig,
         string razor,
         string razorConfig,
-        int generation,
         IDispatcher dispatcher)
         => Task.WhenAll(
-            ApplyOneAsync(CompilerKind.Roslyn, roslyn, roslynConfig, generation, dispatcher),
-            ApplyOneAsync(CompilerKind.Razor, razor, razorConfig, generation, dispatcher));
+            ApplyOneAsync(CompilerKind.Roslyn, roslyn, roslynConfig, dispatcher),
+            ApplyOneAsync(CompilerKind.Razor, razor, razorConfig, dispatcher));
 
     private async Task ApplyOneAsync(
         CompilerKind kind,
         string version,
         string config,
-        int generation,
         IDispatcher dispatcher)
     {
+        var generation = _generations.Begin(kind);
         var display = CompilerSpec.Display(version);
         dispatcher.Dispatch(new CompilerApplyStartedAction(kind, display, config));
         try
@@ -171,7 +168,7 @@ public sealed class CompilerEffects(WorkerHost worker, IState<CompilerState> sta
                     Id = worker.NextMessageId(),
                 });
 
-            if (!IsCurrent(generation))
+            if (!_generations.IsCurrent(kind, generation))
             {
                 return;
             }
@@ -190,7 +187,7 @@ public sealed class CompilerEffects(WorkerHost worker, IState<CompilerState> sta
                 // Resolved package info is optional.
             }
 
-            if (!IsCurrent(generation))
+            if (!_generations.IsCurrent(kind, generation))
             {
                 return;
             }
@@ -199,7 +196,7 @@ public sealed class CompilerEffects(WorkerHost worker, IState<CompilerState> sta
         }
         catch (Exception ex)
         {
-            if (!IsCurrent(generation))
+            if (!_generations.IsCurrent(kind, generation))
             {
                 return;
             }
@@ -208,14 +205,10 @@ public sealed class CompilerEffects(WorkerHost worker, IState<CompilerState> sta
         }
         finally
         {
-            if (IsCurrent(generation))
+            if (_generations.IsCurrent(kind, generation))
             {
                 dispatcher.Dispatch(new CompilerApplyFinishedAction(kind));
             }
         }
     }
-
-    private int Begin() => Interlocked.Increment(ref _generation);
-
-    private bool IsCurrent(int generation) => generation == Volatile.Read(ref _generation);
 }

@@ -116,6 +116,11 @@ public sealed class LabDocuments
         _state.Stale = true;
         _state.EnsureActiveOutput();
         _state.Notify();
+        AfterChanged(before);
+    }
+
+    private void AfterChanged(IReadOnlyList<string> before)
+    {
         _ = _state.AfterDocumentsChangedAsync(before);
         _ = _state.PersistUrlAsync();
     }
@@ -163,6 +168,7 @@ public sealed class LabDocuments
             return;
         }
 
+        var before = ModelUris;
         _sourceFiles[index] = normalized;
         if (_sources.Remove(oldName, out var contents))
         {
@@ -185,6 +191,7 @@ public sealed class LabDocuments
 
         _state.Stale = true;
         _state.Notify();
+        AfterChanged(before);
     }
 
     private bool TryNormalizeRename(string oldName, string newName, out string normalized)
@@ -214,6 +221,7 @@ public sealed class LabDocuments
             return;
         }
 
+        var before = ModelUris;
         _sources.Remove(file);
         RemoveUri(file);
         if (ActiveSource == file)
@@ -229,6 +237,7 @@ public sealed class LabDocuments
 
         _state.Stale = true;
         _state.Notify();
+        AfterChanged(before);
     }
 
     public void AddFile(string extension)
@@ -253,6 +262,7 @@ public sealed class LabDocuments
             _ => $"public class {Path.GetFileNameWithoutExtension(name)}\n{{\n}}\n"
         };
 
+        var before = ModelUris;
         InsertUserFile(name);
         _sources[name] = contents;
         EnsureUri(name);
@@ -261,6 +271,7 @@ public sealed class LabDocuments
         _state.EnsureActiveOutput();
         _state.Stale = true;
         _state.Notify();
+        AfterChanged(before);
     }
 
     public void OpenDirectives() => OpenSpecialSource(InitialCode.Directives.SuggestedFileName, InitialCode.Directives.TextTemplate);
@@ -272,6 +283,7 @@ public sealed class LabDocuments
 
     private void OpenSpecialSource(string fileName, string contents)
     {
+        var before = ModelUris;
         if (!_sourceFiles.Contains(fileName))
         {
             InsertSpecialFile(fileName);
@@ -284,6 +296,7 @@ public sealed class LabDocuments
         Publish();
         _state.EnsureActiveOutput();
         _state.Notify();
+        AfterChanged(before);
     }
 
     private void InsertUserFile(string name)
@@ -336,6 +349,7 @@ public sealed class LabDocuments
             return;
         }
 
+        var before = ModelUris;
         foreach (var file in _sourceFiles.Where(name => !IsSpecialSource(name)).ToArray())
         {
             _sourceFiles.Remove(file);
@@ -367,6 +381,7 @@ public sealed class LabDocuments
         _state.EnsureActiveOutput();
         _state.Stale = true;
         _state.Notify();
+        AfterChanged(before);
     }
 
     public void SetActiveSource(string file)
@@ -380,6 +395,7 @@ public sealed class LabDocuments
         Publish();
         _state.EnsureActiveOutput();
         _state.Notify();
+        _state.AfterActiveSourceChanged();
     }
 
     public void LoadFromSavedState(SavedState state)
@@ -491,4 +507,6 @@ internal interface IDocumentWorkspace
     Task AfterDocumentsChangedAsync(IReadOnlyList<string> before);
 
     Task PersistUrlAsync(bool snapshot = false);
+
+    void AfterActiveSourceChanged();
 }

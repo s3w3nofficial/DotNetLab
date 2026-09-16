@@ -28,8 +28,8 @@ the current god object; see [State direction](#state-direction).
 - [x] `PreferencesStore` under `Lab/` (`PreferencesState`; persist / language-services apply stay on the workspace)
 - [x] Fluxor `Features/Preferences` with `PreferenceSettings`; persist in effects, language-services apply on the workspace
 - [x] `CompilationStore` under `Lab/` (`CompilationState`; worker compile and `CompiledAssembly` stay on the workspace)
-- [x] Fluxor `Features/Compilation` (`Running` / `Stale`; worker compile stays on the workspace)
-- [x] `StatusSelectors` (`CompilationState` + `CompilerState` → right pill / ready; `DocumentsState` → template / active file; cursor and diagnostics stay on `ILabStatus`)
+- [x] Fluxor `Features/Compilation` (`Running` / `Stale` / diagnostic counts; worker compile and `CompiledAssembly` stay on the workspace)
+- [x] `StatusSelectors` (`CompilationState` + `CompilerState` → right pill / ready / diagnostic counts; `DocumentsState` → template / active file; cursor on `EditorCursor`)
 - [x] `DocumentsStore` under `Lab/` (`DocumentsState`; file contents stay on `LabDocuments`; Monaco stays source of truth)
 - [x] Fluxor `Features/Documents` (template / active file / file list / URIs; file contents stay on `LabDocuments`)
 - [x] `LayoutStore` under `Lab/` (`LayoutState.Split`; pointer-move stays in JS; output tabs stay on `OutputTabLayout`)
@@ -79,6 +79,8 @@ the current god object; see [State direction](#state-direction).
 - [x] Drop catalog and tab-layout pass-throughs on `LabWorkspaceState` (`LabWorkspace` / `SettingsDialog` use `Tabs` and `LabCatalog`; persist still on the workspace)
 - [x] Move output-load cache off `LabWorkspaceState` (`OutputLoadCache` + `IOutputLoadHost`; worker `GetOutput` still on the workspace)
 - [x] Drop Fluxor getter pass-throughs on `LabWorkspaceState` (`LabWorkspace` / `LabCodeEditor` / `LabLinks` read `IState<T>` / `Documents` / `Tabs`; `Notify` still pulses runtime)
+- [x] Document commands persist/LS sync live on `LabDocuments` (`LabWorkspace` calls `Documents.*`; `AfterActiveSourceChanged` still on the host)
+- [x] `StatusBar` drops `LabWorkspaceState` (`CompilationState` diagnostic counts; `EditorCursor` for line/col; no cursor Fluxor)
 
 ## P0
 
@@ -95,7 +97,7 @@ the current god object; see [State direction](#state-direction).
 - [x] Continue ISP: `CommandPalette` off `LabWorkspaceState`
 - [x] Continue ISP: `SettingsDialog` off `LabWorkspaceState`
 - [x] Continue ISP: `MainLayout` off `LabWorkspaceState`
-- [ ] `CompilerEffects` per-kind (or operation-id) generations so a Razor apply cannot leave `RoslynLoading` stuck (`CompilerState.Loading` forever, compile blocked)
+- [x] `CompilerEffects` per-kind (or operation-id) generations so a Razor apply cannot leave `RoslynLoading` stuck (`CompilerState.Loading` forever, compile blocked)
 
 ## P2
 
@@ -123,9 +125,9 @@ mutable session  →  SetXAction(snapshot)  →  Fluxor mirror  →  UI
 
 Chrome already reads `IState<T>` / `Documents` / `Tabs` for getter
 pass-throughs. The facade still subscribes to every store and fires `Changed`,
-so Fluxor is not yet the render bus. `StatusBar` / `SettingsDialog` /
-`LabWorkspace` can double-render (`FluxorComponent` or `IState` **and**
-`Notify`).
+so Fluxor is not yet the render bus. `SettingsDialog` / `LabWorkspace` can
+double-render (`IState` **and** `Notify`). `StatusBar` is a `FluxorComponent`
+plus `EditorCursor.Changed` only.
 
 Target (do not dump keystrokes or `CompiledAssembly` into the store):
 
@@ -157,8 +159,8 @@ Monaco URIs, and `CompiledAssembly` stay on the session.
 
 Status is derived (`Compilation` + `Compiler` + `Documents` → selector). Do
 not Fluxor cursor or keystrokes. Diagnostic **counts** (ints, not the
-assembly) can move onto `CompilationState` so `StatusBar` can drop the
-facade; cursor stays a tiny editor field + `StatusChanged`.
+assembly) live on `CompilationState`; cursor is `EditorCursor` (scoped, not
+Fluxor). `StatusBar` does not inject `LabWorkspaceState`.
 
 `OnCompilerStoreChanged` mapping compiler key/loading into `Stale` should
 become a compilation reducer on compiler/document actions, not a
@@ -188,16 +190,16 @@ compile is a session. Do **not** extract a `WorkspaceCommands` junk drawer.
 5. When a store is real, colocate its UI with it (e.g. `CompilerPicker` +
    `CompilerSection` move with `CompilerStore`, not before) and optionally
    convert that slice to Fluxor the same way Updates was converted.
-6. Shrink `LabWorkspaceState` / `Lab/` until both disappear. *(Lab/ empty; catalog/tab pass-throughs gone; output-load cache in `Features/Outputs`; Fluxor getters gone; facade remains)*
+6. Shrink `LabWorkspaceState` / `Lab/` until both disappear. *(Lab/ empty; catalog/tab pass-throughs gone; output-load cache in `Features/Outputs`; Fluxor getters gone; document commands on `LabDocuments`; facade remains)*
 7. Cosmetic leftover: `Header/` → `Shell/Header/` for brand / command / memory
    only. *(done)*
 8. Remaining façade cut (do not add more Fluxor first):
-   1. Fix `CompilerEffects` generations (P1).
+   1. Fix `CompilerEffects` generations (P1). *(done; `CompilerApplyGenerations` per SDK / Roslyn / Razor)*
    2. Fold document commands (`Rename` / `Close` / `Add` + persist + LS sync)
       into `LabDocuments` / `DocumentSession`. Decide metadata Fluxor vs
-      session-only; stop `SetDocumentsAction` as a full snapshot.
+      session-only; stop `SetDocumentsAction` as a full snapshot. *(persist/LS on `LabDocuments`; snapshot bus remains)*
    3. `StatusBar` off the façade: `ErrorCount` / `WarningCount` on
-      `CompilationState`; cursor stays off Fluxor.
+      `CompilationState`; cursor stays off Fluxor. *(done; `EditorCursor`)*
    4. `CompilationSession` for `CompileAsync` / `Compiled` / generations /
       caches. Then `Stale` from compiler actions is a reducer.
    5. `WorkerHost` in-process refcount (keep provider until in-flight
@@ -260,8 +262,8 @@ Three kinds of code:
 does not own every setting. `CompilerPicker` lives with Compiler even if the
 header renders it. Status is
 `CompilationState` + `CompilerState` + `DocumentsState` → `Shell/StatusBar/StatusSelectors.cs`
-(pure function). Cursor line/col still come from the workspace until an editor
-session exists; diagnostic counts should move onto `CompilationState`.
+(pure function). Cursor line/col come from `EditorCursor`; diagnostic counts
+are on `CompilationState`.
 
 Keep feature files flat (`CompilerState.cs`, `CompilerActions.cs`, … plus
 `Components/` / `Services/` when needed). Do not add `State/` / `Actions/` /
@@ -279,7 +281,7 @@ Keep feature files flat (`CompilerState.cs`, `CompilerActions.cs`, … plus
 | `LabSettings.cs` | `Features/Preferences/` |
 | `LabTheme*.cs` | `Features/Theme/` |
 | `LabUrlSync.cs`, `LabShare.cs` | `Features/Sharing/` |
-| `LabLanguageServices.cs`, `LabCursorSync.cs` | `Editor/` |
+| `LabLanguageServices.cs`, `LabCursorSync.cs`, `EditorCursor.cs` | `Editor/` |
 | `WorkerHost.cs` | `Infrastructure/Worker/` |
 | `InputOutputCache.cs`, `TemplateCache.cs` | `Infrastructure/Persistence/` |
 | `LabPlatform.cs` | `Infrastructure/Browser/` |
@@ -287,7 +289,7 @@ Keep feature files flat (`CompilerState.cs`, `CompilerActions.cs`, … plus
 | `LabLogging.cs` | `Infrastructure/Logging/` |
 | `LabCatalog.cs` | `Features/Compiler/Services/` |
 | `LabFixtures.cs` | `Features/Documents/` |
-| `ILabStatus.cs` | deleted (`StatusBar` uses `ILabWorkspace` + `StatusSelectors`; no cursor Fluxor store) |
+| `ILabStatus.cs` | deleted (`StatusBar` uses Fluxor + `EditorCursor` + `StatusSelectors`; no cursor Fluxor store) |
 | `ILabCommands.cs` | deleted (`LabCommandBar` uses `ILabEditor` + Fluxor + `ILabWorkspace` + `ILabShell`) |
 | `ILabPalette.cs` | deleted (`CommandPalette` uses `ILabEditor` + `ILabShell`) |
 | `ILabSettings.cs` | deleted (`SettingsDialog` / `PreferenceSettings` / `LabCommandBar` use `ILabWorkspace`; URL persist on `ILabEditor`) |
@@ -318,7 +320,7 @@ Namespaces carry the rest (`DotNetLab.Features.Documents`).
 - [x] `ILabCommands` gone (`LabCommandBar` uses `ILabEditor` + Fluxor + `ILabWorkspace` + `ILabShell`)
 - [x] `ILabPalette` gone (`CommandPalette` uses `ILabEditor` + `ILabShell`)
 - [x] `ILabSettings` gone (`SettingsDialog` stays a composer; razor / tabs / LS / worker on `ILabWorkspace`)
-- [x] `ILabStatus` gone (`StatusBar` uses `ILabWorkspace` + `StatusSelectors`; cursor/diagnostics not Fluxor)
+- [x] `ILabStatus` gone (`StatusBar` uses Fluxor + `EditorCursor` + `StatusSelectors`; cursor not Fluxor)
 - [x] `ILabShell` gone (`MainLayout` / brand / command / palette use `ILabWorkspace`)
 - [x] `ILabSharing` gone (`LabShare` / `LabUrlSync` / `LabLinks` use `ILabWorkspace`)
 - [x] `ILabDocumentHost` gone (`LabDocuments` takes `IDocumentWorkspace`)
@@ -328,9 +330,9 @@ Namespaces carry the rest (`DotNetLab.Features.Documents`).
 - [x] Drop catalog and tab-layout pass-throughs on `LabWorkspaceState` (`LabWorkspace` / `SettingsDialog` use `Tabs` and `LabCatalog`)
 - [x] Move output-load cache off `LabWorkspaceState` (`OutputLoadCache`; worker `GetOutput` still on the workspace)
 - [x] Drop Fluxor getter pass-throughs on `LabWorkspaceState` (`LabWorkspace` / `LabCodeEditor` / `LabLinks` read `IState<T>` / `Documents` / `Tabs`)
-- [ ] `CompilerEffects` independent generations / operation ids (shared `_generation` can stick `RoslynLoading`)
-- [ ] Document commands + persist/LS sync off the façade; stop `SetDocumentsAction` as a snapshot bus
-- [ ] `StatusBar` drops `LabWorkspaceState` (`ErrorCount` / `WarningCount` on `CompilationState`; no cursor Fluxor)
+- [x] `CompilerEffects` independent generations / operation ids (shared `_generation` can stick `RoslynLoading`)
+- [x] Document commands + persist/LS sync off the façade (`LabDocuments`; `SetDocumentsAction` snapshot bus remains)
+- [x] `StatusBar` drops `LabWorkspaceState` (`ErrorCount` / `WarningCount` on `CompilationState`; `EditorCursor`; no cursor Fluxor)
 - [ ] `CompilationSession` (`CompileAsync`, `Compiled`, generations, caches; not Fluxor)
 - [ ] `WorkerHost` in-process request refcount (epoch already drops results)
 - [ ] Output layout: semantic Fluxor actions **or** session-only; stop `SetOutputsAction` snapshot

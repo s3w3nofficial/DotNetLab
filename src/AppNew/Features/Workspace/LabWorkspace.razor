@@ -1,6 +1,8 @@
 @inject LabWorkspaceState State
+@inject EditorCursor Cursor
 @inject IState<PreferencesState> Prefs
 @inject IState<WorkspaceState> Layout
+@inject IState<CompilationState> Compilation
 @inject IJSRuntime JS
 @implements IDisposable
 
@@ -17,7 +19,7 @@
                               Items="State.Documents.SourceFiles"
                               Active="@State.ActiveSource"
                               ActiveChanged="OnSourceSelected"
-                              ItemClosed="State.CloseFile"
+                              ItemClosed="State.Documents.CloseFile"
                               ItemRenamed="OnSourceRenamed"
                               PinnedOrder="LabFixtures.SpecialSourceOrder"
                               Icon="@(new Icons.Regular.Size20.Code())">
@@ -45,20 +47,20 @@
                             <FluentMenuList>
                                 <FluentMenuItem IconStart="@(new Icons.Regular.Size20.Braces())"
                                                 Label=".cs file"
-                                                OnClick="@(() => State.AddFile(".cs"))" />
+                                                OnClick="@(() => State.Documents.AddFile(".cs"))" />
                                 <FluentMenuItem IconStart="@(new Icons.Regular.Size20.Code())"
                                                 Label=".razor file"
-                                                OnClick="@(() => State.AddFile(".razor"))" />
+                                                OnClick="@(() => State.Documents.AddFile(".razor"))" />
                                 <FluentMenuItem IconStart="@(new Icons.Regular.Size20.Globe())"
                                                 Label=".cshtml file"
-                                                OnClick="@(() => State.AddFile(".cshtml"))" />
+                                                OnClick="@(() => State.Documents.AddFile(".cshtml"))" />
                                 <FluentDivider />
                                 <FluentMenuItem IconStart="@(new Icons.Regular.Size20.NumberSymbol())"
                                                 Label="Directives"
-                                                OnClick="State.OpenDirectives" />
+                                                OnClick="State.Documents.OpenDirectives" />
                                 <FluentMenuItem IconStart="@(new Icons.Regular.Size20.DocumentSettings())"
                                                 Label="Configuration"
-                                                OnClick="State.OpenConfiguration" />
+                                                OnClick="State.Documents.OpenConfiguration" />
                             </FluentMenuList>
                         </FluentMenu>
                     </Actions>
@@ -155,12 +157,12 @@
                         {
                             <span title="@State.Tabs.OutputTabTitle(context)" style="display:inline-flex;align-items:center;gap:6px;">
                                 Error List
-                                @if (State.HasDiagnosticCounts)
+                                @if (Compilation.Value.HasDiagnosticCounts)
                                 {
                                     <FluentBadge Appearance="BadgeAppearance.Filled"
-                                                 Color="@(State.ErrorCount > 0 ? BadgeColor.Danger : BadgeColor.Warning)"
+                                                 Color="@(Compilation.Value.ErrorCount > 0 ? BadgeColor.Danger : BadgeColor.Warning)"
                                                  Size="BadgeSize.Tiny"
-                                                 Content="@((State.ErrorCount > 0 ? State.ErrorCount : State.WarningCount).ToString())" />
+                                                 Content="@((Compilation.Value.ErrorCount > 0 ? Compilation.Value.ErrorCount : Compilation.Value.WarningCount).ToString())" />
                                 }
                             </span>
                         }
@@ -281,7 +283,7 @@
         }
 
         CaptureOutputStrip();
-        State.SetActiveSource(file);
+        State.Documents.SetActiveSource(file);
     }
 
     private void OnOutputClosed(string _)
@@ -328,7 +330,7 @@
     }
 
     private void OnSourceRenamed(TabRename rename)
-        => State.RenameFile(rename.From, rename.To);
+        => State.Documents.RenameFile(rename.From, rename.To);
 
     private void OnOutputSelected(string tab)
     {
@@ -337,18 +339,7 @@
     }
 
     private void OnCursorChanged(CursorPositionChangedEvent args)
-    {
-        var line = args.Position.LineNumber;
-        var column = args.Position.Column;
-        if (State.CursorLine == line && State.CursorColumn == column)
-        {
-            return;
-        }
-
-        State.CursorLine = line;
-        State.CursorColumn = column;
-        State.NotifyStatus();
-    }
+        => Cursor.Set(args.Position.LineNumber, args.Position.Column);
 
     private async Task OnSplitterPointerDown(PointerEventArgs args)
     {

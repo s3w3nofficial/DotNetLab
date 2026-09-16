@@ -1,3 +1,4 @@
+using DotNetLab.Editor;
 using DotNetLab.Editor.LanguageServices;
 using DotNetLab.Features.Documents;
 using DotNetLab.Features.Preferences;
@@ -45,6 +46,7 @@ public static class AppBuilder
         builder.Services.AddScoped<BlazorMonacoInterop>();
         builder.Services.AddScoped<LabLanguageServices>();
         builder.Services.AddScoped<LabCursorSync>();
+        builder.Services.AddScoped<EditorCursor>();
         builder.Services.AddScoped<EditorDragState>();
         builder.Services.AddScoped<IUpdateChecker, DisabledUpdateChecker>();
         builder.Services.AddSingleton<LabLogging>();

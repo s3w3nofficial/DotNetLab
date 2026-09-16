@@ -59,10 +59,11 @@ public sealed class DocumentTests
     [TestMethod]
     public void AddAndCloseFile()
     {
-        var (documents, _, _) = Create();
+        var (documents, host, _) = Create();
         documents.AddFile(".cs");
         documents.ActiveSource.Should().Be("File1.cs");
         documents.SourceFiles.Should().Equal("Program.cs", "File1.cs");
+        host.PersistCount.Should().Be(1);
 
         documents.CloseFile("Program.cs");
         documents.ActiveSource.Should().Be("File1.cs");
@@ -75,10 +76,11 @@ public sealed class DocumentTests
     [TestMethod]
     public void RenameFile_AcceptsAndRejects()
     {
-        var (documents, _, _) = Create();
+        var (documents, host, _) = Create();
         documents.RenameFile("Program.cs", "Hello.cs");
         documents.ActiveSource.Should().Be("Hello.cs");
         documents.SourceFiles.Should().Equal("Hello.cs");
+        host.PersistCount.Should().Be(1);
 
         documents.RenameFile("Hello.cs", "..");
         documents.SourceFiles.Should().Equal("Hello.cs");
@@ -126,6 +128,7 @@ public sealed class DocumentTests
         documents.Sources["App.cs"].Should().Be("class App;");
         documents.ActiveSource.Should().Be("App.cs");
         host.Stale.Should().BeTrue();
+        host.PersistCount.Should().Be(1);
     }
 
     private static (LabDocuments Documents, FakeDocumentWorkspace Host, FakeDispatcher Dispatcher) Create()
@@ -164,6 +167,11 @@ public sealed class DocumentTests
         {
             PersistCount++;
             return Task.CompletedTask;
+        }
+
+        public void AfterActiveSourceChanged()
+        {
+            PersistCount++;
         }
     }
 

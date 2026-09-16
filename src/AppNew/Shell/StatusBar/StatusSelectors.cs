@@ -29,8 +29,7 @@ public static class StatusSelectors
         DocumentsState documents,
         int cursorLine,
         int cursorColumn,
-        int errorCount,
-        int warningCount)
+        CompilationState compilation)
     {
         IReadOnlyList<string> cursor =
         [
@@ -38,7 +37,7 @@ public static class StatusSelectors
             "Spaces: 4",
             "UTF-8",
         ];
-        var diagnostics = DiagnosticParts(errorCount, warningCount);
+        var diagnostics = DiagnosticParts(compilation.ErrorCount, compilation.WarningCount);
         return IsOutput(side)
             ? [LabDocuments.DisplayName(documents.ActiveSource), .. diagnostics]
             : [.. cursor, documents.Template, .. diagnostics];

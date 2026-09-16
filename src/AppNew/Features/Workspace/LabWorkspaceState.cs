@@ -37,6 +37,7 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
     private bool _storeInCache;
     private CompilationInput? _liveCompiledInput;
     private string? _compiledCompilerKey;
+    private CompiledAssembly? _compiled;
     private string _compilerKey;
     private bool _compilerWasLoading;
     private Task? _languageInit;
@@ -88,8 +89,25 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
     public LabDocuments Documents { get; }
     public OutputTabLayout Tabs { get; }
     public OutputLoadCache OutputCache { get; }
-    public CompiledAssembly? Compiled { get; private set; }
     public CompilationInput? LastInput { get; private set; }
+
+    public CompiledAssembly? Compiled
+    {
+        get => _compiled;
+        private set
+        {
+            _compiled = value;
+            var errors = value?.NumErrors ?? 0;
+            var warnings = value?.NumWarnings ?? 0;
+            var current = Compilation;
+            if (current.ErrorCount == errors && current.WarningCount == warnings)
+            {
+                return;
+            }
+
+            _dispatcher.Dispatch(new SetDiagnosticCountsAction(errors, warnings));
+        }
+    }
 
     public event Action? Changed;
     public event Action? StatusChanged;
@@ -154,13 +172,8 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
     public bool ShowRenderedHtml { get; set; }
     public bool ExcludeSingleFileNameInDiagnostics { get; set; } = true;
     public bool IncludeHiddenDiagnostics { get; set; }
-    public int CursorLine { get; set; } = 9;
-    public int CursorColumn { get; set; } = 34;
     public string? WorkerError { get; private set; }
     public bool EditingUserPreferences { get; set; }
-    public int ErrorCount => Compiled?.NumErrors ?? 0;
-    public int WarningCount => Compiled?.NumWarnings ?? 0;
-    public bool HasDiagnosticCounts => ErrorCount > 0 || WarningCount > 0;
 
     public void Notify() => Changed?.Invoke();
 
@@ -603,59 +616,10 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
         }
     }
 
-    public void SetTemplate(string template) => Documents.SetTemplate(template);
-
     public void MarkStale()
     {
         Stale = true;
         Notify();
-    }
-
-    public void SetSource(string file, string contents) => Documents.SetSource(file, contents);
-
-    public void RenameFile(string oldName, string newName)
-    {
-        var before = Documents.ModelUris;
-        Documents.RenameFile(oldName, newName);
-        _ = AfterDocumentsChangedAsync(before);
-        _ = PersistUrlAsync();
-    }
-
-    public void CloseFile(string file)
-    {
-        var before = Documents.ModelUris;
-        Documents.CloseFile(file);
-        _ = AfterDocumentsChangedAsync(before);
-        _ = PersistUrlAsync();
-    }
-
-    public void AddFile(string extension)
-    {
-        Documents.AddFile(extension);
-        _ = SyncLanguageWorkspaceAsync();
-        _ = PersistUrlAsync();
-    }
-
-    public void OpenDirectives()
-    {
-        Documents.OpenDirectives();
-        _ = SyncLanguageWorkspaceAsync();
-        _ = PersistUrlAsync();
-    }
-
-    public void OpenConfiguration()
-    {
-        Documents.OpenConfiguration();
-        _ = SyncLanguageWorkspaceAsync();
-        _ = PersistUrlAsync();
-    }
-
-    public void LoadImportedFiles(IReadOnlyDictionary<string, string> files)
-    {
-        var before = Documents.ModelUris;
-        Documents.LoadImportedFiles(files);
-        _ = AfterDocumentsChangedAsync(before);
-        _ = PersistUrlAsync();
     }
 
     public async Task FormatActiveSource()
@@ -693,15 +657,6 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
         {
             // Same as Lab: formatting is best-effort and should not interrupt editing.
         }
-    }
-
-    public void SetActiveSource(string file)
-    {
-        Documents.SetActiveSource(file);
-        _ = SyncLanguageWorkspaceAsync();
-        RefreshTemporaryErrorList();
-        _ = OutputCache.LoadDisplayedAsync();
-        _ = PersistUrlAsync();
     }
 
     public Task CompileAsync() => CompileAsync(storeInCache: true);
@@ -938,6 +893,14 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
     {
         var removed = before.Except(Documents.ModelUris).ToArray();
         await SyncLanguageWorkspaceAsync(refresh: true, removed);
+    }
+
+    void IDocumentWorkspace.AfterActiveSourceChanged()
+    {
+        _ = SyncLanguageWorkspaceAsync();
+        RefreshTemporaryErrorList();
+        _ = OutputCache.LoadDisplayedAsync();
+        _ = PersistUrlAsync();
     }
 
     private async Task SyncLanguageWorkspaceAsync(bool refresh = false, IReadOnlyList<string>? disposeUris = null)

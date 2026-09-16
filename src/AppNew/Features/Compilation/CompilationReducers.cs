@@ -11,4 +11,8 @@ public static class CompilationReducers
     [ReducerMethod]
     public static CompilationState Reduce(CompilationState state, SetStaleAction action)
         => state with { Stale = action.Value };
+
+    [ReducerMethod]
+    public static CompilationState Reduce(CompilationState state, SetDiagnosticCountsAction action)
+        => state with { ErrorCount = action.ErrorCount, WarningCount = action.WarningCount };
 }
