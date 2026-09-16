@@ -3,6 +3,7 @@ using System.Runtime.InteropServices.JavaScript;
 using System.Runtime.Versioning;
 using System.Text;
 using System.Text.Json;
+using DotNetLab.Features.Preferences;
 using Timer = System.Timers.Timer;
 
 namespace DotNetLab.Lab;

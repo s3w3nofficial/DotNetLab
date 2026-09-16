@@ -2,7 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.JSInterop;
 
-namespace DotNetLab.Lab;
+namespace DotNetLab.Features.Preferences;
 
 public sealed class LabSettings(IJSRuntime js)
 {

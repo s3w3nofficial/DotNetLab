@@ -1,5 +1,3 @@
-using DotNetLab.Lab;
-
 namespace DotNetLab.Features.Preferences;
 
 public sealed record SeedPreferencesAction(bool DebugLogs);

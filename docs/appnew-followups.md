@@ -40,6 +40,7 @@ Keep the current chrome folders until feature stores exist, then move into
 - [x] Move `OutputTabLayout` into `Features/Outputs` (`LabWorkspaceState` still owns the instance; worker output stays on the workspace)
 - [x] Move `LabDocuments` / `LabFixtures` into `Features/Documents` (file contents stay on `LabDocuments`; Monaco stays source of truth)
 - [x] Move `LabCatalog` into `Features/Compiler` (flat; picker already colocated)
+- [x] Move `LabSettings` into `Features/Preferences` (persist stays in effects; `SettingsDialog` stays in `Settings/`)
 
 ## P0
 
