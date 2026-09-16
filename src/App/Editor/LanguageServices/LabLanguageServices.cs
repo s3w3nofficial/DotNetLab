@@ -19,6 +19,7 @@ public sealed class LabLanguageServices(
 {
     [System.Diagnostics.CodeAnalysis.SuppressMessage("Usage", "CA2213", Justification = "WorkerHost is a scoped DI service owned by the container.")]
     private readonly WorkerHost _worker = worker;
+    private readonly LanguageMutationQueue _mutations = BindQueue(worker, logger);
     private readonly LanguageSelector _cSharpLanguageSelector = new(CompiledAssembly.CSharpLanguageId);
     private readonly LanguageSelector _outputLanguageSelector = new(CompiledAssembly.OutputLanguageId);
     private IAsyncDisposable? _completionProvider, _semanticTokensProvider, _codeActionProvider, _hoverProvider, _signatureHelpProvider;
@@ -35,7 +36,10 @@ public sealed class LabLanguageServices(
 
     public async ValueTask DisposeAsync()
     {
+        _worker.Recreating -= _mutations.Cancel;
+        _worker.Recreated -= _mutations.RestartAsync;
         await UnregisterAsync();
+        await _mutations.DisposeAsync();
         if (_outputSemanticTokensProvider is not null)
         {
             await _outputSemanticTokensProvider.DisposeAsync();
@@ -109,15 +113,16 @@ public sealed class LabLanguageServices(
         }
 
         InvalidateCaches();
-        _ = SendAsync(new WorkerInputMessage.OnDidChangeWorkspace(models, refresh) { Id = _worker.NextMessageId() });
-        _ = UpdateDiagnosticsAsync(activeModelUri);
+        var applied = EnqueueMutationAsync(
+            new WorkerInputMessage.OnDidChangeWorkspace(models, refresh) { Id = _worker.NextMessageId() },
+            activeModelUri);
 
         if (!refresh)
         {
             return Task.CompletedTask;
         }
 
-        return RefreshSemanticTokensAsync();
+        return RefreshAfterWorkspaceAsync(applied);
     }
 
     public Task OnDidChangeModelContentAsync(string modelUri, ModelContentChangedEvent args)
@@ -128,14 +133,26 @@ public sealed class LabLanguageServices(
         }
 
         InvalidateCaches();
-        // Do not wait for the worker: keystrokes must not queue behind completions/diagnostics.
-        _ = SendAsync(new WorkerInputMessage.OnDidChangeModelContent(modelUri, args) { Id = _worker.NextMessageId() });
-        _ = UpdateDiagnosticsAsync(modelUri);
+        // Write returns without waiting: keystrokes must not sit behind completion/hover.
+        _ = EnqueueMutationAsync(
+            new WorkerInputMessage.OnDidChangeModelContent(modelUri, args) { Id = _worker.NextMessageId() },
+            modelUri);
         return Task.CompletedTask;
     }
 
-    public Task<bool> UpdateDiagnosticsAfterCompilationAsync(string? activeModelUri)
-        => UpdateDiagnosticsAsync(activeModelUri, afterCompilation: true);
+    public async Task<bool> UpdateDiagnosticsAfterCompilationAsync(string? activeModelUri)
+    {
+        try
+        {
+            await _mutations.EnqueueBarrierAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+
+        return await UpdateDiagnosticsAsync(activeModelUri, afterCompilation: true);
+    }
 
     public async Task<bool> OnCachedCompilationLoadedAsync(
         CompilerConfiguration config,
@@ -144,10 +161,14 @@ public sealed class LabLanguageServices(
     {
         try
         {
-            await _worker.SendAsync(new WorkerInputMessage.OnCachedCompilationLoaded(config, output)
+            await EnqueueMutationAsync(new WorkerInputMessage.OnCachedCompilationLoaded(config, output)
             {
                 Id = _worker.NextMessageId(),
             });
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
         }
         catch (Exception ex)
         {
@@ -386,6 +407,8 @@ public sealed class LabLanguageServices(
     private async Task UnregisterAsync()
     {
         InvalidateCaches();
+        _mutations.Cancel();
+        await _mutations.RestartAsync();
         await Task.WhenAll(
             UnregisterOneAsync(ref _completionProvider),
             UnregisterOneAsync(ref _semanticTokensProvider),
@@ -404,6 +427,45 @@ public sealed class LabLanguageServices(
         }
 
         return Task.CompletedTask;
+    }
+
+    private static LanguageMutationQueue BindQueue(WorkerHost worker, ILogger logger)
+    {
+        var queue = new LanguageMutationQueue(logger);
+        worker.Recreating += queue.Cancel;
+        worker.Recreated += queue.RestartAsync;
+        return queue;
+    }
+
+    private Task EnqueueMutationAsync(IWorkerInputMessage<NoOutput> message, string? diagnosticUri = null)
+    {
+        return _mutations.EnqueueAsync(async cancellationToken =>
+        {
+            await SendAsync(message, cancellationToken);
+            if (diagnosticUri is not null)
+            {
+                _ = UpdateDiagnosticsAsync(diagnosticUri);
+            }
+        });
+    }
+
+    private async Task RefreshAfterWorkspaceAsync(Task applied)
+    {
+        try
+        {
+            await applied;
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch (Exception ex)
+        {
+            logger.LogError(ex, "Applying workspace mutation failed");
+            return;
+        }
+
+        await RefreshSemanticTokensAsync();
     }
 
     private void InvalidateCaches() => _lastCodeActions = null;

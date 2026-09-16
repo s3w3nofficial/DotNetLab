@@ -106,11 +106,9 @@ tabs / palette / segmented radios. `MainLayout` stays in `Layout/`.
 `SavedState` and persists URL when those stores change. `ShowRenderedHtml`
 stays local. `OutputTabLayout` still owns tab order.
 
-Next: language mutation queue.
+### 2. Language mutation queue — done
 
-### 2. Language mutation queue
-
-Immediate correctness issue. `LabLanguageServices` fire-and-forgets:
+`LabLanguageServices` used to fire-and-forget:
 
 ```
 SendAsync(OnDidChangeModelContent / OnDidChangeWorkspace)
@@ -153,12 +151,14 @@ On `WorkerHost.RecreateAsync`, drain/cancel the queue and send a full
 
 Also in this WorkerHost pass:
 
-- [ ] Do not reset `_messageId` on recreate (late old-worker `#1` can complete
+- [x] Do not reset `_messageId` on recreate (late old-worker `#1` can complete
       new `#1`)
-- [ ] Ignore callbacks whose worker epoch ≠ `Volatile.Read(ref _epoch)`
-- [ ] `cancellationToken.ThrowIfCancellationRequested()` at the start of
+- [x] Ignore callbacks whose worker epoch ≠ `Volatile.Read(ref _epoch)`
+- [x] `cancellationToken.ThrowIfCancellationRequested()` at the start of
       `SendAsync` (already-cancelled tokens Register immediately and send
       `Cancel` before the request)
+
+Next: compile-in-flight guard.
 
 ### 3. Compile-in-flight guard
 

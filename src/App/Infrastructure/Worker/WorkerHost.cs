@@ -51,6 +51,19 @@ public sealed class WorkerHost : IAsyncDisposable
 
     public event Action<string>? Failed;
 
+    /// <summary>
+    /// Raised at the start of <see cref="RecreateAsync"/> / dispose, after the
+    /// epoch advances. Language services cancel leftover deltas here so they
+    /// are not applied to the next worker.
+    /// </summary>
+    internal event Action? Recreating;
+
+    /// <summary>
+    /// Raised after the replacement worker is running. Language services drain
+    /// the cancelled queue and start a new reader.
+    /// </summary>
+    internal event Func<Task>? Recreated;
+
     public PingResult? LastPingResult { get; private set; }
 
     public int NextMessageId() => Interlocked.Increment(ref _messageId);
@@ -67,6 +80,7 @@ public sealed class WorkerHost : IAsyncDisposable
 
             _disposed = true;
             Interlocked.Increment(ref _epoch);
+            Recreating?.Invoke();
             await DisposeCurrentNoLockAsync();
         }
         finally
@@ -84,10 +98,11 @@ public sealed class WorkerHost : IAsyncDisposable
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
             Interlocked.Increment(ref _epoch);
+            Recreating?.Invoke();
             await DisposeCurrentNoLockAsync();
             _useWorker ??= await LoadUseWorkerAsync();
             await StartNoLockAsync();
-            _messageId = 0;
+            await InvokeRecreatedAsync();
         }
         finally
         {
@@ -97,6 +112,7 @@ public sealed class WorkerHost : IAsyncDisposable
 
     public async Task<T> SendAsync<T>(IWorkerInputMessage<T> message, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         CancellationTokenRegistration registration = default;
         if (cancellationToken.CanBeCanceled)
         {
@@ -295,6 +311,7 @@ public sealed class WorkerHost : IAsyncDisposable
     {
         await _transport.EnsureControllerAsync();
 
+        var epoch = Volatile.Read(ref _epoch);
         var pingTimer = new Timer(TimeSpan.FromSeconds(10));
         pingTimer.Elapsed += (_, _) =>
         {
@@ -319,8 +336,18 @@ public sealed class WorkerHost : IAsyncDisposable
         var workerReady = new TaskCompletionSource();
         Action<string> messageHandler = data =>
         {
+            if (epoch != Volatile.Read(ref _epoch))
+            {
+                return;
+            }
+
             _ = _dispatcher.InvokeAsync(() =>
             {
+                if (epoch != Volatile.Read(ref _epoch))
+                {
+                    return Task.CompletedTask;
+                }
+
                 var message = JsonSerializer.Deserialize(data, WorkerJsonContext.Default.WorkerOutputMessage)!;
                 _logger.Log(
                     message.InputType == nameof(WorkerInputMessage.Ping) ? LogLevel.Trace : LogLevel.Debug,
@@ -352,11 +379,21 @@ public sealed class WorkerHost : IAsyncDisposable
         };
         Action<string> errorHandler = error =>
         {
+            if (epoch != Volatile.Read(ref _epoch))
+            {
+                return;
+            }
+
             _logger.LogError("Worker error: {Error}", error);
             pingTimer.Stop();
             workerReady.TrySetException(new InvalidOperationException($"Worker error: {error}"));
             _ = _dispatcher.InvokeAsync(() =>
             {
+                if (epoch != Volatile.Read(ref _epoch))
+                {
+                    return Task.CompletedTask;
+                }
+
                 DiscardPending("Worker error", error);
                 Failed?.Invoke(error);
                 return Task.CompletedTask;
@@ -396,6 +433,20 @@ public sealed class WorkerHost : IAsyncDisposable
             WorkerOutputMessage.Empty => default!,
             _ => throw new InvalidOperationException($"Unexpected message type: {incoming}"),
         };
+
+    private async Task InvokeRecreatedAsync()
+    {
+        var handlers = Recreated;
+        if (handlers is null)
+        {
+            return;
+        }
+
+        foreach (var handler in handlers.GetInvocationList())
+        {
+            await ((Func<Task>)handler)();
+        }
+    }
 
     private static WorkerOutputMessage DisposedFailure(IWorkerInputMessage message)
         => new WorkerOutputMessage.Failure("Worker disposed")
