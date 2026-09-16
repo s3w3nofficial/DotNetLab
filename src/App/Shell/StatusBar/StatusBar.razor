@@ -1,6 +1,6 @@
 @inherits FluxorComponent
 @inject EditorCursor Cursor
-@inject LabDocuments Docs
+@inject IState<DocumentMetadataState> Documents
 @inject IState<CompilationState> Compilation
 @inject IState<CompilerState> Compiler
 
@@ -21,8 +21,8 @@
 
     private IReadOnlyList<string> Left => StatusSelectors.Left(
         Side,
-        Docs.Template,
-        Docs.ActiveSource,
+        Documents.Value.Template,
+        Documents.Value.ActiveDocument,
         Cursor.Line,
         Cursor.Column,
         Compilation.Value);

@@ -611,6 +611,14 @@ public sealed class LabWorkspaceState : IDocumentWorkspace, IOutputWorkspace, IO
         _ = PersistUrlAsync();
     }
 
+    void IDocumentWorkspace.PublishDocumentMetadata()
+    {
+        _dispatcher.Dispatch(new SetDocumentMetadataAction(
+            Documents.Template,
+            Documents.ActiveSource,
+            [.. Documents.SourceFiles]));
+    }
+
     private async Task SyncLanguageWorkspaceAsync(bool refresh = false, IReadOnlyList<string>? disposeUris = null)
     {
         if (disposeUris is { Count: > 0 })

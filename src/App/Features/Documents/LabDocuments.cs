@@ -462,6 +462,7 @@ public sealed class LabDocuments
 
     private void Notify()
     {
+        _state.PublishDocumentMetadata();
         Changed?.Invoke();
         _state.Notify();
     }
@@ -482,4 +483,6 @@ internal interface IDocumentWorkspace
     Task PersistUrlAsync(bool snapshot = false);
 
     void AfterActiveSourceChanged();
+
+    void PublishDocumentMetadata();
 }

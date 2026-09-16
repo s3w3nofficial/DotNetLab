@@ -5,6 +5,7 @@
 @inject IState<WorkspaceState> Layout
 @inject IState<CompilationState> Compilation
 @inject IState<CompilationOptionsState> Options
+@inject IState<DocumentMetadataState> DocumentsUi
 @inject IDispatcher Dispatcher
 @inject IJSRuntime JS
 
@@ -18,8 +19,8 @@
             @if (paneId == "source")
             {
                 <EditorGroups PaneId="source"
-                              Items="State.Documents.SourceFiles"
-                              Active="@State.ActiveSource"
+                              Items="DocumentsUi.Value.OpenNames"
+                              Active="@DocumentsUi.Value.ActiveDocument"
                               ActiveChanged="OnSourceSelected"
                               ItemClosed="State.Documents.CloseFile"
                               ItemRenamed="OnSourceRenamed"
@@ -149,7 +150,7 @@
                                                 Disabled="@(!State.Tabs.HasClosedOutputTabs(stripIds))"
                                                 OnClick="RestoreClosedOutputTabs" />
                                 <FluentDivider />
-                                <FluentMenuItem Label="@($"Save for {LabCatalog.OutputKindLabel(LabCatalog.OutputKindFor(State.ActiveSource))}")"
+                                <FluentMenuItem Label="@($"Save for {LabCatalog.OutputKindLabel(LabCatalog.OutputKindFor(DocumentsUi.Value.ActiveDocument))}")"
                                                 OnClick="SaveOutputTabsAsync" />
                             </FluentMenuList>
                         </FluentMenu>
@@ -217,7 +218,7 @@
                         }
                     </Toolbar>
                     <ItemContent>
-                        @if (context == "html" && State.ShowRenderedHtml && !State.ActiveSource.EndsWith(".cshtml", StringComparison.OrdinalIgnoreCase))
+                        @if (context == "html" && State.ShowRenderedHtml && !DocumentsUi.Value.ActiveDocument.EndsWith(".cshtml", StringComparison.OrdinalIgnoreCase))
                         {
                             <iframe @key="@("html-preview")"
                                     class="lab-html-preview"
@@ -284,7 +285,7 @@
 
     private void OnSourceSelected(string file)
     {
-        if (string.Equals(State.ActiveSource, file, StringComparison.Ordinal))
+        if (string.Equals(DocumentsUi.Value.ActiveDocument, file, StringComparison.Ordinal))
         {
             return;
         }

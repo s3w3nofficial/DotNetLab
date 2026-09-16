@@ -14,6 +14,8 @@ namespace DotNetLab.Infrastructure.Worker;
 /// or in the existing <c>WorkerWebAssembly</c> web worker — same split as
 /// <c>src/App</c> <c>WorkerController</c>. Background-worker vs in-process is
 /// chosen on first use and requires a page reload to change.
+/// Native hosts use in-process <see cref="WorkerServices"/> because
+/// <see cref="IWorkerTransport.SupportsBackgroundWorker"/> is false.
 /// Browser I/O goes through <see cref="IWorkerTransport"/> (existing
 /// <c>WorkerController.js</c> protocol).
 /// </summary>
@@ -252,6 +254,11 @@ public sealed class WorkerHost : IAsyncDisposable
 
     private async Task<bool> LoadUseWorkerAsync()
     {
+        if (!_transport.SupportsBackgroundWorker)
+        {
+            return false;
+        }
+
         try
         {
             var snapshot = await _settings.LoadAsync();

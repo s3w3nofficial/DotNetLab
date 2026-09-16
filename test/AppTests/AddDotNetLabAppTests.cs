@@ -60,6 +60,7 @@ public sealed class AddDotNetLabAppTests
         var act = () => transport.CreateWorker("main.js", _ => { }, _ => { });
         act.Should().Throw<InvalidOperationException>()
             .WithMessage("Workers are only supported in the browser.");
+        transport.SupportsBackgroundWorker.Should().BeFalse();
     }
 
     [TestMethod]

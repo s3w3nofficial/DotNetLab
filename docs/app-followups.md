@@ -39,6 +39,7 @@ Docs Compilation   Outputs
 | `OutputState` (`ActiveOutput`) | `OutputTabLayout` |
 | `PreferencesState` | `LabLanguageServices` |
 | `WorkspaceState` (`Split`) | `WorkerHost` / `EditorCursor` |
+| `DocumentMetadataState` | `LabDocuments` (file text / URIs) |
 | `UpdateState` | |
 
 Documents and output-tab **mirrors** were removed on purpose. Do not bring
@@ -322,12 +323,22 @@ hook (`onDidCreateEditor`) covers editors created later. `addAction` is skipped
 when `debug-semantic-token` is already present. `LabCodeEditor` init no longer
 walks every Monaco instance.
 
+### 12. Native in-process worker — done
+
+App's default `UnsupportedWorkerTransport` does not support a background
+worker. `WorkerHost` then starts `WorkerServices` in-process instead of
+`CreateWorker` (which still throws if called). Browser
+`BrowserWorkerTransport` still supports the web worker. The Background worker
+setting is hidden when the transport cannot create one.
+
+### 13. Document metadata Fluxor — done
+
+Template, active file, and open names are `DocumentMetadataState`. File text
+stays on `LabDocuments`. Consumers: template menu, source tabs, status bar.
+`SetDocumentsAction` snapshot buses stay gone.
+
 ## Later (not now)
 
-- [ ] Native host (`IWorkerTransport` in-process; default
-      `UnsupportedWorkerTransport.CreateWorker` throws)
-- [ ] Document metadata Fluxor (`ActiveDocument` / template / open names)
-      only with a real consumer
 - [ ] `WorkerState` for `WorkerError` only if more than one UI surface needs it
 - [ ] Compile Fluxor `CompileRequestedAction` → existing scheduler (session
       is already gated)

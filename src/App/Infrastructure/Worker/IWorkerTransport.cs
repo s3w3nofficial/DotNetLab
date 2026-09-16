@@ -8,6 +8,8 @@ namespace DotNetLab.Infrastructure.Worker;
 /// </summary>
 public interface IWorkerTransport
 {
+    bool SupportsBackgroundWorker { get; }
+
     Task EnsureControllerAsync();
 
     Task EnsureInProcessInteropAsync();
@@ -29,6 +31,8 @@ public interface IWorkerHandle : IDisposable;
 
 internal sealed class UnsupportedWorkerTransport : IWorkerTransport
 {
+    public bool SupportsBackgroundWorker => false;
+
     public Task EnsureControllerAsync() => Task.CompletedTask;
 
     public Task EnsureInProcessInteropAsync() => Task.CompletedTask;

@@ -11,6 +11,8 @@ internal sealed class BrowserWorkerTransport : IWorkerTransport
     private readonly Lazy<Task> _controllerJs = new(() =>
         JSHost.ImportAsync("WorkerHost", "../js/WorkerHost.js"));
 
+    public bool SupportsBackgroundWorker => true;
+
     public Task EnsureControllerAsync() => _controllerJs.Value;
 
     public Task EnsureInProcessInteropAsync() =>

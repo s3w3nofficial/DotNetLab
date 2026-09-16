@@ -179,5 +179,9 @@ public sealed class DocumentTests
         {
             PersistCount++;
         }
+
+        public void PublishDocumentMetadata()
+        {
+        }
     }
 }

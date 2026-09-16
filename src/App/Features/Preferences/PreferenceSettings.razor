@@ -2,6 +2,7 @@
 @inject IState<PreferencesState> Prefs
 @inject LabWorkspaceState Workspace
 @inject IDispatcher Dispatcher
+@inject IWorkerTransport Transport
 
 <div class="lab-preference-settings">
     <div class="lab-setting-toggles">
@@ -42,11 +43,14 @@
                               ValueChanged="@(value => Persist(new SetMemoryUsageViewAction(value)))"
                               AriaLabel="Memory usage view" />
             </SettingRow>
-            <SettingRow Title="Background worker" Hint="Compile in a background worker thread (requires restart)">
-                <FluentSwitch Value="Prefs.Value.BackgroundWorker"
-                              ValueChanged="@(value => Persist(new SetBackgroundWorkerAction(value)))"
-                              AriaLabel="Background worker" />
-            </SettingRow>
+            @if (Transport.SupportsBackgroundWorker)
+            {
+                <SettingRow Title="Background worker" Hint="Compile in a background worker thread (requires restart)">
+                    <FluentSwitch Value="Prefs.Value.BackgroundWorker"
+                                  ValueChanged="@(value => Persist(new SetBackgroundWorkerAction(value)))"
+                                  AriaLabel="Background worker" />
+                </SettingRow>
+            }
             <SettingRow Title="Worker stuck?" Hint="Restart the compilation worker">
                 <FluentButton Size="ButtonSize.Small"
                               IconStart="@(new Icons.Regular.Size20.ArrowSync())"

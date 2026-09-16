@@ -172,6 +172,8 @@ public sealed class CompilationSessionTests
 
         public Task EnsureInProcessInteropAsync() => Task.CompletedTask;
 
+        public bool SupportsBackgroundWorker => true;
+
         public IWorkerHandle CreateWorker(string scriptUrl, Action<string> onMessage, Action<string> onError)
         {
             _ = scriptUrl;
